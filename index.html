@@ -97,6 +97,29 @@
   .room { font-weight: 600; color: var(--brand); }
   .detail { white-space: pre-line; color: var(--muted); font-size: 14px; }
 
+  /* Lên lớp: fills whatever window it is given, down to a third of a board, with targets a finger can hit */
+  body.lenlop header { display: none; }
+  body.lenlop main { max-width: none; padding: 8px; gap: 8px; min-height: 100vh; grid-template-rows: auto auto 1fr; align-content: start; }
+  .ll-open { justify-self: start; min-height: 52px; font-size: 17px; font-weight: 700; }
+  .ll-head { display: flex; align-items: center; gap: 8px; }
+  .ll-head > button { min-height: 52px; min-width: 52px; font-size: 16px; }
+  .ll-title { flex: 1; min-width: 0; display: grid; }
+  .ll-title b { font-size: 20px; line-height: 1.2; }
+  .ll-title span { color: var(--muted, #667); font-size: 14px; }
+  .ll-list { display: grid; gap: 4px; grid-auto-rows: minmax(52px, 1fr); }
+  .ll-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 48px 64px; gap: 4px; align-items: stretch; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 3px; touch-action: manipulation; }
+  .ll-row.top { background: var(--warn-soft); border-color: var(--warn); }
+  .ll-row.off { grid-template-columns: minmax(0, 1fr) auto 64px; background: var(--bad-soft); border-color: var(--bad); }
+  .ll-row button { min-height: 44px; padding: 0 6px; border-radius: 9px; }
+  .ll-main { display: flex; align-items: center; gap: 8px; text-align: left; border: 0; background: transparent; min-width: 0; font-weight: 700; }
+  .ll-main:active:not(:disabled) { background: var(--brand-soft); }
+  .ll-rank { width: 30px; flex: none; text-align: center; font-size: 20px; }
+  .ll-name { font-size: clamp(17px, 2.6vw, 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ll-row.off .ll-name { color: var(--bad); text-decoration: line-through; }
+  .ll-count { min-width: 66px; font-size: 19px; font-weight: 700; }
+  .ll-minus { font-size: 22px; font-weight: 700; }
+  .ll-absent { font-size: 14px; font-weight: 600; }
+  .ll-off { align-self: center; color: var(--bad); font-weight: 700; padding: 0 6px; }
   /* Class */
   .class-head { padding: 14px; display: grid; gap: 4px; }
   .class-head h1 { font-size: 20px; font-weight: 700; }
