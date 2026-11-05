@@ -114,20 +114,25 @@
   function trackerBlocks(head, year) {
     const rows = head || [], width = Math.max(0, ...rows.map(r => (r || []).length));
     const at = (r, c) => String((rows[r] || [])[c] || '');
+    // Classes differ in which header row holds what, so every label is looked for in all of them.
     const starts = [];
-    for (let c = 0; c < width; c++) if (/BUOI HOC NGAY/.test(key(at(0, c)))) starts.push(c);
-    const stops = c => /CHUOI VIDEO TU LUYEN|KIEM TRA GIAY|KIEM TRA NOI/.test(key(at(0, c)));
-    const blocks = starts.map((col, n) => {
-      const next = starts[n + 1] == null ? width : starts[n + 1];
-      const b = { col, date: dateIn(at(0, col), year), head: clean(at(0, col)), videos: [], grade: -1, stars: -1, comment: -1 };
+    for (let c = 0; c < width; c++) { const r = rows.findIndex((_, i) => /BUOI HOC NGAY/.test(key(at(i, c)))); if (r >= 0) starts.push({ col: c, r }); }
+    const STOP = /CHUOI VIDEO TU LUYEN|KIEM TRA GIAY|KIEM TRA NOI/;
+    const stops = (c, r) => [0, r].some(i => !/TIET HOC SO/.test(key(at(i, c))) && STOP.test(key(at(i, c))));
+    const blocks = starts.map(({ col, r: dayRow }, n) => {
+      const next = starts[n + 1] == null ? width : starts[n + 1].col;
+      const b = { col, date: dateIn(at(dayRow, col), year), head: clean(at(dayRow, col)), videos: [], grade: -1, stars: -1, comment: -1 };
       for (let c = col; c < next; c++) {
-        if (c > col && stops(c)) break;
-        const top = key(at(1, c)), three = key(at(2, c)), four = key(at(3, c));
-        if (/TIET HOC SO/.test(top)) { const m = top.match(/TIET HOC SO\s*(\d+)\s*:?\s*(.*)/); b.lesson = m ? m[1] : ''; b.topic = clean(at(1, c)).replace(/^.*Tiết học số\s*\d+\s*:?\s*/i, ''); }
-        if (/BAI TAP VE NHA DANG VIDEO/.test(three) && !/SACH GIAY/.test(four)) b.videos.push({ col: c, label: clean(at(3, c)).replace(/🔗.*$/u, '').trim() });
-        if (/BAI TAP VE NHA.*SACH GIAY/.test(four)) b.grade = c;
-        if (four === 'SO SAO') b.stars = c;
-        if (four === 'NHAN XET' && b.comment < 0) b.comment = c;
+        if (c > col && stops(c, dayRow)) break;
+        const paper = rows.some((_, i) => /SACH GIAY/.test(key(at(i, c))));
+        rows.forEach((_, i) => {
+          const t = key(at(i, c));
+          if (/TIET HOC SO/.test(t)) { const m = t.match(/TIET HOC SO\s*(\d+)\s*:?\s*(.*)/); b.lesson = m ? m[1] : ''; b.topic = clean(at(i, c)).replace(/^.*Tiết học số\s*\d+\s*:?\s*/i, ''); }
+          if (/BAI TAP VE NHA DANG VIDEO/.test(t) && !paper) b.videos.push({ col: c, label: clean(at(i + 1, c)).replace(/🔗.*$/u, '').trim() });
+          if (/BAI TAP VE NHA.*SACH GIAY/.test(t)) b.grade = c;
+          if (t === 'SO SAO') b.stars = c;
+          if (t === 'NHAN XET' && b.comment < 0) b.comment = c;
+        });
       }
       return b;
     });
