@@ -132,7 +132,7 @@ async function loadTracker(cls, force) {
   const blocks = Q.trackerBlocks(head, year), practices = Q.practiceColumns(head, year);
   const from = Q.addDays(today(), -30);
   const wanted = new Set();
-  blocks.filter(b => !b.date || b.date >= from).forEach(b => { if (b.grade >= 0) wanted.add(b.grade); b.videos.forEach(v => wanted.add(v.col)); });
+  blocks.filter(b => !b.date || b.date >= from).forEach(b => { if (b.grade >= 0) wanted.add(b.grade); if (b.stars >= 0) wanted.add(b.stars); b.videos.forEach(v => wanted.add(v.col)); });
   practices.filter(p => p.due >= from).forEach(p => wanted.add(p.col));
   const cols = [...wanted];
   const data = cols.length ? await batchGet(cls.tracker, cols.map(c => tab + '!' + Q.colName(c) + '5:' + Q.colName(c) + ROSTER_LAST)) : [];
@@ -232,6 +232,70 @@ function setAbsence(ctx, pupil, status) {
   if (ctx.block && ctx.block.grade >= 0 && !ctx.tracker.cell(pupil.row, ctx.block.grade)) gradeCell(ctx.cls, ctx.tracker, ctx.block, pupil, '/\nCon vắng mặt!', pupil.eng + ' · ' + ctx.session.lesson);
   render();
 }
+/* ---------- Lên lớp: stars and absence on the classroom touch screen ---------- */
+const NGHI = 'GV báo nghỉ';
+const starsOf = (ctx, p) => { const v = ctx.block && ctx.block.stars >= 0 ? Q.clean(ctx.tracker.cell(p.row, ctx.block.stars)) : ''; return /^\d+$/.test(v) ? Number(v) : 0; };
+function canTeach(s) { return isManager() || ([s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)) && Q.rollCall(s, marksOf(s), today(), minutesNow()).open); }
+// Everyone moves to their new place smoothly, so the class sees who overtook whom.
+function withMoves(work) {
+  const before = new Map([...document.querySelectorAll('.ll-row')].map(el => [el.dataset.name, el.getBoundingClientRect().top]));
+  work();
+  document.querySelectorAll('.ll-row').forEach(el => { const was = before.get(el.dataset.name); if (was == null) return; const by = was - el.getBoundingClientRect().top; if (by && el.animate) el.animate([{ transform: 'translateY(' + by + 'px)' }, { transform: 'none' }], { duration: 350, easing: 'ease-out' }); });
+}
+function setStars(ctx, pupil, count) {
+  const { block, tracker, cls, session } = ctx;
+  if (!block || block.stars < 0) return say(T('Tiết này chưa có cột Số sao trong sheet lớp, TA mở cột giúp.', 'This lesson has no star column yet, TA please open it.'), 'bad');
+  const current = Q.clean(tracker.cell(pupil.row, block.stars));
+  if (current && !/^\d+$/.test(current)) return say(pupil.eng + T(': ô Số sao đang có ghi chú, vui lòng sửa trong sheet.', ': the star cell holds a note, please edit it in the sheet.'), 'bad');
+  const value = Math.max(0, Math.min(99, count)), range = quote(TRACKER_TAB) + '!' + Q.colName(block.stars) + pupil.row, expected = tracker.cell(pupil.row, block.stars);
+  tracker.set(pupil.row, block.stars, value ? String(value) : '');
+  queue({ kind: 'cell', file: cls.tracker, classKey: cls.key, range, row: pupil.row, col: block.stars, expected, value: value || '', label: pupil.eng + ' · ' + T('Số sao', 'Stars') });
+  // A star means the pupil is in class.
+  const m = ctx.marks.get(pupil.name);
+  if (value && !(m && Q.PRESENT.includes(m.status))) appendMark(session, pupil, Q.tickStatus(session, today(), minutesNow()), m && m.contact);
+}
+function viewLenLop() {
+  const ctx = classContext(current), s = ctx.session;
+  if (!ctx.tracker) return '<div class="card empty">' + T('Đang đọc sheet lớp…', 'Reading the class sheet…') + '</div>';
+  const roll = Q.rollCall(s, ctx.marks, today(), minutesNow()), edit = canTeach(s);
+  const rows = ctx.tracker.pupils.map((p, i) => { const m = ctx.marks.get(p.name); return { p, i, stars: starsOf(ctx, p), off: !!m && (m.status === NGHI || Q.ABSENT.includes(m.status)), here: !!m && Q.PRESENT.includes(m.status) }; })
+    .sort((a, b) => a.off - b.off || b.stars - a.stars || (a.p.eng || a.p.name).localeCompare(b.p.eng || b.p.name, 'vi'));
+  const scores = rows.filter(r => !r.off && r.stars).map(r => r.stars), medal = ['🥇', '🥈', '🥉'];
+  const unmarked = rows.filter(r => !r.off && !r.here).length;
+  let h = '<div class="ll-head"><button class="quiet" data-act="llExit" aria-label="' + T('Thoát', 'Exit') + '">‹</button><div class="ll-title"><b>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</b><span>' + sessionTime(s) + ' · ' + rows.filter(r => !r.off).length + '/' + rows.length + T(' có mặt', ' here') + '</span></div>' +
+    (edit && unmarked ? '<button class="primary" data-act="llAll">' + T('Còn lại có mặt', 'Rest are here') + '</button>' : '') + '</div>';
+  if (ctx.problem || (ctx.block && ctx.block.stars < 0)) h += '<div class="notice">' + esc(columnWarning(ctx) || T('Tiết này chưa có cột Số sao trong sheet lớp, TA mở cột giúp.', 'This lesson has no star column yet, TA please open it.')) + '</div>';
+  if (!edit) h += '<div class="notice">' + T('Buổi này chưa mở hoặc không phân công cho bạn, chỉ xem được.', 'This session is not open or not assigned to you, view only.') + '</div>';
+  h += '<div class="ll-list" role="list">' + rows.map(r => {
+    const rank = r.off || !r.stars ? 0 : scores.indexOf(r.stars) + 1, name = r.p.eng || r.p.name, dis = edit ? '' : ' disabled';
+    return '<div class="ll-row' + (r.off ? ' off' : rank === 1 ? ' top' : '') + '" role="listitem" data-name="' + esc(r.p.name) + '">' +
+      '<button class="ll-main" data-act="llStar" data-i="' + r.i + '"' + (r.off ? ' disabled' : dis) + ' aria-label="' + T('Thêm 1 sao cho ', 'Add a star for ') + esc(name) + '"><span class="ll-rank">' + (r.off ? '' : rank ? (medal[rank - 1] || rank) : '') + '</span><span class="ll-name">' + esc(name) + '</span></button>' +
+      (r.off ? '<span class="ll-off">' + T('Nghỉ', 'Absent') + '</span>' : '<button class="ll-count" data-act="llType" data-i="' + r.i + '"' + dis + ' aria-label="' + T('Nhập số sao của ', 'Type stars for ') + esc(name) + '">⭐ ' + r.stars + '</button><button class="ll-minus" data-act="llMinus" data-i="' + r.i + '"' + (r.stars ? dis : ' disabled') + ' aria-label="' + T('Bớt 1 sao của ', 'Remove a star from ') + esc(name) + '">−</button>') +
+      '<button class="ll-absent" data-act="llOff" data-i="' + r.i + '" aria-pressed="' + r.off + '"' + dis + '>' + (r.off ? T('Có mặt', 'Here') : T('Nghỉ', 'Absent')) + '</button></div>';
+  }).join('') + '</div>';
+  return h;
+}
+function llAction(act, i) {
+  const ctx = classContext(current), pupil = ctx.tracker.pupils[Number(i)];
+  if (act === 'llExit') { view = 'lop'; document.body.classList.remove('lenlop'); render(); return; }
+  if (act === 'llAll') {
+    withMoves(() => { ctx.tracker.pupils.forEach(p => { const m = ctx.marks.get(p.name); if (!m || !(m.status === NGHI || Q.ABSENT.includes(m.status) || Q.PRESENT.includes(m.status))) appendMark(ctx.session, p, Q.tickStatus(ctx.session, today(), minutesNow()), m && m.contact); }); render(); });
+    return;
+  }
+  if (act === 'llStar') withMoves(() => { setStars(ctx, pupil, starsOf(ctx, pupil) + 1); render(); });
+  if (act === 'llMinus') withMoves(() => { setStars(ctx, pupil, starsOf(ctx, pupil) - 1); render(); });
+  if (act === 'llType') {
+    const text = window.prompt(T('Số sao của ', 'Stars for ') + (pupil.eng || pupil.name), String(starsOf(ctx, pupil)));
+    if (text === null) return;
+    if (!/^\s*\d{1,2}\s*$/.test(text)) return say(T('Hãy nhập một số từ 0 đến 99.', 'Please type a number from 0 to 99.'), 'bad');
+    withMoves(() => { setStars(ctx, pupil, Number(text)); render(); });
+  }
+  if (act === 'llOff') {
+    const m = ctx.marks.get(pupil.name), off = m && (m.status === NGHI || Q.ABSENT.includes(m.status));
+    withMoves(() => { appendMark(ctx.session, pupil, off ? Q.tickStatus(ctx.session, today(), minutesNow()) : NGHI, m && m.contact, m && m.note); render(); });
+  }
+}
+
 function setContact(ctx, pupil) {
   const m = ctx.marks.get(pupil.name);
   appendMark(ctx.session, pupil, m ? m.status : 'Chưa rõ', m && m.contact ? '' : 'Đã liên hệ', m && m.note);
@@ -330,6 +394,7 @@ function viewClass() {
   if (!tracker) return h + '<div class="card empty">' + T('Đang đọc sheet lớp…', 'Reading the class sheet…') + '</div>';
   const warning = columnWarning(ctx);
   if (warning) h += '<div class="notice">' + esc(warning) + '</div>';
+  h += '<button class="primary ll-open" data-act="llOpen">⭐ ' + T('Mở màn hình lên lớp', 'Open classroom screen') + '</button>';
   const present = tracker.pupils.filter(p => { const m = ctx.marks.get(p.name); return m && Q.PRESENT.includes(m.status); }).length;
   const waiting = tracker.pupils.filter(p => Q.pupilState(ctx.marks.get(p.name), roll) === 'Vắng chờ xác minh').length;
   h += '<div class="count"><span>' + present + '/' + tracker.pupils.length + T(' có mặt', ' present') + '</span>' +
@@ -539,7 +604,8 @@ function render() {
   const week = weeks[Q.weekTab(tabs, day)] || null;
   let h = notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('');
   if (loadError) h += '<div class="notice bad">' + esc(loadError) + '</div>';
-  if (view === 'lop' && current) h += viewClass();
+  if (view === 'lenlop' && current) h =notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('') + viewLenLop();
+  else if (view === 'lop' && current) h += viewClass();
   else if (view === 'dieuhanh' && isManager()) h += viewManager(week);
   else if (view === 'nguoi' && isOwner()) h += viewNguoi();
   else if (view === 'cong') h += viewPay();
@@ -582,6 +648,8 @@ document.addEventListener('click', e => {
   if (act === 'today') { day = today(); render(); guarded(() => weekOf(day)); }
   if (act === 'scope') { filters.showAll = Boolean(v); render(); }
   if (act === 'back') { view = 'lich'; current = null; render(); }
+  if (act === 'llOpen') { view = 'lenlop'; document.body.classList.add('lenlop'); render(); }
+  if (/^ll[A-Z]/.test(act) && act !== 'llOpen') llAction(act, b.dataset.i);
   if (act === 'dismiss') { notices.splice(Number(b.dataset.i), 1); render(); }
   if (act === 'open') { const s = findSession(b.dataset.row, b.dataset.day); if (s && classOf(s)) openClass(s); }
   if (act === 'tick' || act === 'grade') {
