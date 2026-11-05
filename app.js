@@ -647,7 +647,7 @@ $('btnOut').addEventListener('click', () => {
   showLogin(false);
 });
 openStore().then(() => {
-  lang = saved.get('lang') || (/^vi/i.test(navigator.language || '') ? 'vi' : 'en');
+  lang = saved.get('lang') || 'vi';
   paintLogin();
   accessKey = readKey();
   if (accessKey) enter(); else showLogin(false);
