@@ -61,7 +61,14 @@ async function call(op, args, attempts) {
   }
   throw last;
 }
-const batchGet = (file, ranges) => call('get', { file, ranges }).then(d => d.values);
+// The server asks Google with a URL, and Apps Script refuses one over about 2000 characters.
+const BATCH_RANGES = 20;
+const batchGet = async (file, ranges) => {
+  const parts = [];
+  for (let i = 0; i < ranges.length; i += BATCH_RANGES) parts.push(ranges.slice(i, i + BATCH_RANGES));
+  const got = await Promise.all(parts.map(part => call('get', { file, ranges: part }).then(d => d.values)));
+  return got.flat();
+};
 const batchWrite = (file, data) => call('set', { file, data }, 2);
 const appendRows = (file, tab, rows) => call('add', { file, tab, rows }, 2);
 const quote = tab => "'" + tab + "'";
