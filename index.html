@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b5394">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src https://script.google.com https://script.googleusercontent.com; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src https://accounts.google.com">
+<title>Quản lí lớp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f6f9; --card: #ffffff; --ink: #18212f; --muted: #5d6b7e; --line: #e2e7ee; --soft: #eef2f7;
+    --brand: #0b5394; --brand-soft: #e6f0f9; --on-brand: #ffffff;
+    --ok: #12703a; --ok-soft: #e4f4ea; --warn: #9a5b00; --warn-soft: #fdf1dc; --bad: #b3261e; --bad-soft: #fbe9e7;
+    --shadow: 0 1px 2px rgba(24, 33, 47, .06), 0 4px 16px rgba(24, 33, 47, .05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10151c; --card: #1a212b; --ink: #e8edf3; --muted: #9aa8b8; --line: #2c3643; --soft: #232c38;
+      --brand: #6aa9e4; --brand-soft: #1d3247; --on-brand: #0d1a26;
+      --ok: #6fd093; --ok-soft: #173325; --warn: #ecb45c; --warn-soft: #3a2c13; --bad: #f2938b; --bad-soft: #3d1f1c;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "Be Vietnam Pro", Arial, sans-serif; font-variant-numeric: tabular-nums; }
+  [hidden] { display: none !important; }
+  h1, h2, h3, p { margin: 0; }
+  button, select, input, textarea { font: inherit; color: inherit; }
+  button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-weight: 500; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button:disabled { opacity: .55; cursor: default; }
+  select, input, textarea { min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); max-width: 100%; }
+  textarea { width: 100%; min-height: 72px; resize: vertical; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  a { color: var(--brand); }
+  .primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); font-weight: 600; }
+  .primary:hover { border-color: var(--brand); filter: brightness(1.08); }
+  .quiet { border-color: transparent; background: none; color: var(--brand); padding: 6px 8px; min-height: 36px; }
+  .quiet:hover { border-color: transparent; background: var(--brand-soft); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  /* Sign-in */
+  #login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+  .login-box { width: 100%; max-width: 380px; padding: 32px 24px; text-align: center; }
+  .logo { width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 14px; background: var(--brand); color: var(--on-brand); display: grid; place-items: center; font-weight: 700; font-size: 22px; }
+  .login-box h1 { font-size: 22px; font-weight: 700; }
+  .login-box p { color: var(--muted); margin: 8px 0 20px; }
+  #btnLogin { width: 100%; min-height: 48px; }
+  #loginMsg { margin: 12px 0 0; min-height: 22px; font-size: 14px; color: var(--bad); }
+
+  /* Shell */
+  header { position: sticky; top: 0; z-index: 5; background: var(--card); border-bottom: 1px solid var(--line); }
+  .bar { max-width: 960px; margin: 0 auto; padding: 8px 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .brand { font-weight: 700; font-size: 16px; color: var(--brand); margin-right: 4px; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { min-height: 40px; padding: 6px 12px; border-color: transparent; background: none; color: var(--muted); }
+  nav button.on { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+  .spacer { flex: 1; }
+  #saveState { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  #saveState.err { color: var(--bad); font-weight: 600; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px 16px 72px; display: grid; gap: 12px; }
+  .notice { padding: 10px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); font-weight: 500; }
+  .notice.bad { background: var(--bad-soft); color: var(--bad); }
+  .notice.ok { background: var(--ok-soft); color: var(--ok); }
+
+  /* Shared pieces */
+  .daybar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .daybar b { flex: 1; min-width: 130px; font-size: 18px; font-weight: 700; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tabs button { flex: none; min-height: 40px; white-space: nowrap; }
+  .tabs button.on { background: var(--brand); border-color: var(--brand); color: var(--on-brand); font-weight: 600; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+  .filters select, .filters input { flex: 1 1 150px; min-width: 0; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 99px; background: var(--soft); color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .tag.ok { background: var(--ok-soft); color: var(--ok); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  .tag.bad { background: var(--bad-soft); color: var(--bad); }
+  .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+  h2 { font-size: 16px; font-weight: 700; }
+  .list { display: grid; gap: 8px; }
+
+  /* Sessions */
+  .session { display: block; width: 100%; padding: 12px 14px; text-align: left; font-weight: 400; }
+  .session.link { cursor: pointer; }
+  .session.link:hover { border-color: var(--brand); }
+  .session.off { opacity: .6; }
+  .session-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .session-top time { font-weight: 700; font-size: 16px; }
+  .session-top strong { font-size: 16px; font-weight: 700; }
+  .room { font-weight: 600; color: var(--brand); }
+  .detail { white-space: pre-line; color: var(--muted); font-size: 14px; }
+
+  /* Class */
+  .class-head { padding: 14px; display: grid; gap: 4px; }
+  .class-head h1 { font-size: 20px; font-weight: 700; }
+  .count { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-weight: 600; }
+  .pupil { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; padding: 10px 12px; }
+  .pupil + .pupil { border-top: 1px solid var(--line); }
+  .pupil.absent { background: var(--bad-soft); }
+  .tick { width: 48px; height: 48px; padding: 0; border-radius: 12px; font-size: 22px; font-weight: 700; color: transparent; }
+  .tick.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .tick.late { background: var(--warn); border-color: var(--warn); color: #fff; }
+  .who b { display: block; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+  .owed { grid-column: 2 / -1; color: var(--bad); font-size: 13px; font-weight: 500; }
+  .grades { display: flex; gap: 4px; }
+  .grades button { width: 44px; padding: 0; font-weight: 600; }
+  .grades button.on { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+  .grades button.on.F { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .grades button.on.B { background: var(--warn); border-color: var(--warn); color: #fff; }
+  @media (max-width: 460px) {
+    .pupil { grid-template-columns: 48px minmax(0, 1fr); }
+    .grades { grid-column: 2; }
+    .grades button { flex: 1; }
+    .owed { grid-column: 2; }
+  }
+
+  /* Rows for managers */
+  .row { padding: 12px 14px; display: grid; gap: 8px; }
+  .row-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .row-top b { font-weight: 700; }
+  .choices { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .choices button { min-width: 88px; }
+  .choices button.on { color: #fff; font-weight: 600; }
+  .choices button.on.good { background: var(--ok); border-color: var(--ok); }
+  .choices button.on.mid { background: var(--warn); border-color: var(--warn); }
+  .choices button.on.low { background: var(--bad); border-color: var(--bad); }
+  .choices input[type=number] { width: 84px; }
+  .choices input[type=text] { flex: 1 1 160px; min-width: 0; }
+  .form { padding: 14px; display: grid; gap: 10px; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  label > * { font-size: 15px; font-weight: 400; color: var(--ink); width: 100%; }
+  .table { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  details summary { cursor: pointer; font-weight: 600; min-height: 28px; }
+  .check { display: flex; gap: 10px; align-items: flex-start; }
+  .check button { flex: none; width: 44px; padding: 0; font-weight: 700; color: transparent; }
+  .check button.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+</style>
+</head>
+<body>
+<div id="login" hidden>
+  <div class="card login-box">
+    <div class="logo">L</div>
+    <h1>Quản lí lớp</h1>
+    <p id="loginText">Vui lòng mở app bằng link riêng quản lí đã gửi cho bạn.</p>
+    <p id="loginMsg"></p>
+    <button id="btnLangLogin" class="quiet">English</button>
+  </div>
+</div>
+<div id="app" hidden>
+  <header>
+    <div class="bar">
+      <span class="brand">Quản lí lớp</span>
+      <nav id="nav"></nav>
+      <span class="spacer"></span>
+      <span id="saveState" role="status"></span>
+      <button id="btnLang" class="quiet">English</button>
+      <button id="btnOut" class="quiet">Thoát</button>
+    </div>
+  </header>
+  <main id="main"></main>
+</div>
+<script src="config.js"></script>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
