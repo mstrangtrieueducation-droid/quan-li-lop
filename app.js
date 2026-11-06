@@ -249,7 +249,11 @@ function tickPupil(ctx, pupil) {
 function setGrade(ctx, pupil, grade) {
   const { block, tracker, cls, session } = ctx, current = tracker.cell(pupil.row, block.grade), had = Q.gradeOf(current);
   if (current && !had) return say(pupil.eng + T(': ô điểm đang có ghi chú, vui lòng sửa trực tiếp trong sheet.', ': this cell holds a note, please edit it in the sheet.'), 'bad');
-  gradeCell(cls, tracker, block, pupil, had === grade ? '' : grade, pupil.eng + ' · ' + session.lesson);
+  // Only the grade letter changes; a teacher's comment after it stays. "/ Con vắng mặt" is replaced whole.
+  const comment = had && had !== '/' ? String(current).trim().replace(/^(A\+|A|B|F)/i, '').trim() : '';
+  if (had === grade && comment) return say(pupil.eng + T(': ô điểm có nhận xét của GV, muốn xoá điểm thì sửa trong sheet.', ': this grade has a teacher comment, clear it in the sheet.'), 'bad');
+  const value = had === grade ? '' : had && had !== '/' ? String(current).trim().replace(/^(A\+|A|B|F)/i, grade) : grade;
+  gradeCell(cls, tracker, block, pupil, value, pupil.eng + ' · ' + session.lesson);
   // A pupil with a grade was in class.
   const m = ctx.marks.get(pupil.name);
   if (had !== grade && !(m && Q.PRESENT.includes(m.status))) appendMark(session, pupil, Q.tickStatus(session, today(), minutesNow()));
