@@ -433,7 +433,26 @@ function isMe(name) {
   const k = Q.key(name), mine = Q.key(me.name);
   return !!k && (k === mine || (!k.includes(' ') && mine.split(' ').pop() === k));
 }
-const cmOf = s => staffNow(s.ta, s.cls);
+// Homeroom of KIDS classes comes from the PHÂN CÔNG LỚP HỌC tab (ML / TT / SƠN under each class number); others from the session row.
+const CN_CODE = { ML: 'MY LINH', TT: 'THUY TRANG', SON: 'VAN SON', S: 'VAN SON' };
+let homeroom = {};
+function setHomeroom(rows) {
+  const out = {}, head = rows[0] || [];
+  head.forEach((n, c) => {
+    if (!c || !/^\d+$/.test(Q.clean(n))) return;
+    for (let r = 1; r < Math.min(rows.length, 6); r++) { const code = Q.key((rows[r] || [])[c]); if (CN_CODE[code]) { out['KIDS ' + Q.clean(n)] = CN_CODE[code]; break; } }
+  });
+  homeroom = out;
+}
+async function loadHomeroom() {
+  const hit = saved.get('homeroom');
+  if (hit) setHomeroom(hit.rows);
+  if (hit && Date.now() - hit.at < FRESH_MS) return;
+  const [rows] = await batchGet(CONFIG.scheduleId, ["'PHÂN CÔNG LỚP HỌC'!A1:AZ6"]);
+  keep('homeroom', { rows, at: Date.now() });
+  setHomeroom(rows);
+}
+const cmOf = s => homeroom[Q.key(s.cls)] || staffNow(s.ta, s.cls);
 const dutyOf = (week, d) => (week && week.data.duty && week.data.duty.days[d]) || null;
 const onDuty = (week, d) => { const x = dutyOf(week, d); return !!x && x.work.some(p => isMe(p.name)); };
 // Sessions this person stands in front of: teacher or video, never homeroom duty.
@@ -542,13 +561,20 @@ function myHomerooms() {
     if (s.day >= today() || !out.has(c.key)) hit.cm = cm;
     out.set(c.key, hit);
   }));
+  Object.keys(homeroom).forEach(k => {
+    const c = classList.find(x => x.key === Q.key(k));
+    if (!c) return;
+    const hit = out.get(c.key) || { cls: c, cm: homeroom[k], next: null };
+    hit.cm = homeroom[k];
+    out.set(c.key, hit);
+  });
   return [...out.values()].filter(x => isMe(x.cm) || isManager()).sort((a, b) => a.cls.name.localeCompare(b.cls.name, 'vi', { numeric: true }));
 }
 async function loadHomerooms(only) {
   if (cnLoading) return;
   cnLoading = true;
   try {
-    await Promise.all([weekOf(today()), weekOf(Q.addDays(today(), 7))].map(p => Promise.resolve(p).catch(() => null)));
+    await Promise.all([weekOf(today()), weekOf(Q.addDays(today(), 7)), loadHomeroom()].map(p => Promise.resolve(p).catch(() => null)));
     const left = myHomerooms().filter(x => (only ? x.cls.key === only : isMe(x.cm)) && !(trackers[x.cls.key] && !trackers[x.cls.key].light)).map(x => x.cls);
     render();
     const work = async () => { while (left.length) { const c = left.shift(); try { await loadTracker(c); } catch (e) {} render(); } };
@@ -1001,6 +1027,7 @@ async function enter() {
     await guarded(() => weekOf(day));
     flush();
     startAlerts();
+    loadHomeroom().then(render).catch(() => {});
     if (view === 'lich') loadAlerts().catch(() => {});
     weekOf(Q.addDays(today(), 7)).catch(() => {});
   } catch (e) {
