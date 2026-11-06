@@ -230,6 +230,18 @@
   .check { display: flex; gap: 10px; align-items: flex-start; }
   .check button { flex: none; width: 44px; padding: 0; font-weight: 700; color: transparent; }
   .check button.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .part.p-alert h2 { background: var(--bad-soft); color: var(--bad); }
+  .alert { border-left: 4px solid var(--bad); }
+  .pupil-alert { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .duty > div { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .duty .lbl { min-width: 72px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .person { padding: 2px 10px; border-radius: 99px; background: var(--soft); font-size: 13px; font-weight: 600; }
+  .person i { font-style: normal; font-weight: 400; color: var(--muted); }
+  .person.me { background: var(--k-ta); color: #fff; } .person.me i { color: #eafff1; }
+  .due-label { font-size: 13px; font-weight: 700; color: var(--muted); margin: 2px 0 -4px; } .due-label.late { color: var(--bad); }
+  .done-list summary { color: var(--muted); font-size: 14px; }
+  .cn .owe-row { display: grid; grid-template-columns: 34px auto 1fr; gap: 8px; align-items: baseline; padding: 4px 0; border-top: 1px solid var(--line); }
+  .owe-n { font-weight: 700; color: var(--bad); text-align: center; background: var(--bad-soft); border-radius: 8px; }
   .ret { padding: 10px 12px; } .ret.mine { border-color: var(--k-ta); box-shadow: 0 0 0 2px color-mix(in srgb, var(--k-ta) 35%, transparent); }
   .check button { min-height: 44px; height: 44px; font-size: 20px; border-width: 2px; }
 </style>
