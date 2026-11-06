@@ -293,12 +293,16 @@ function setStars(ctx, pupil, count) {
   const m = ctx.marks.get(pupil.name);
   if (value && !(m && Q.PRESENT.includes(m.status))) appendMark(session, pupil, Q.tickStatus(session, today(), minutesNow()), m && m.contact, '', STAR_WAIT);
 }
+let llOrder = null, llHold = false, llTimer = null;
+function holdOrder() { llHold = true; clearTimeout(llTimer); llTimer = setTimeout(() => { llHold = false; withMoves(render); }, 1500); }
 function viewLenLop() {
   const ctx = classContext(current), s = ctx.session;
   if (!ctx.tracker) return '<div class="card empty">' + T('Đang đọc sheet lớp…', 'Reading the class sheet…') + '</div>';
   const roll = Q.rollCall(s, ctx.marks, today(), minutesNow()), edit = canTeach(s);
   const rows = ctx.tracker.pupils.map((p, i) => { const m = ctx.marks.get(p.name); return { p, i, stars: starsOf(ctx, p), off: !!m && (m.status === NGHI || Q.ABSENT.includes(m.status)), here: !!m && Q.PRESENT.includes(m.status) }; })
     .sort((a, b) => a.off - b.off || b.stars - a.stars || (a.p.eng || a.p.name).localeCompare(b.p.eng || b.p.name, 'vi'));
+  if (llHold && llOrder && llOrder.length === rows.length) rows.sort((a, b) => llOrder.indexOf(a.p.name) - llOrder.indexOf(b.p.name));
+  llOrder = rows.map(r => r.p.name);
   const scores = rows.filter(r => !r.off && r.stars).map(r => r.stars), medal = ['🥇', '🥈', '🥉'];
   const unmarked = rows.filter(r => !r.off && !r.here).length, noStars = !ctx.tracker.blocks.length, group = isGroup(s);
   let h = '<div class="ll-head"><button class="quiet" data-act="llExit" aria-label="' + T('Thoát', 'Exit') + '">‹</button><div class="ll-title"><b>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</b><span>' + sessionTime(s) + ' · ' + rows.filter(r => !r.off).length + '/' + rows.length + T(' có mặt', ' here') + '</span></div>' +
@@ -323,8 +327,8 @@ function llAction(act, i) {
     withMoves(() => { ctx.tracker.pupils.forEach(p => { const m = ctx.marks.get(p.name); if (!m || !(m.status === NGHI || Q.ABSENT.includes(m.status) || Q.PRESENT.includes(m.status))) appendMark(ctx.session, p, Q.tickStatus(ctx.session, today(), minutesNow()), m && m.contact); }); render(); });
     return;
   }
-  if (act === 'llStar') withMoves(() => { setStars(ctx, pupil, starsOf(ctx, pupil) + 1); render(); });
-  if (act === 'llMinus') withMoves(() => { setStars(ctx, pupil, starsOf(ctx, pupil) - 1); render(); });
+  if (act === 'llStar') { holdOrder(); setStars(ctx, pupil, starsOf(ctx, pupil) + 1); render(); }
+  if (act === 'llMinus') { holdOrder(); setStars(ctx, pupil, starsOf(ctx, pupil) - 1); render(); }
   if (act === 'llType') {
     const text = window.prompt(T('Số sao của ', 'Stars for ') + (pupil.eng || pupil.name), String(starsOf(ctx, pupil)));
     if (text === null) return;
@@ -370,6 +374,7 @@ function closeError(id) {
 }
 // Ticks DONE in the Schedule panel. The panel is rebuilt by its own script, so the row is checked first.
 async function tickTask(week, task) {
+  task.done = !task.done; render(); task.done = !task.done;
   try {
     const [[r]] = await batchGet(CONFIG.scheduleId, [quote(week.tab) + '!A' + task.row + ':D' + task.row]);
     if (!r || Q.clean(r[3]) !== task.what) { await weekOf(day, true); return say('Danh sách việc vừa đổi, vui lòng bấm lại.', 'bad'); }
@@ -423,7 +428,7 @@ function viewSchedule(week) {
   if (!week) return dayBar() + '<div class="card empty">' + T('File Schedule chưa có tuần này.', 'This week is not on the Schedule yet.') + '</div>';
   const all = week.data.sessions.filter(s => s.day === day).sort((a, b) => a.start - b.start);
   const list = isManager() && filters.showAll ? all : Q.mine(all, me.name);
-  const myTasks = week.data.tasks.filter(t => !t.done && [t.teacher, t.ta].some(n => Q.nameKey(n) === Q.nameKey(me.name)));
+  const myTasks = week.data.tasks.filter(t => [t.teacher, t.ta].some(n => Q.nameKey(n) === Q.nameKey(me.name))).sort((a, b) => a.done - b.done);
   let h = dayBar();
   if (isManager()) h += '<div class="tabs"><button class="' + (filters.showAll ? '' : 'on') + '" data-act="scope" data-v="">Lịch của tôi</button><button class="' + (filters.showAll ? 'on' : '') + '" data-act="scope" data-v="1">Cả trung tâm</button></div>';
   if (isManager() && filters.showAll && all.length) {
@@ -433,7 +438,8 @@ function viewSchedule(week) {
   }
   const shown = isManager() && filters.showAll && filters.kind ? list.filter(s => kindOf(s) === filters.kind) : list;
   h += shown.length ? dayParts(shown) : '<div class="card empty">' + T('Không có buổi nào trong ngày này.', 'No sessions on this day.') + '</div>';
-  if (myTasks.length) h += '<h2>' + T('Việc quan trọng của tôi', 'My important tasks') + '</h2><div class="list">' + myTasks.map(t => taskRow(t, week, false)).join('') + '</div>';
+  if (myTasks.length) h += '<div class="part p-1"><h2>' + T('Important Task của tôi', 'My important tasks') + '</h2><span>' + myTasks.length + T(' việc · chạm ✓ khi xong', ' · tap ✓ when done') + '</span></div><div class="list">' + myTasks.map(t => taskRow(t, week, true)).join('') + '</div>';
+  h += returnsBlock(week);
   return h;
 }
 
@@ -559,6 +565,27 @@ function taskRow(t, week, canTick) {
   const stText = lang === 'en' ? ({ 'Xong': 'Done', 'Quá hạn chấm': 'Grading overdue', 'Hạn chấm hôm nay': 'Grade today', 'Quá hạn trả': 'Return overdue', 'Chưa đến hạn': 'Not due yet' }[st.text]) : st.text;
   const body = '<div><div class="row-top"><b>' + esc(t.cls) + '</b><span class="tag ' + tag + '">' + esc(stText) + '</span></div><div>' + esc(t.what) + '</div><div class="small muted">' + T('GV ', 'Teacher ') + esc(t.teacher) + T(' · Chấm trước ', ' · Grade by ') + esc(t.gradeDue ? dayLabel(t.gradeDue) : '?') + ' · TA ' + esc(t.ta) + T(' trả ', ' returns ') + esc(t.returnDue ? dayLabel(t.returnDue) : '?') + '</div></div>';
   return '<div class="card row"><div class="check">' + (canTick ? '<button class="' + (t.done ? 'on' : '') + '" data-act="task" data-row="' + t.row + '" aria-label="Đánh dấu xong" aria-pressed="' + t.done + '">✓</button>' : '') + body + '</div></div>';
+}
+// The TA weekly return list of the chosen day; one tap ticks the same box as in the Schedule.
+function returnsBlock(week) {
+  const list = (week.data.returns || []).filter(x => x.day === day);
+  if (!list.length) return '';
+  const last = Q.key(me.name).split(' ').pop(), mine = x => Q.key(x.who) === last;
+  const sorted = list.slice().sort((a, b) => mine(b) - mine(a) || a.done - b.done);
+  const done = list.filter(x => x.done).length;
+  return '<div class="part p-2"><h2>' + T('Trả BTVN hôm nay', 'Homework returns today') + '</h2><span>' + done + '/' + list.length + T(' lớp đã trả', ' returned') + '</span></div>' +
+    '<div class="grid">' + sorted.map(x => '<div class="card row ret' + (mine(x) ? ' mine' : '') + '"><div class="check"><button class="' + (x.done ? 'on' : '') + '" data-act="ret" data-row="' + x.row + '" data-col="' + x.col + '" aria-pressed="' + x.done + '" aria-label="' + T('Đã trả ', 'Returned ') + esc(x.label) + '">✓</button><div><b>' + esc(x.cls) + '</b><div class="small muted">TA ' + esc(x.who) + (x.done ? T(' · đã trả', ' · returned') : '') + '</div></div></div></div>').join('') + '</div>';
+}
+async function tickReturn(week, item) {
+  const cell = quote(week.tab) + '!' + Q.colName(item.col) + item.row, label = quote(week.tab) + '!' + Q.colName(item.col) + (item.row - 1);
+  const want = item.done ? 'FALSE' : 'TRUE';
+  item.done = !item.done; render();
+  try {
+    const [[l], [v]] = await batchGet(CONFIG.scheduleId, [label, cell]);
+    if (!l || Q.clean(l[0]) !== item.label || !/^(TRUE|FALSE)$/i.test(Q.clean((v || [])[0]))) { item.done = !item.done; await weekOf(day, true); return say(T('Danh sách trả bài vừa đổi, vui lòng bấm lại.', 'The return list just changed, please tap again.'), 'bad'); }
+    await batchWrite(CONFIG.scheduleId, [{ range: cell, values: [[want]] }]);
+    saved.delete('week:' + week.tab);
+  } catch (e) { item.done = !item.done; render(); say(T('Chưa tick được: ', 'Could not tick: ') + e.message, 'bad'); }
 }
 function taskPanel(week) {
   if (!week) return '<div class="card empty">File Schedule chưa có tuần này.</div>';
@@ -774,6 +801,7 @@ document.addEventListener('click', e => {
   if (act === 'nguoiXoa') nguoiXoa(b.dataset.id);
   if (act === 'nguoiCopy') nguoiCopy(b);
   if (act === 'closeError') closeError(b.dataset.id);
+  if (act === 'ret') { const w = weeks[Q.weekTab(tabs, day)], x = w && (w.data.returns || []).find(r => r.row === Number(b.dataset.row) && r.col === Number(b.dataset.col)); if (x) tickReturn(w, x); }
   if (act === 'task') { const w = weeks[Q.weekTab(tabs, day)], t = w.data.tasks.find(x => x.row === Number(b.dataset.row)); tickTask(w, t); }
 });
 document.addEventListener('change', e => {
