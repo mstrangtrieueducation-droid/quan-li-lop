@@ -513,8 +513,58 @@ function alertsBlock(week) {
   return '<div class="part p-alert"><h2>' + T('Cần xử lý ngay', 'Needs action now') + '</h2><span>' + count + T(' mục chưa rõ điểm danh', ' open') + '</span></div><div class="list">' + cards.join('') + '</div>';
 }
 
+/* ---------- IELTS / FIGHTER: homework owed before class (the server reads the sheet and keeps a short list 10 minutes) ---------- */
+const owedCache = {};
+let owedLoading = false, owedTried = 0;
+const isSecondary = s => /^(IELTS|FIGHTER)\s/i.test(Q.clean(s.cls));
+const owedSessions = week => week ? week.data.sessions.filter(s => s.day === day && !s.off && isSecondary(s) && classOf(s) && alertScope(week, s)).sort((a, b) => a.start - b.start) : [];
+async function loadOwed(week) {
+  if (owedLoading) return;
+  const want = [...new Set(owedSessions(week).map(s => classOf(s).tracker))].filter(t => { const h = owedCache[t + '|' + day]; return !h || Date.now() - h.at > 600000; });
+  if (!want.length) return;
+  owedLoading = true;
+  const d = day;
+  try {
+    const work = async () => { while (want.length) { const t = want.shift(); try { owedCache[t + '|' + d] = { at: Date.now(), data: await call('baino', { file: t, day: d }) }; } catch (e) { owedCache[t + '|' + d] = { at: Date.now(), data: null, error: e.message }; } render(); } };
+    await Promise.all([work(), work()]);
+  } finally { owedLoading = false; render(); }
+}
+function owedBlock(week) {
+  const list = owedSessions(week);
+  if (!list.length) return '';
+  if (!owedLoading && Date.now() - owedTried > 60000 && list.some(s => !owedCache[classOf(s).tracker + '|' + day])) { owedTried = Date.now(); setTimeout(() => loadOwed(week).catch(() => {}), 0); }
+  const name = p => esc(p.eng || p.name);
+  const cards = list.map(s => {
+    const hit = owedCache[classOf(s).tracker + '|' + day], head = '<div class="row-top"><b>' + esc(s.cls) + '</b><span class="muted small">' + sessionTime(s) + ' · GV ' + esc(s.teacher) + '</span></div>';
+    if (!hit) return '<div class="card row owed-card">' + head + '<div class="small muted">' + T('Đang đọc sheet lớp…', 'Reading…') + '</div></div>';
+    if (!hit.data) return '<div class="card row owed-card">' + head + '<div class="small muted">' + T('Chưa đọc được: ', 'Could not read: ') + esc(hit.error || '') + '</div></div>';
+    const group = /\.\d+$/.test(s.cls), pupils = hit.data.pupils.filter(p => !group || !p.part || Q.key(p.part) === Q.key(s.cls));
+    const dueNow = pupils.map(p => ({ p, o: p.owed.filter(o => o.due === day) })).filter(x => x.o.length);
+    const late = pupils.map(p => ({ p, o: p.owed.filter(o => o.due < day) })).filter(x => x.o.length).sort((a, b) => b.o.length - a.o.length);
+    if (!dueNow.length && !late.length) return '<div class="card row owed-card">' + head + '<span class="tag ok">' + T('Cả lớp đã nộp đủ', 'All handed in') + '</span></div>';
+    const line = x => '<div class="owe-row"><span class="owe-n">' + x.o.length + '</span><b>' + name(x.p) + '</b><span class="small muted">' + esc(x.o.slice(0, 3).map(o => o.label + (o.due < day ? ' (hạn ' + o.due.slice(8) + '/' + o.due.slice(5, 7) + ')' : '')).join(', ') + (x.o.length > 3 ? ' …' : '')) + '</span></div>';
+    return '<div class="card row owed-card">' + head +
+      (dueNow.length ? '<div class="owed-h warn">' + T('Chưa nộp bài hạn hôm nay', 'Due today, not handed in') + ' · ' + dueNow.length + ' HS</div>' + dueNow.map(line).join('') : '') +
+      (late.length ? '<div class="owed-h bad">' + T('Quá hạn chưa làm', 'Overdue, not done') + ' · ' + late.length + ' HS</div>' + late.map(line).join('') : '') + '</div>';
+  });
+  return '<div class="part p-alert"><h2>' + T('Trước giờ học · IELTS / FIGHTER', 'Before class · IELTS / FIGHTER') + '</h2><span>' + T('bài chưa nộp, để nhắc và xử lí', 'work not handed in') + '</span></div><div class="grid">' + cards.join('') + '</div>';
+}
+
+function penaltyBlock(week) {
+  const p = week && week.data.penalty && week.data.penalty[day];
+  if (!p || !p.blocks.length) return '';
+  const taSide = isTaSide(week), mineCls = new Set(week.data.sessions.filter(s => s.day === day && (teaches(s) || isMe(cmOf(s)))).map(s => Q.key(s.cls).replace(/\.\d+$/, '')));
+  const blocks = taSide ? p.blocks : p.blocks.filter(b => mineCls.has(Q.key(b.cls).replace(/\.\d+$/, '')));
+  if (!blocks.length) return '';
+  const line = l => /^Mức \d/.test(l) ? '<div class="pen-level">' + esc(l) + '</div>' : '<div class="pen-kid">' + esc(l.replace(/^•\s*/, '')) + '</div>';
+  return '<div class="part p-alert"><h2>' + T('HS cần phạt hôm nay', 'Pupils on the penalty list today') + '</h2><span>' + esc(p.head || '') + '</span></div>' +
+    '<div class="grid">' + blocks.map(b => '<div class="card row pen"><b>' + esc(b.title) + '</b>' + b.lines.map(line).join('') + '</div>').join('') + '</div>';
+}
+
 /* ---------- TA work plan of the day ---------- */
+const isTaSide = week => isManager() || /^TA$/i.test(Q.clean(me.role)) || Object.values((week && week.data.duty && week.data.duty.days) || {}).some(d => d.work.concat(d.off, d.lock).some(p => isMe(p.name)));
 function dutyBlock(week) {
+  if (!isTaSide(week)) return '';
   const x = dutyOf(week, day);
   if (!x || (!x.work.length && !x.off.length && !x.lock.length && !x.note)) return '';
   const chip = p => '<span class="person' + (isMe(p.name) ? ' me' : '') + '">' + esc(Q.key(p.name)) + (p.note ? ' <i>' + esc(p.note) + '</i>' : '') + '</span>';
@@ -596,7 +646,7 @@ function viewHomerooms() {
       const owed = Q.owedVideos(t.pupils, t.blocks, t.practices, t.cell, { day: Q.addDays(today(), 1) });
       const rows = t.pupils.map((p, i) => ({ p, n: owed[i].length, o: owed[i] })).filter(r => r.n).sort((a, b) => b.n - a.n);
       return '<div class="card row cn">' + title + '<div class="small">' + (rows.length ? '<span class="tag bad">' + rows.length + '/' + t.pupils.length + T(' HS còn nợ bài', ' pupils owe work') + '</span>' : '<span class="tag ok">' + T('Cả lớp đủ bài', 'All caught up') + '</span>') + '</div>' +
-        rows.map(r => '<div class="owe-row"><span class="owe-n">' + r.n + '</span><b>' + esc(r.p.eng || r.p.name) + '</b><span class="small muted">' + esc(r.o.map(o => o.practice ? o.label : T('Tiết ', 'L') + o.lesson + (o.label ? ' ' + videoLabel(o.label) : '')).join(', ')) + '</span></div>').join('') + '</div>';
+        rows.map(r => '<div class="owe-row"><span class="owe-n">' + r.n + '</span><b>' + esc(r.p.eng || r.p.name) + '</b><span class="small muted">' + esc([...new Set(r.o.map(o => o.practice ? o.label.replace(/^Tự luyện video/i, 'Tự luyện') : T('Tiết ', 'L') + o.lesson + (o.label && o.label.length <= 12 ? ' ' + videoLabel(o.label) : '')))].join(', ')) + '</span></div>').join('') + '</div>';
     }).join('') + '</div>';
   });
   return h;
@@ -611,6 +661,8 @@ function viewSchedule(week) {
   if (day === today() && !alertLoading && Date.now() - alertTried > 60000 && alertSessions(week).some(s => !trackers[classOf(s).key])) { alertTried = Date.now(); setTimeout(() => loadAlerts().catch(() => {}), 0); }
   if (isManager()) h += '<div class="tabs"><button class="' + (filters.showAll ? '' : 'on') + '" data-act="scope" data-v="">Lịch của tôi</button><button class="' + (filters.showAll ? 'on' : '') + '" data-act="scope" data-v="1">Cả trung tâm</button></div>';
   h += alertsBlock(week);
+  h += penaltyBlock(week);
+  h += owedBlock(week);
   if (!(isManager() && filters.showAll)) h += dutyBlock(week);
   if (isManager() && filters.showAll && all.length) {
     h += dayStats(all);
@@ -752,8 +804,8 @@ function taskRow(t, week, canTick) {
 // The TA weekly return list of the chosen day; one tap ticks the same box as in the Schedule.
 function returnsBlock(week) {
   const list = (week.data.returns || []).filter(x => x.day === day);
-  if (!list.length) return '';
   const last = Q.key(me.name).split(' ').pop(), mine = x => Q.key(x.who) === last;
+  if (!list.length || !(isManager() || /^TA$/i.test(Q.clean(me.role)) || list.some(mine))) return '';
   const sorted = list.slice().sort((a, b) => mine(b) - mine(a) || a.done - b.done);
   const done = list.filter(x => x.done).length;
   return '<div class="part p-2"><h2>' + T('Trả BTVN hôm nay', 'Homework returns today') + '</h2><span>' + done + '/' + list.length + T(' lớp đã trả', ' returned') + '</span></div>' +

@@ -72,6 +72,7 @@
     out.tasks = parseTasks(rows, head);
     out.returns = parseReturns(rows, head);
     out.duty = parseDuty(rows, head);
+    out.penalty = parsePenalty(rows, head);
     return out;
   }
   function yearOf(rows, head) {
@@ -110,6 +111,30 @@
         const body = String(r[c] || '').replace(/^[^:]*:/, '');
         if (kind === 'note') out.days[d].note = clean(body); else out.days[d][kind] = names(body);
       });
+    }
+    return out;
+  }
+  // Penalty ladder of the week: after the "KHI NÀO VÀO DANH SÁCH" guide, a row of days ("Thứ Hai 02.11\n16 HS cần TA bù"),
+  // then one or two rows of text per day (KIDS classes, then IELTS). Each class block starts with its name.
+  function parsePenalty(rows, head) {
+    const out = {}, stop = head > 0 ? head : (rows || []).length;
+    let guide = -1, col0 = -1;
+    for (let i = 0; i < stop && guide < 0; i++) (rows[i] || []).forEach((v, c) => { if (guide < 0 && /^KHI NÀO VÀO DANH SÁCH/i.test(clean(v))) { guide = i; col0 = c; } });
+    if (guide < 0) return out;
+    let dayRow = -1;
+    for (let i = guide + 1; i < Math.min(stop, guide + 5) && dayRow < 0; i++) if (/^(Thứ|Chủ)/i.test(clean((rows[i] || [])[col0])) && dateIn(String((rows[i] || [])[col0]).replace(/\n/g, ' '), yearOf(rows, head))) dayRow = i;
+    if (dayRow < 0) return out;
+    for (let c = col0; c < col0 + 7; c++) {
+      const label = String((rows[dayRow] || [])[c] || ''), d = dateIn(label.replace(/\n/g, ' '), yearOf(rows, head));
+      if (!d) continue;
+      const text = [dayRow + 1, dayRow + 2].map(i => String((rows[i] || [])[c] || '').trim()).filter(t => t && t !== ' ').join('\n\n');
+      const blocks = [];
+      text.split('\n').forEach(line => {
+        const t = line.replace(/\s*↗\s*$/, '').trimEnd();
+        if (/^(KIDS|IELTS|FIGHTER)\b/i.test(t.trim())) blocks.push({ title: t.trim(), cls: clean(t.split('·')[0]).replace(/\s*\(.*$/, ''), lines: [] });
+        else if (t.trim() && blocks.length) blocks[blocks.length - 1].lines.push(t.trim());
+      });
+      out[d] = { head: clean(label.split('\n').slice(1).join(' ')), blocks };
     }
     return out;
   }
@@ -381,7 +406,7 @@
     return (titles || []).filter(t => { const m = String(t).match(/^\s*(\d{2}\.\d{2}\.\d{4})\s*-\s*(\d{2}\.\d{2}\.\d{4})\s*$/); return m && dateIn(m[1]) <= last && dateIn(m[2]) >= first; });
   }
 
-  return { parseDuty, parseReturns, ARRIVE_BEFORE, ROLL_CALL_MINUTES, OPEN_BEFORE, PRESENT, ABSENT, clean, key, iso, fromIso, addDays, dayText, dateIn, colName, parseTime, clock, weekTab,
+  return { parsePenalty, parseDuty, parseReturns, ARRIVE_BEFORE, ROLL_CALL_MINUTES, OPEN_BEFORE, PRESENT, ABSENT, clean, key, iso, fromIso, addDays, dayText, dateIn, colName, parseTime, clock, weekTab,
     parseWeek, taskState, mine, staffOf, sessionKey, trackerBlocks, practiceColumns, findBlock, videoState, isAbsentMark, gradeOf, pupilOf, owedVideos,
     latest, rollCall, tickStatus, pupilState, lateMinutes, monthSummary, nameKey, parsePay, parseMarking, payTable, payOf, hoursText, tabsOfMonth };
 }));

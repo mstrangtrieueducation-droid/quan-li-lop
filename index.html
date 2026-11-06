@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#0b5394">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src https://script.google.com https://script.googleusercontent.com; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src">
 <title>Quản lí lớp</title>
+<link rel="icon" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -242,6 +243,12 @@
   .done-list summary { color: var(--muted); font-size: 14px; }
   .cn .owe-row { display: grid; grid-template-columns: 34px auto 1fr; gap: 8px; align-items: baseline; padding: 4px 0; border-top: 1px solid var(--line); }
   .owe-n { font-weight: 700; color: var(--bad); text-align: center; background: var(--bad-soft); border-radius: 8px; }
+  .owed-card .owed-h { font-size: 13px; font-weight: 700; margin-top: 4px; } .owed-h.warn { color: var(--warn); } .owed-h.bad { color: var(--bad); }
+  .owed-card .owe-row { display: grid; grid-template-columns: 34px auto 1fr; gap: 8px; align-items: baseline; padding: 4px 0; border-top: 1px solid var(--line); }
+  .mark { width: 30px; height: 30px; border-radius: 7px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .25); flex: none; }
+  .pen b { font-size: 15px; }
+  .pen .pen-level { margin-top: 6px; font-size: 13px; font-weight: 700; color: var(--bad); }
+  .pen .pen-kid { padding: 2px 0 2px 12px; border-left: 3px solid var(--bad-soft); font-size: 14px; }
   .ret { padding: 10px 12px; } .ret.mine { border-color: var(--k-ta); box-shadow: 0 0 0 2px color-mix(in srgb, var(--k-ta) 35%, transparent); }
   .check button { min-height: 44px; height: 44px; font-size: 20px; border-width: 2px; }
 </style>
@@ -259,6 +266,7 @@
 <div id="app" hidden>
   <header>
     <div class="bar">
+      <img class="mark" src="logo.png" alt="Ms. Trang Trieu Education" width="30" height="30">
       <span class="brand">Quản lí lớp</span>
       <nav id="nav"></nav>
       <span class="spacer"></span>
