@@ -12,10 +12,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f4f6f9; --card: #ffffff; --ink: #18212f; --muted: #5d6b7e; --line: #e2e7ee; --soft: #eef2f7;
+    --bg: #e8eef6; --card: #ffffff; --head: #0b3d6e; --head-ink: #ffffff; --head-muted: #b9cde3; --head-on: #ffffff; --head-on-ink: #0b3d6e; --ink: #18212f; --muted: #5d6b7e; --line: #e2e7ee; --soft: #eef2f7;
     --brand: #0b5394; --brand-soft: #e6f0f9; --on-brand: #ffffff;
     --ok: #12703a; --ok-soft: #e4f4ea; --warn: #9a5b00; --warn-soft: #fdf1dc; --bad: #b3261e; --bad-soft: #fbe9e7;
-    --shadow: 0 1px 2px rgba(24, 33, 47, .06), 0 4px 16px rgba(24, 33, 47, .05);
+    --shadow: 0 1px 2px rgba(24, 33, 47, .08), 0 6px 18px rgba(24, 33, 47, .07);
+    --morning: #8a5a00; --morning-soft: #fff1d2; --afternoon: #1f6fb8; --afternoon-soft: #dfedfb; --evening: #4b2fa0; --evening-soft: #ebe5fb;
     /* One colour per kind of class; the kind is always written too, so colour is never the only cue. */
     --k-kids: #1f6fb8; --k-ielts: #6b4bc4; --k-fighter: #b3640a; --k-tutor: #5d6b7e; --k-ta: #1a7f48;
     color-scheme: light;
@@ -24,7 +25,8 @@
   /* Light unless the viewer picks dark (button in the bar), or the device is dark and nothing was picked. */
   @media (prefers-color-scheme: dark) {
     :root[data-theme="auto"] {
-      --bg: #10151c; --card: #1a212b; --ink: #e8edf3; --muted: #9aa8b8; --line: #2c3643; --soft: #232c38;
+      --bg: #0f141b; --card: #1a212b; --head: #141c27; --head-ink: #e8edf3; --head-muted: #9aa8b8; --head-on: #2a3a50; --head-on-ink: #e8edf3;
+      --morning: #ecb45c; --morning-soft: #3a2c13; --afternoon: #6aa9e4; --afternoon-soft: #1d3247; --evening: #b59cf0; --evening-soft: #2c2445; --ink: #e8edf3; --muted: #9aa8b8; --line: #2c3643; --soft: #232c38;
       --brand: #6aa9e4; --brand-soft: #1d3247; --on-brand: #0d1a26;
       --ok: #6fd093; --ok-soft: #173325; --warn: #ecb45c; --warn-soft: #3a2c13; --bad: #f2938b; --bad-soft: #3d1f1c;
       --shadow: none;
@@ -32,7 +34,8 @@
     }
   }
   :root[data-theme="dark"] {
-      --bg: #10151c; --card: #1a212b; --ink: #e8edf3; --muted: #9aa8b8; --line: #2c3643; --soft: #232c38;
+      --bg: #0f141b; --card: #1a212b; --head: #141c27; --head-ink: #e8edf3; --head-muted: #9aa8b8; --head-on: #2a3a50; --head-on-ink: #e8edf3;
+      --morning: #ecb45c; --morning-soft: #3a2c13; --afternoon: #6aa9e4; --afternoon-soft: #1d3247; --evening: #b59cf0; --evening-soft: #2c2445; --ink: #e8edf3; --muted: #9aa8b8; --line: #2c3643; --soft: #232c38;
       --brand: #6aa9e4; --brand-soft: #1d3247; --on-brand: #0d1a26;
       --ok: #6fd093; --ok-soft: #173325; --warn: #ecb45c; --warn-soft: #3a2c13; --bad: #f2938b; --bad-soft: #3d1f1c;
       --shadow: none;
@@ -69,12 +72,16 @@
   #loginMsg { margin: 12px 0 0; min-height: 22px; font-size: 14px; color: var(--bad); }
 
   /* Shell */
-  header { position: sticky; top: 0; z-index: 5; background: var(--card); border-bottom: 1px solid var(--line); }
+  header { position: sticky; top: 0; z-index: 5; background: var(--head); color: var(--head-ink); box-shadow: 0 2px 8px rgba(0, 0, 0, .12); }
+  header .quiet { color: var(--head-ink); }
+  header .quiet:hover { background: rgba(255, 255, 255, .12); }
+  header #saveState { color: var(--head-muted); }
   .bar { max-width: 1200px; margin: 0 auto; padding: 8px 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .brand { font-weight: 700; font-size: 16px; color: var(--brand); margin-right: 4px; }
+  .brand { font-weight: 700; font-size: 17px; color: var(--head-ink); margin-right: 8px; letter-spacing: .01em; }
   nav { display: flex; gap: 4px; flex-wrap: wrap; }
-  nav button { min-height: 40px; padding: 6px 12px; border-color: transparent; background: none; color: var(--muted); }
-  nav button.on { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+  nav button { min-height: 40px; padding: 6px 14px; border-color: transparent; background: none; color: var(--head-muted); }
+  nav button:hover { color: var(--head-ink); border-color: transparent; background: rgba(255, 255, 255, .1); }
+  nav button.on { background: var(--head-on); color: var(--head-on-ink); font-weight: 700; }
   .spacer { flex: 1; }
   #saveState { font-size: 13px; color: var(--muted); white-space: nowrap; }
   #saveState.err { color: var(--bad); font-weight: 600; }
@@ -85,7 +92,7 @@
 
   /* Shared pieces */
   .daybar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .daybar b { flex: 1; min-width: 130px; font-size: 18px; font-weight: 700; }
+  .daybar b { flex: 1; min-width: 130px; font-size: 20px; font-weight: 700; }
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
   .tabs button { flex: none; min-height: 40px; white-space: nowrap; }
   .tabs button.on { background: var(--brand); border-color: var(--brand); color: var(--on-brand); font-weight: 600; }
@@ -101,25 +108,35 @@
 
   /* Day summary */
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-  .stat { padding: 10px 14px; display: grid; gap: 2px; border-left: 4px solid var(--line); }
+  .stat { padding: 12px 16px; display: grid; gap: 2px; border: 0; border-top: 4px solid var(--brand); }
+  .stat b { color: var(--brand); }
   .stat b { font-size: 22px; font-weight: 700; line-height: 1.2; }
   .stat span { font-size: 13px; color: var(--muted); font-weight: 500; }
-  .stat.k-kids { border-left-color: var(--k-kids); } .stat.k-ielts { border-left-color: var(--k-ielts); }
-  .stat.k-fighter { border-left-color: var(--k-fighter); } .stat.k-tutor { border-left-color: var(--k-tutor); } .stat.k-ta { border-left-color: var(--k-ta); }
+  .stat.k-kids { border-top-color: var(--k-kids); background: color-mix(in srgb, var(--k-kids) 10%, var(--card)); } .stat.k-kids b { color: var(--k-kids); }
+  .stat.k-ielts { border-top-color: var(--k-ielts); background: color-mix(in srgb, var(--k-ielts) 10%, var(--card)); } .stat.k-ielts b { color: var(--k-ielts); }
+  .stat.k-fighter { border-top-color: var(--k-fighter); background: color-mix(in srgb, var(--k-fighter) 10%, var(--card)); } .stat.k-fighter b { color: var(--k-fighter); }
+  .stat.k-tutor { border-top-color: var(--k-tutor); background: color-mix(in srgb, var(--k-tutor) 10%, var(--card)); } .stat.k-tutor b { color: var(--k-tutor); }
+  .stat.k-ta { border-top-color: var(--k-ta); background: color-mix(in srgb, var(--k-ta) 10%, var(--card)); } .stat.k-ta b { color: var(--k-ta); }
+  .stat.off { border-top-color: var(--bad); background: var(--bad-soft); } .stat.off b { color: var(--bad); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .chips button { min-height: 36px; padding: 4px 12px; border-radius: 99px; font-size: 14px; }
   .chips button.on { background: var(--ink); border-color: var(--ink); color: var(--card); font-weight: 600; }
-  .part { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
-  .part h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-  .part span { font-size: 13px; color: var(--muted); }
+  .part { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .part::after { content: ""; flex: 1; height: 2px; border-radius: 2px; background: var(--line); }
+  .part h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; padding: 4px 12px; border-radius: 99px; background: var(--soft); color: var(--muted); }
+  .part.p-0 h2 { background: var(--morning-soft); color: var(--morning); } .part.p-1 h2 { background: var(--afternoon-soft); color: var(--afternoon); } .part.p-2 h2 { background: var(--evening-soft); color: var(--evening); }
+  .part span { font-size: 13px; color: var(--muted); font-weight: 600; }
   .grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); align-items: start; }
 
   /* Sessions: time on the left, a coloured edge for the kind of class */
   .session { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; width: 100%; padding: 12px 14px 12px 12px; text-align: left; font-weight: 400; border-left: 4px solid var(--line); }
-  .session.k-kids { border-left-color: var(--k-kids); } .session.k-ielts { border-left-color: var(--k-ielts); }
-  .session.k-fighter { border-left-color: var(--k-fighter); } .session.k-tutor { border-left-color: var(--k-tutor); } .session.k-ta { border-left-color: var(--k-ta); }
+  .session.k-kids { border-left-color: var(--k-kids); background: color-mix(in srgb, var(--k-kids) 9%, var(--card)); } .session.k-kids .s-time b { color: var(--k-kids); }
+  .session.k-ielts { border-left-color: var(--k-ielts); background: color-mix(in srgb, var(--k-ielts) 9%, var(--card)); } .session.k-ielts .s-time b { color: var(--k-ielts); }
+  .session.k-fighter { border-left-color: var(--k-fighter); background: color-mix(in srgb, var(--k-fighter) 9%, var(--card)); } .session.k-fighter .s-time b { color: var(--k-fighter); }
+  .session.k-tutor { border-left-color: var(--k-tutor); background: color-mix(in srgb, var(--k-tutor) 9%, var(--card)); } .session.k-tutor .s-time b { color: var(--k-tutor); }
+  .session.k-ta { border-left-color: var(--k-ta); background: color-mix(in srgb, var(--k-ta) 9%, var(--card)); } .session.k-ta .s-time b { color: var(--k-ta); }
   .s-time { display: grid; align-content: start; gap: 0; font-variant-numeric: tabular-nums; }
-  .s-time b { font-size: 16px; font-weight: 700; line-height: 1.3; }
+  .s-time b { font-size: 17px; font-weight: 700; line-height: 1.3; }
   .s-time span { font-size: 13px; color: var(--muted); }
   .s-body { display: grid; gap: 4px; min-width: 0; }
   .s-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -138,7 +155,7 @@
   .session-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
   .session-top time { font-weight: 700; font-size: 16px; }
   .session-top strong { font-size: 16px; font-weight: 700; }
-  .room { font-weight: 600; color: var(--brand); }
+  .room { font-weight: 600; color: var(--brand); background: var(--brand-soft); padding: 1px 8px; border-radius: 6px; font-size: 12px; }
   .detail { white-space: pre-line; color: var(--muted); font-size: 14px; }
 
   /* Lên lớp: fills whatever window it is given, down to a third of a board, with targets a finger can hit */

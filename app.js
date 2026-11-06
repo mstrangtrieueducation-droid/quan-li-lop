@@ -394,7 +394,7 @@ function kindOf(s) {
 const kindName = k => k === 'other' ? T('KHÁC', 'OTHER') : (KINDS.find(x => x[0] === k) || ['', k])[1];
 function sessionCard(s) {
   const c = classOf(s), k = kindOf(s), name = k === 'tutor' ? Q.clean(s.cls).replace(/^TUTOR\s*/i, '') : s.cls;
-  const people = [[T('GV', 'Teacher'), s.teacher], ['TA', s.ta], [T('Quay', 'Video'), s.video]].filter(x => x[1]).map(x => '<span>' + x[0] + ' <b>' + esc(x[1]) + '</b></span>').join('');
+  const people = [[T('GV', 'Teacher'), s.teacher], ['TA', s.ta], [T('Quay', 'Video'), s.video]].filter(x => x[1]).map(x => '<span>' + x[0] + ' <b>' + esc(Q.key(x[1])) + '</b></span>').join('');
   const inner = '<div class="s-time"><b>' + Q.clock(s.start) + '</b><span>' + Q.clock(s.end) + '</span></div><div class="s-body">' +
     '<div class="s-head">' + (k === 'tutor' ? '<span class="kind k-tutor">TUTOR</span>' : '') + '<strong>' + esc(name) + '</strong>' + (s.off ? '<span class="tag bad">' + T('Nghỉ', 'Off') + '</span>' : '') + '<span class="spacer"></span><span class="room small">' + esc(s.site || T('Chưa ghi phòng', 'No room listed')) + '</span></div>' +
     (s.book ? '<div class="s-book">' + esc(s.book) + (s.lesson ? T(' · Tiết ', ' · Lesson ') + esc(s.lesson) : '') + '</div>' : '') +
@@ -408,14 +408,14 @@ function sessionCard(s) {
 // Morning, afternoon and evening blocks with a count each, so a full day reads at a glance.
 function dayParts(list) {
   const parts = [[T('Sáng', 'Morning'), s => s.start < 12 * 60], [T('Chiều', 'Afternoon'), s => s.start >= 12 * 60 && s.start < 17 * 60], [T('Tối', 'Evening'), s => s.start >= 17 * 60]];
-  return parts.map(([label, test]) => { const got = list.filter(test); return got.length ? '<div class="part"><h2>' + label + '</h2><span>' + got.length + T(' buổi', ' sessions') + '</span></div><div class="grid">' + got.map(sessionCard).join('') + '</div>' : ''; }).join('');
+  return parts.map(([label, test], i) => { const got = list.filter(test); return got.length ? '<div class="part p-' + i + '"><h2>' + label + '</h2><span>' + got.length + T(' buổi', ' sessions') + '</span></div><div class="grid">' + got.map(sessionCard).join('') + '</div>' : ''; }).join('');
 }
 function dayStats(list) {
   const on = list.filter(s => !s.off), people = new Set(on.flatMap(s => [s.teacher, s.ta, s.video]).filter(Boolean).map(Q.nameKey));
-  const cell = (n, label, k) => '<div class="card stat' + (k ? ' k-' + k : '') + '"><b>' + n + '</b><span>' + esc(label) + '</span></div>';
+  const cell = (n, label, k) => '<div class="card stat' + (k === 'off' ? ' off' : k ? ' k-' + k : '') + '"><b>' + n + '</b><span>' + esc(label) + '</span></div>';
   return '<div class="stats">' + cell(on.length, T('buổi học', 'sessions')) +
     KINDS.map(([k]) => { const n = on.filter(s => kindOf(s) === k).length; return n ? cell(n, kindName(k), k) : ''; }).join('') +
-    cell(people.size, T('GV / TA đi làm', 'staff on duty')) + (list.length - on.length ? cell(list.length - on.length, T('buổi nghỉ', 'cancelled')) : '') + '</div>';
+    cell(people.size, T('GV / TA đi làm', 'staff on duty')) + (list.length - on.length ? cell(list.length - on.length, T('buổi nghỉ', 'cancelled'), 'off') : '') + '</div>';
 }
 const dayBar = () => '<div class="daybar"><button data-act="day" data-n="-1" aria-label="' + T('Hôm trước', 'Previous day') + '">‹</button><b>' + esc(dayLabel(day)) + '</b>' + (day !== today() ? '<button class="quiet" data-act="today">' + T('Hôm nay', 'Today') + '</button>' : '') + '<button data-act="day" data-n="1" aria-label="' + T('Hôm sau', 'Next day') + '">›</button></div>';
 
@@ -603,12 +603,12 @@ async function loadNguoi() {
 }
 // Every name on the Schedule plus the staff sheet, each with a suggested role; names that already have a link are left out.
 function nguoiChoices() {
-  const out = new Map(), add = (name, role) => { const n = Q.clean(name).toUpperCase(); if (n && n.length <= 60 && !out.has(n)) out.set(n, role); };
+  const out = new Map(), add = (name, role) => { const n = Q.key(name); if (n && n.length <= 60 && !out.has(n)) out.set(n, role); };
   (nguoi ? nguoi.staff : []).forEach(p => add(p.name, ['GV', 'TA', 'Quản lí'].includes(p.role) ? p.role : 'GV'));
   const ss = Object.values(weeks).flatMap(w => (w && w.data ? w.data.sessions : []));
   ss.forEach(x => add(x.teacher, 'GV'));
   ss.forEach(x => { add(x.ta, 'TA'); add(x.video, 'TA'); });
-  const taken = new Set((nguoi ? nguoi.people : []).map(p => Q.clean(p.name).toUpperCase()));
+  const taken = new Set((nguoi ? nguoi.people : []).map(p => Q.key(p.name)));
   return [...out].filter(([n]) => !taken.has(n)).sort((a, b) => a[0].localeCompare(b[0], 'vi')).map(([name, role]) => ({ name, role }));
 }
 function viewNguoi() {
