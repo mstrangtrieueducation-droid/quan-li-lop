@@ -4,6 +4,11 @@ const TRACKER_TAB = 'THEO DÕI TOÀN DIỆN', OTHER_TRACKER_TAB = 'THEO DÕI', R
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => Q.iso(new Date());
+// Light by default; the bar button switches to dark and the choice stays in this browser.
+let theme = 'light';
+try { theme = localStorage.getItem('ql-theme') === 'dark' ? 'dark' : 'light'; } catch (e) {}
+document.documentElement.dataset.theme = theme;
+function paintTheme() { const b = document.getElementById('btnTheme'); if (b) b.textContent = theme === 'dark' ? T('Nền sáng', 'Light') : T('Nền tối', 'Dark'); }
 const minutesNow = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); };
 const ERROR_TYPES = ['Đi muộn', 'Quên điểm danh', 'Chưa nhập A/B/F', 'Chưa mở cột', 'Chấm bài trễ hạn', 'Trả bài trễ hạn', 'Khác'];
@@ -380,16 +385,37 @@ const sessionTime = s => Q.clock(s.start) + '–' + Q.clock(s.end);
 // IELTS 46.1 and 46.2 are speaking groups of IELTS 46 and share its sheet.
 const isGroup = s => /\.\d+$/.test(s.cls);
 const classOf = s => classList.find(c => c.key === s.classKey) || (isGroup(s) ? classList.find(c => c.key === Q.key(s.cls.replace(/\.\d+$/, ''))) : undefined);
+// Kind of class, from its name: drives the coloured edge, the label and the filter.
+const KINDS = [['kids', 'KIDS'], ['ielts', 'IELTS'], ['fighter', 'FIGHTER'], ['ta', 'TA'], ['tutor', 'TUTOR'], ['other', 'KHÁC']];
+function kindOf(s) {
+  const n = Q.clean(s.cls).toUpperCase();
+  return /^KIDS/.test(n) ? 'kids' : /^IELTS/.test(n) ? 'ielts' : /^FIGHTER/.test(n) ? 'fighter' : /^TUTOR/.test(n) ? 'tutor' : /^TA\s*\d/.test(n) ? 'ta' : 'other';
+}
+const kindName = k => k === 'other' ? T('KHÁC', 'OTHER') : (KINDS.find(x => x[0] === k) || ['', k])[1];
 function sessionCard(s) {
-  const c = classOf(s), peopleLine = [s.teacher && T('GV ', 'Teacher ') + s.teacher, s.ta && 'TA ' + s.ta, s.video && T('Quay ', 'Video ') + s.video].filter(Boolean).join(' · ');
-  const inner = '<div class="session-top"><time>' + sessionTime(s) + '</time><strong>' + esc(s.cls) + '</strong>' + (s.off ? '<span class="tag bad">' + T('Nghỉ', 'Off') + '</span>' : '') + '<span class="spacer"></span><span class="room">' + esc(s.site || T('Chưa ghi phòng', 'No room listed')) + '</span></div>' +
-    (s.book ? '<div>' + esc(s.book) + (s.lesson ? T(' · Tiết ', ' · Lesson ') + esc(s.lesson) : '') + '</div>' : '') +
+  const c = classOf(s), k = kindOf(s), name = k === 'tutor' ? Q.clean(s.cls).replace(/^TUTOR\s*/i, '') : s.cls;
+  const people = [[T('GV', 'Teacher'), s.teacher], ['TA', s.ta], [T('Quay', 'Video'), s.video]].filter(x => x[1]).map(x => '<span>' + x[0] + ' <b>' + esc(x[1]) + '</b></span>').join('');
+  const inner = '<div class="s-time"><b>' + Q.clock(s.start) + '</b><span>' + Q.clock(s.end) + '</span></div><div class="s-body">' +
+    '<div class="s-head">' + (k === 'tutor' ? '<span class="kind k-tutor">TUTOR</span>' : '') + '<strong>' + esc(name) + '</strong>' + (s.off ? '<span class="tag bad">' + T('Nghỉ', 'Off') + '</span>' : '') + '<span class="spacer"></span><span class="room small">' + esc(s.site || T('Chưa ghi phòng', 'No room listed')) + '</span></div>' +
+    (s.book ? '<div class="s-book">' + esc(s.book) + (s.lesson ? T(' · Tiết ', ' · Lesson ') + esc(s.lesson) : '') + '</div>' : '') +
     (s.detail ? '<div class="detail">' + esc(s.detail) + '</div>' : '') +
     (s.also.length ? '<div class="detail">' + T('Cùng buổi: ', 'Same session: ') + esc(s.also.join(', ')) + '</div>' : '') +
-    (peopleLine ? '<div class="small muted">' + esc(peopleLine) + '</div>' : '') +
-    (s.breakAt ? '<div class="small muted">' + T('Giải lao ', 'Break ') + esc(s.breakAt) + '</div>' : '') +
-    (s.note ? '<div><span class="tag warn">' + esc(s.note.replace(/\n/g, ' · ')) + '</span></div>' : '');
-  return c ? '<button class="card session link' + (s.off ? ' off' : '') + '" data-act="open" data-row="' + s.row + '">' + inner + '</button>' : '<div class="card session' + (s.off ? ' off' : '') + '">' + inner + '</div>';
+    (people || s.breakAt ? '<div class="people">' + people + (s.breakAt ? '<span>' + T('Giải lao ', 'Break ') + '<b>' + esc(s.breakAt) + '</b></span>' : '') + '</div>' : '') +
+    (s.note ? '<div><span class="tag warn">' + esc(s.note.replace(/\n/g, ' · ')) + '</span></div>' : '') + '</div>';
+  const cl = 'card session k-' + k + (s.off ? ' off' : '');
+  return c ? '<button class="' + cl + ' link" data-act="open" data-row="' + s.row + '">' + inner + '</button>' : '<div class="' + cl + '">' + inner + '</div>';
+}
+// Morning, afternoon and evening blocks with a count each, so a full day reads at a glance.
+function dayParts(list) {
+  const parts = [[T('Sáng', 'Morning'), s => s.start < 12 * 60], [T('Chiều', 'Afternoon'), s => s.start >= 12 * 60 && s.start < 17 * 60], [T('Tối', 'Evening'), s => s.start >= 17 * 60]];
+  return parts.map(([label, test]) => { const got = list.filter(test); return got.length ? '<div class="part"><h2>' + label + '</h2><span>' + got.length + T(' buổi', ' sessions') + '</span></div><div class="grid">' + got.map(sessionCard).join('') + '</div>' : ''; }).join('');
+}
+function dayStats(list) {
+  const on = list.filter(s => !s.off), people = new Set(on.flatMap(s => [s.teacher, s.ta, s.video]).filter(Boolean).map(Q.nameKey));
+  const cell = (n, label, k) => '<div class="card stat' + (k ? ' k-' + k : '') + '"><b>' + n + '</b><span>' + esc(label) + '</span></div>';
+  return '<div class="stats">' + cell(on.length, T('buổi học', 'sessions')) +
+    KINDS.map(([k]) => { const n = on.filter(s => kindOf(s) === k).length; return n ? cell(n, kindName(k), k) : ''; }).join('') +
+    cell(people.size, T('GV / TA đi làm', 'staff on duty')) + (list.length - on.length ? cell(list.length - on.length, T('buổi nghỉ', 'cancelled')) : '') + '</div>';
 }
 const dayBar = () => '<div class="daybar"><button data-act="day" data-n="-1" aria-label="' + T('Hôm trước', 'Previous day') + '">‹</button><b>' + esc(dayLabel(day)) + '</b>' + (day !== today() ? '<button class="quiet" data-act="today">' + T('Hôm nay', 'Today') + '</button>' : '') + '<button data-act="day" data-n="1" aria-label="' + T('Hôm sau', 'Next day') + '">›</button></div>';
 
@@ -400,7 +426,13 @@ function viewSchedule(week) {
   const myTasks = week.data.tasks.filter(t => !t.done && [t.teacher, t.ta].some(n => Q.nameKey(n) === Q.nameKey(me.name)));
   let h = dayBar();
   if (isManager()) h += '<div class="tabs"><button class="' + (filters.showAll ? '' : 'on') + '" data-act="scope" data-v="">Lịch của tôi</button><button class="' + (filters.showAll ? 'on' : '') + '" data-act="scope" data-v="1">Cả trung tâm</button></div>';
-  h += list.length ? '<div class="list">' + list.map(sessionCard).join('') + '</div>' : '<div class="card empty">' + T('Không có buổi nào trong ngày này.', 'No sessions on this day.') + '</div>';
+  if (isManager() && filters.showAll && all.length) {
+    h += dayStats(all);
+    const kinds = KINDS.filter(([k]) => all.some(s => kindOf(s) === k));
+    if (kinds.length > 1) h += '<div class="chips">' + [['', T('Tất cả', 'All')]].concat(kinds.map(([k]) => [k, kindName(k)])).map(([k, label]) => '<button class="' + ((filters.kind || '') === k ? 'on' : '') + '" data-act="kind" data-v="' + k + '">' + esc(label) + '</button>').join('') + '</div>';
+  }
+  const shown = isManager() && filters.showAll && filters.kind ? list.filter(s => kindOf(s) === filters.kind) : list;
+  h += shown.length ? dayParts(shown) : '<div class="card empty">' + T('Không có buổi nào trong ngày này.', 'No sessions on this day.') + '</div>';
   if (myTasks.length) h += '<h2>' + T('Việc quan trọng của tôi', 'My important tasks') + '</h2><div class="list">' + myTasks.map(t => taskRow(t, week, false)).join('') + '</div>';
   return h;
 }
@@ -657,6 +689,7 @@ function render() {
   if (active && $('main').contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName)) return;
   const items = [['lich', T('Lịch', 'Schedule')], ['cong', T('Công của tôi', 'My hours')]].concat(isManager() ? [['dieuhanh', 'Điều hành']] : []).concat(isOwner() ? [['nguoi', 'Người dùng']] : []);
   $('btnLang').textContent = lang === 'en' ? 'Tiếng Việt' : 'English';
+  paintTheme();
   $('btnOut').textContent = T('Thoát', 'Sign out');
   $('nav').innerHTML = items.map(([k, t]) => '<button class="' + (view === k ? 'on' : '') + '" data-act="view" data-v="' + k + '">' + t + '</button>').join('');
   const week = weeks[Q.weekTab(tabs, day)] || null;
@@ -721,6 +754,7 @@ document.addEventListener('click', e => {
   if (act === 'day') { day = Q.addDays(day, Number(b.dataset.n)); render(); guarded(() => view === 'dieuhanh' ? loadPanel() : weekOf(day)); }
   if (act === 'today') { day = today(); render(); guarded(() => weekOf(day)); }
   if (act === 'scope') { filters.showAll = Boolean(v); render(); }
+  if (act === 'kind') { filters.kind = v; render(); }
   if (act === 'back') { view = 'lich'; current = null; render(); }
   if (act === 'llOpen') { view = 'lenlop'; document.body.classList.add('lenlop'); render(); }
   if (/^ll[A-Z]/.test(act) && act !== 'llOpen') llAction(act, b.dataset.i);
@@ -782,6 +816,7 @@ async function enter() {
     $('main').innerHTML = '<div class="notice bad">' + esc(loadError) + '</div>';
   }
 }
+$('btnTheme').addEventListener('click', () => { theme = theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = theme; try { localStorage.setItem('ql-theme', theme); } catch (e) {} paintTheme(); });
 $('btnLang').addEventListener('click', () => { lang = lang === 'en' ? 'vi' : 'en'; keep('lang', lang); paintLogin(); render(); });
 $('btnLangLogin').addEventListener('click', () => { lang = lang === 'en' ? 'vi' : 'en'; keep('lang', lang); paintLogin(); });
 function paintLogin() {

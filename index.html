@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="vi">
+<html lang="vi" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,14 +16,27 @@
     --brand: #0b5394; --brand-soft: #e6f0f9; --on-brand: #ffffff;
     --ok: #12703a; --ok-soft: #e4f4ea; --warn: #9a5b00; --warn-soft: #fdf1dc; --bad: #b3261e; --bad-soft: #fbe9e7;
     --shadow: 0 1px 2px rgba(24, 33, 47, .06), 0 4px 16px rgba(24, 33, 47, .05);
+    /* One colour per kind of class; the kind is always written too, so colour is never the only cue. */
+    --k-kids: #1f6fb8; --k-ielts: #6b4bc4; --k-fighter: #b3640a; --k-tutor: #5d6b7e; --k-ta: #1a7f48;
+    color-scheme: light;
   }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  /* Light unless the viewer picks dark (button in the bar), or the device is dark and nothing was picked. */
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root[data-theme="auto"] {
       --bg: #10151c; --card: #1a212b; --ink: #e8edf3; --muted: #9aa8b8; --line: #2c3643; --soft: #232c38;
       --brand: #6aa9e4; --brand-soft: #1d3247; --on-brand: #0d1a26;
       --ok: #6fd093; --ok-soft: #173325; --warn: #ecb45c; --warn-soft: #3a2c13; --bad: #f2938b; --bad-soft: #3d1f1c;
       --shadow: none;
+      --k-kids: #6aa9e4; --k-ielts: #b59cf0; --k-fighter: #ecb45c; --k-tutor: #8fa0b3; --k-ta: #6fd093;
     }
+  }
+  :root[data-theme="dark"] {
+      --bg: #10151c; --card: #1a212b; --ink: #e8edf3; --muted: #9aa8b8; --line: #2c3643; --soft: #232c38;
+      --brand: #6aa9e4; --brand-soft: #1d3247; --on-brand: #0d1a26;
+      --ok: #6fd093; --ok-soft: #173325; --warn: #ecb45c; --warn-soft: #3a2c13; --bad: #f2938b; --bad-soft: #3d1f1c;
+      --shadow: none;
+      --k-kids: #6aa9e4; --k-ielts: #b59cf0; --k-fighter: #ecb45c; --k-tutor: #8fa0b3; --k-ta: #6fd093;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
@@ -57,7 +70,7 @@
 
   /* Shell */
   header { position: sticky; top: 0; z-index: 5; background: var(--card); border-bottom: 1px solid var(--line); }
-  .bar { max-width: 960px; margin: 0 auto; padding: 8px 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .bar { max-width: 1200px; margin: 0 auto; padding: 8px 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .brand { font-weight: 700; font-size: 16px; color: var(--brand); margin-right: 4px; }
   nav { display: flex; gap: 4px; flex-wrap: wrap; }
   nav button { min-height: 40px; padding: 6px 12px; border-color: transparent; background: none; color: var(--muted); }
@@ -65,7 +78,7 @@
   .spacer { flex: 1; }
   #saveState { font-size: 13px; color: var(--muted); white-space: nowrap; }
   #saveState.err { color: var(--bad); font-weight: 600; }
-  main { max-width: 960px; margin: 0 auto; padding: 16px 16px 72px; display: grid; gap: 12px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 16px 16px 72px; display: grid; gap: 12px; }
   .notice { padding: 10px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); font-weight: 500; }
   .notice.bad { background: var(--bad-soft); color: var(--bad); }
   .notice.ok { background: var(--ok-soft); color: var(--ok); }
@@ -86,8 +99,39 @@
   h2 { font-size: 16px; font-weight: 700; }
   .list { display: grid; gap: 8px; }
 
-  /* Sessions */
-  .session { display: block; width: 100%; padding: 12px 14px; text-align: left; font-weight: 400; }
+  /* Day summary */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+  .stat { padding: 10px 14px; display: grid; gap: 2px; border-left: 4px solid var(--line); }
+  .stat b { font-size: 22px; font-weight: 700; line-height: 1.2; }
+  .stat span { font-size: 13px; color: var(--muted); font-weight: 500; }
+  .stat.k-kids { border-left-color: var(--k-kids); } .stat.k-ielts { border-left-color: var(--k-ielts); }
+  .stat.k-fighter { border-left-color: var(--k-fighter); } .stat.k-tutor { border-left-color: var(--k-tutor); } .stat.k-ta { border-left-color: var(--k-ta); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chips button { min-height: 36px; padding: 4px 12px; border-radius: 99px; font-size: 14px; }
+  .chips button.on { background: var(--ink); border-color: var(--ink); color: var(--card); font-weight: 600; }
+  .part { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .part h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .part span { font-size: 13px; color: var(--muted); }
+  .grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); align-items: start; }
+
+  /* Sessions: time on the left, a coloured edge for the kind of class */
+  .session { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; width: 100%; padding: 12px 14px 12px 12px; text-align: left; font-weight: 400; border-left: 4px solid var(--line); }
+  .session.k-kids { border-left-color: var(--k-kids); } .session.k-ielts { border-left-color: var(--k-ielts); }
+  .session.k-fighter { border-left-color: var(--k-fighter); } .session.k-tutor { border-left-color: var(--k-tutor); } .session.k-ta { border-left-color: var(--k-ta); }
+  .s-time { display: grid; align-content: start; gap: 0; font-variant-numeric: tabular-nums; }
+  .s-time b { font-size: 16px; font-weight: 700; line-height: 1.3; }
+  .s-time span { font-size: 13px; color: var(--muted); }
+  .s-body { display: grid; gap: 4px; min-width: 0; }
+  .s-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .s-head strong { font-size: 16px; font-weight: 700; }
+  .kind { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 1px 7px; border-radius: 6px; color: #fff; }
+  .kind.k-kids { background: var(--k-kids); } .kind.k-ielts { background: var(--k-ielts); } .kind.k-fighter { background: var(--k-fighter); } .kind.k-tutor { background: var(--k-tutor); } .kind.k-ta { background: var(--k-ta); }
+  :root[data-theme="dark"] .kind { color: #0d1a26; }
+  @media (prefers-color-scheme: dark) { :root[data-theme="auto"] .kind { color: #0d1a26; } }
+  .s-book { font-weight: 500; }
+  .people { display: flex; gap: 4px 12px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .people b { color: var(--ink); font-weight: 600; }
+  @media (max-width: 460px) { .session { grid-template-columns: 52px minmax(0, 1fr); gap: 10px; } }
   .session.link { cursor: pointer; }
   .session.link:hover { border-color: var(--brand); }
   .session.off { opacity: .6; }
@@ -188,6 +232,7 @@
       <nav id="nav"></nav>
       <span class="spacer"></span>
       <span id="saveState" role="status"></span>
+      <button id="btnTheme" class="quiet" aria-label="Đổi nền sáng / tối">Nền tối</button>
       <button id="btnLang" class="quiet">English</button>
       <button id="btnOut" class="quiet">Thoát</button>
     </div>
