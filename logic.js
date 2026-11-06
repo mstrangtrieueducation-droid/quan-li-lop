@@ -46,7 +46,7 @@
 
   // One week tab, A1:M: tasks above the table, then the table itself. The header row moves between weeks.
   function parseWeek(rows) {
-    const out = { sessions: [], tasks: [], head: -1 };
+    const out = { sessions: [], tasks: [], returns: [], head: -1 };
     const head = (rows || []).findIndex(r => r && clean(r[3]) === 'CLASS' && clean(r[12]) === 'CLASS STATUS');
     if (head < 0) return out;
     out.head = head;
@@ -70,6 +70,7 @@
         detail: String(r[9] || '').trim(), site: clean(r[10]), note: String(r[11] || '').trim(), off: status === 'Nghỉ học' || dayOff, also: [] });
     }
     out.tasks = parseTasks(rows, head);
+    out.returns = parseReturns(rows, head);
     return out;
   }
   function yearOf(rows, head) {
@@ -86,6 +87,26 @@
       const lines = String(r[4] || '').split('\n'), back = String(r[5] || '').split('\n');
       out.push({ row: i + 1, done: /^TRUE$/i.test(clean(r[0])), teacher: who, cls: clean(r[2]), what,
         lessonDay: dateIn(lines[0]), gradeDue: dateIn(lines[1]), ta: clean(back[0]), returnDue: dateIn(back[1]) });
+    }
+    return out;
+  }
+  // TA weekly homework return: a title cell, a row of day headers, then pairs of "Name · Class" over a TRUE/FALSE tick.
+  function parseReturns(rows, head) {
+    const out = [], stop = head > 0 ? head : (rows || []).length;
+    let top = -1, col0 = -1;
+    for (let i = 0; i < stop && top < 0; i++) (rows[i] || []).forEach((v, c) => { if (top < 0 && /^TRẢ BTVN/i.test(clean(v))) { top = i; col0 = c; } });
+    if (top < 0) return out;
+    const dayRow = rows[top + 1] || [], days = {};
+    for (let c = col0; c < col0 + 7; c++) { const d = dateIn(String(dayRow[c] || '').replace(/\n/g, ' '), yearOf(rows, head)); if (d) days[c] = d; }
+    for (let i = top + 2; i + 1 < stop; i += 2) {
+      const labels = rows[i] || [], ticks = rows[i + 1] || [];
+      if (!Object.keys(days).some(c => /^(TRUE|FALSE)$/i.test(clean(ticks[c])))) break;
+      Object.keys(days).forEach(c => {
+        const label = clean(labels[c]), tick = clean(ticks[c]);
+        if (!label || !/^(TRUE|FALSE)$/i.test(tick)) return;
+        const parts = label.split('·').map(clean);
+        out.push({ day: days[c], who: parts[0], cls: parts.slice(1).join(' · '), label, done: /^TRUE$/i.test(tick), row: i + 2, col: Number(c) });
+      });
     }
     return out;
   }
@@ -337,7 +358,7 @@
     return (titles || []).filter(t => { const m = String(t).match(/^\s*(\d{2}\.\d{2}\.\d{4})\s*-\s*(\d{2}\.\d{2}\.\d{4})\s*$/); return m && dateIn(m[1]) <= last && dateIn(m[2]) >= first; });
   }
 
-  return { ARRIVE_BEFORE, ROLL_CALL_MINUTES, OPEN_BEFORE, PRESENT, ABSENT, clean, key, iso, fromIso, addDays, dayText, dateIn, colName, parseTime, clock, weekTab,
+  return { parseReturns, ARRIVE_BEFORE, ROLL_CALL_MINUTES, OPEN_BEFORE, PRESENT, ABSENT, clean, key, iso, fromIso, addDays, dayText, dateIn, colName, parseTime, clock, weekTab,
     parseWeek, taskState, mine, staffOf, sessionKey, trackerBlocks, practiceColumns, findBlock, videoState, isAbsentMark, gradeOf, pupilOf, owedVideos,
     latest, rollCall, tickStatus, pupilState, lateMinutes, monthSummary, nameKey, parsePay, parseMarking, payTable, payOf, hoursText, tabsOfMonth };
 }));
