@@ -543,9 +543,11 @@ function owedBlock(week) {
     const late = pupils.map(p => ({ p, o: p.owed.filter(o => o.due < day) })).filter(x => x.o.length).sort((a, b) => b.o.length - a.o.length);
     if (!dueNow.length && !late.length) return '<div class="card row owed-card">' + head + '<span class="tag ok">' + T('Cả lớp đã nộp đủ', 'All handed in') + '</span></div>';
     const line = x => '<div class="owe-row"><span class="owe-n">' + x.o.length + '</span><b>' + name(x.p) + '</b><span class="small muted">' + esc(x.o.slice(0, 3).map(o => o.label + (o.due < day ? ' (hạn ' + o.due.slice(8) + '/' + o.due.slice(5, 7) + ')' : '')).join(', ') + (x.o.length > 3 ? ' …' : '')) + '</span></div>';
+    const chips = list => '<div class="chips-n">' + list.map(x => '<span class="kid"><b>' + name(x.p) + '</b>' + (x.o.length > 1 ? '<i>' + x.o.length + '</i>' : '') + '</span>').join('') + '</div>';
     return '<div class="card row owed-card">' + head +
-      (dueNow.length ? '<div class="owed-h warn">' + T('Chưa nộp bài hạn hôm nay', 'Due today, not handed in') + ' · ' + dueNow.length + ' HS</div>' + dueNow.map(line).join('') : '') +
-      (late.length ? '<div class="owed-h bad">' + T('Quá hạn chưa làm', 'Overdue, not done') + ' · ' + late.length + ' HS</div>' + late.map(line).join('') : '') + '</div>';
+      (dueNow.length ? '<div class="owed-h warn">' + T('Chưa nộp bài hạn hôm nay', 'Due today, not handed in') + ' · ' + dueNow.length + ' HS</div>' + chips(dueNow) : '') +
+      (late.length ? '<div class="owed-h bad">' + T('Quá hạn chưa làm', 'Overdue, not done') + ' · ' + late.length + ' HS</div>' + chips(late) : '') +
+      '<details><summary>' + T('Xem từng bài', 'Show each task') + '</summary>' + dueNow.concat(late).map(line).join('') + '</details></div>';
   });
   return '<div class="part p-alert"><h2>' + T('Trước giờ học · IELTS / FIGHTER', 'Before class · IELTS / FIGHTER') + '</h2><span>' + T('bài chưa nộp, để nhắc và xử lí', 'work not handed in') + '</span></div><div class="grid">' + cards.join('') + '</div>';
 }
