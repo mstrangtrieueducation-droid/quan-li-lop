@@ -424,22 +424,179 @@ function dayStats(list) {
 }
 const dayBar = () => '<div class="daybar"><button data-act="day" data-n="-1" aria-label="' + T('Hôm trước', 'Previous day') + '">‹</button><b>' + esc(dayLabel(day)) + '</b>' + (day !== today() ? '<button class="quiet" data-act="today">' + T('Hôm nay', 'Today') + '</button>' : '') + '<button data-act="day" data-n="1" aria-label="' + T('Hôm sau', 'Next day') + '">›</button></div>';
 
+/* ---------- People: who is who today ---------- */
+// Someone who has left, and who now covers their IELTS duty (owner 07/11: Hường left, THU HIEN covers IELTS).
+const LEFT_STAFF = { HUONG: 'THU HIEN' };
+const staffNow = (name, cls) => { const k = Q.key(name); return LEFT_STAFF[k] && /^IELTS/i.test(Q.clean(cls)) ? LEFT_STAFF[k] : Q.clean(name); };
+// "SON" on the TA plan is VAN SON; a one-word name matches the last word of a full name.
+function isMe(name) {
+  const k = Q.key(name), mine = Q.key(me.name);
+  return !!k && (k === mine || (!k.includes(' ') && mine.split(' ').pop() === k));
+}
+const cmOf = s => staffNow(s.ta, s.cls);
+const dutyOf = (week, d) => (week && week.data.duty && week.data.duty.days[d]) || null;
+const onDuty = (week, d) => { const x = dutyOf(week, d); return !!x && x.work.some(p => isMe(p.name)); };
+// Sessions this person stands in front of: teacher or video, never homeroom duty.
+const teaches = s => isMe(s.teacher) || isMe(s.video);
+
+/* ---------- Attendance alerts: pupils nobody ticked, for everyone on duty that day ---------- */
+const ALERT_EVERY = 120000;
+let alertTimer = null, alertLoading = false, alertTried = 0;
+const alertScope = (week, s) => isManager() || onDuty(week, s.day) || teaches(s) || isMe(cmOf(s));
+function alertSessions(week) {
+  if (!week || day !== today()) return [];
+  const now = minutesNow();
+  return week.data.sessions.filter(s => s.day === day && !s.off && classOf(s) && s.start + Q.ROLL_CALL_MINUTES <= now && s.day >= (classOf(s).since || '') && alertScope(week, s));
+}
+// Rosters (light reads, kept 15 minutes) and the attendance tail; nothing else.
+async function loadAlerts() {
+  const week = weeks[Q.weekTab(tabs, today())];
+  const list = alertSessions(week);
+  if (!list.length || alertLoading) return;
+  alertLoading = true;
+  try {
+    await loadMarks();
+    const left = [...new Set(list.map(classOf))];
+    const work = async () => { while (left.length) { const c = left.shift(); try { await loadTracker(c, false, true); } catch (e) {} } };
+    await Promise.all([work(), work()]);
+  } finally { alertLoading = false; }
+  render();
+}
+function startAlerts() {
+  if (alertTimer) return;
+  alertTimer = setInterval(() => {
+    if (document.hidden || view !== 'lich' || day !== today()) return;
+    loadMarks(true).then(() => loadAlerts()).catch(() => {});
+  }, ALERT_EVERY);
+}
+function alertsBlock(week) {
+  const cards = [];
+  let count = 0;
+  alertSessions(week).forEach(s => {
+    const ctx = classContext(s);
+    if (!ctx.tracker) return;
+    const roll = Q.rollCall(s, ctx.marks, today(), minutesNow()), people = 'GV ' + esc(s.teacher) + (cmOf(s) ? ' · CN ' + esc(cmOf(s)) : '');
+    const head = '<div class="row-top"><b>' + esc(s.cls) + '</b><span class="muted small">' + sessionTime(s) + ' · ' + people + '</span><span class="spacer"></span><button class="quiet" data-act="open" data-row="' + s.row + '" data-day="' + s.day + '">' + T('Mở lớp', 'Open') + '</button></div>';
+    if (roll.noRollCall) { count++; cards.push('<div class="card row alert">' + head + '<div class="notice bad">' + T('Chưa ai điểm danh lớp này. GV/TA vào điểm danh ngay.', 'Nobody has taken attendance yet.') + '</div></div>'); return; }
+    if (isGroup(s)) return;
+    const waiting = ctx.tracker.pupils.filter(p => { const m = ctx.marks.get(p.name), st = Q.pupilState(m, roll); return st === 'Vắng chờ xác minh' || (m && m.status === 'Chưa báo nghỉ' && !m.contact); });
+    if (!waiting.length) return;
+    count += waiting.length;
+    const data = p => 'data-row="' + s.row + '" data-day="' + s.day + '" data-name="' + esc(p.name) + '"';
+    cards.push('<div class="card row alert">' + head + waiting.map(p => {
+      const m = ctx.marks.get(p.name), notTold = m && m.status === 'Chưa báo nghỉ', phone = (String(p.phone || '').match(/[\d .]{9,}/) || [''])[0].trim();
+      return '<div class="pupil-alert"><div class="row-top"><b>' + esc(p.eng || p.name) + '</b><span class="small muted">' + esc(p.name) + '</span>' + (phone ? '<a class="small" href="tel:' + esc(phone.replace(/[\s.]/g, '')) + '">' + esc(phone) + '</a>' : '') + '</div>' +
+        (notTold ? '<div class="choices"><span class="tag bad">' + T('Chưa báo nghỉ, nhắn hỏi PH ngay', 'Not reported, message the parent') + '</span><button class="good" data-act="contact" ' + data(p) + '>' + T('Đã nhắn PH', 'Parent messaged') + '</button></div>'
+          : '<div class="choices"><button class="good" data-act="present" ' + data(p) + '>' + T('Có mặt', 'Here') + '</button><button class="mid" data-act="absence" data-v="Đã báo nghỉ" ' + data(p) + '>' + T('Đã báo nghỉ', 'Reported absent') + '</button><button class="low" data-act="absence" data-v="Chưa báo nghỉ" ' + data(p) + '>' + T('Chưa báo · nhắn PH', 'Not reported') + '</button></div>') + '</div>';
+    }).join('') + '</div>');
+  });
+  if (!cards.length) return alertLoading ? '<p class="small muted">' + T('Đang xem điểm danh các lớp hôm nay…', 'Checking today\'s attendance…') + '</p>' : '';
+  return '<div class="part p-alert"><h2>' + T('Cần xử lý ngay', 'Needs action now') + '</h2><span>' + count + T(' mục chưa rõ điểm danh', ' open') + '</span></div><div class="list">' + cards.join('') + '</div>';
+}
+
+/* ---------- TA work plan of the day ---------- */
+function dutyBlock(week) {
+  const x = dutyOf(week, day);
+  if (!x || (!x.work.length && !x.off.length && !x.lock.length && !x.note)) return '';
+  const chip = p => '<span class="person' + (isMe(p.name) ? ' me' : '') + '">' + esc(Q.key(p.name)) + (p.note ? ' <i>' + esc(p.note) + '</i>' : '') + '</span>';
+  const mine = x.work.find(p => isMe(p.name)), off = x.off.some(p => isMe(p.name)), lock = x.lock.some(p => isMe(p.name));
+  const status = mine ? T('Hôm nay bạn đi làm', 'You work today') + (mine.note ? ' (' + esc(mine.note) + ')' : '') + (lock ? T(' · bạn khóa cửa', ' · you lock up') : '') : off ? T('Hôm nay bạn nghỉ', 'You are off today') : '';
+  return '<div class="part p-0"><h2>' + T('Lịch làm việc', 'Work plan') + '</h2>' + (status ? '<span class="tag ' + (mine ? 'ok' : 'warn') + '">' + status + '</span>' : '') + '</div>' +
+    '<div class="card row duty">' +
+    (x.work.length ? '<div><span class="lbl">' + T('Đi làm', 'Working') + '</span>' + x.work.map(chip).join('') + '</div>' : '') +
+    (x.off.length ? '<div><span class="lbl">' + T('Nghỉ', 'Off') + '</span>' + x.off.map(chip).join('') + '</div>' : '') +
+    (x.lock.length ? '<div><span class="lbl">' + T('Khóa cửa', 'Locks up') + '</span>' + x.lock.map(chip).join('') + '</div>' : '') +
+    (x.note ? '<div><span class="lbl">' + T('Ghi chú', 'Note') + '</span>' + esc(x.note) + '</div>' : '') +
+    (week.data.duty.general ? '<div class="small muted">' + esc(week.data.duty.general) + '</div>' : '') + '</div>';
+}
+
+/* ---------- Important Task by the day it is due for me ---------- */
+function myTaskBlock(week) {
+  const mine = week.data.tasks.map(t => Object.assign({}, t, { ta: staffNow(t.ta, t.cls) })).filter(t => isMe(t.teacher) || isMe(t.ta));
+  if (!mine.length) return '';
+  const dueOf = t => isMe(t.teacher) ? t.gradeDue : t.returnDue, todo = mine.filter(t => !t.done), done = mine.filter(t => t.done);
+  const groups = new Map();
+  todo.sort((a, b) => (dueOf(a) || '9').localeCompare(dueOf(b) || '9')).forEach(t => {
+    const d = dueOf(t) || '', label = !d ? T('Chưa có hạn', 'No date') : d < today() ? T('Quá hạn', 'Overdue') : d === today() ? T('Hôm nay', 'Today') : d === Q.addDays(today(), 1) ? T('Ngày mai', 'Tomorrow') : dayLabel(d);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(t);
+  });
+  const row = t => { const real = week.data.tasks.find(x => x.row === t.row); return taskRow(Object.assign({}, real, { ta: t.ta }), week, true); };
+  let h = '<div class="part p-1"><h2>' + T('Important Task của tôi', 'My important tasks') + '</h2><span>' + todo.length + T(' việc còn lại · chạm ✓ khi xong', ' to do · tap ✓ when done') + '</span></div>';
+  groups.forEach((list, label) => { h += '<div class="due-label' + (label === T('Quá hạn', 'Overdue') ? ' late' : '') + '">' + esc(label) + ' · ' + list.length + '</div><div class="list">' + list.map(row).join('') + '</div>'; });
+  if (done.length) h += '<details class="done-list"><summary>' + T('Đã xong', 'Done') + ' (' + done.length + ')</summary><div class="list">' + done.map(row).join('') + '</div></details>';
+  return h;
+}
+
+/* ---------- Homeroom classes and the homework each pupil still owes ---------- */
+let cnLoading = false;
+function myHomerooms() {
+  const out = new Map();
+  Object.values(weeks).forEach(w => w.data.sessions.forEach(s => {
+    const c = classOf(s);
+    if (!c || isGroup(s) || s.day < Q.addDays(today(), -7)) return;
+    const cm = cmOf(s);
+    if (!cm || !(isMe(cm) || isManager())) return;
+    const hit = out.get(c.key) || { cls: c, cm, next: null };
+    if ((s.day > today() || (s.day === today() && s.start >= minutesNow())) && (!hit.next || s.day + Q.clock(s.start) < hit.next.day + Q.clock(hit.next.start))) hit.next = s;
+    if (s.day >= today() || !out.has(c.key)) hit.cm = cm;
+    out.set(c.key, hit);
+  }));
+  return [...out.values()].filter(x => isMe(x.cm) || isManager()).sort((a, b) => a.cls.name.localeCompare(b.cls.name, 'vi', { numeric: true }));
+}
+async function loadHomerooms(only) {
+  if (cnLoading) return;
+  cnLoading = true;
+  try {
+    await Promise.all([weekOf(today()), weekOf(Q.addDays(today(), 7))].map(p => Promise.resolve(p).catch(() => null)));
+    const left = myHomerooms().filter(x => (only ? x.cls.key === only : isMe(x.cm)) && !(trackers[x.cls.key] && !trackers[x.cls.key].light)).map(x => x.cls);
+    render();
+    const work = async () => { while (left.length) { const c = left.shift(); try { await loadTracker(c); } catch (e) {} render(); } };
+    await Promise.all([work(), work()]);
+  } finally { cnLoading = false; render(); }
+}
+function viewHomerooms() {
+  const list = myHomerooms();
+  let h = '<h2>' + T('Lớp chủ nhiệm', 'Homeroom classes') + '</h2><p class="sub small muted">' + T('Số bài web còn thiếu trong 14 ngày gần nhất, nhiều nhất ở trên. Chạm tên lớp để mở.', 'Web homework still missing in the last 14 days.') + '</p>';
+  if (!list.length) return h + '<div class="card empty">' + (cnLoading ? T('Đang đọc…', 'Reading…') : T('Bạn chưa chủ nhiệm lớp nào trong tuần này.', 'No homeroom class this week.')) + '</div>';
+  const byCm = new Map();
+  list.forEach(x => { const k = Q.key(x.cm); if (!byCm.has(k)) byCm.set(k, []); byCm.get(k).push(x); });
+  byCm.forEach((items, cm) => {
+    if (isManager()) h += '<div class="part p-2"><h2>' + esc(cm) + '</h2><span>' + items.length + T(' lớp', ' classes') + '</span></div>';
+    h += '<div class="grid">' + items.map(x => {
+      const t = trackers[x.cls.key], next = x.next ? dayLabel(x.next.day) + ' ' + Q.clock(x.next.start) : '';
+      const title = '<div class="row-top"><b>' + esc(x.cls.name) + '</b>' + (next ? '<span class="small muted">' + T('Buổi tới ', 'Next ') + esc(next) + '</span>' : '') + '<span class="spacer"></span>' + (x.next ? '<button class="quiet" data-act="open" data-row="' + x.next.row + '" data-day="' + x.next.day + '">' + T('Mở lớp', 'Open') + '</button>' : '') + '</div>';
+      if (!t || t.light) return '<div class="card row cn">' + title + '<button data-act="cnLoad" data-k="' + esc(x.cls.key) + '">' + T('Xem bài còn nợ', 'Show missing homework') + '</button></div>';
+      const owed = Q.owedVideos(t.pupils, t.blocks, t.practices, t.cell, { day: Q.addDays(today(), 1) });
+      const rows = t.pupils.map((p, i) => ({ p, n: owed[i].length, o: owed[i] })).filter(r => r.n).sort((a, b) => b.n - a.n);
+      return '<div class="card row cn">' + title + '<div class="small">' + (rows.length ? '<span class="tag bad">' + rows.length + '/' + t.pupils.length + T(' HS còn nợ bài', ' pupils owe work') + '</span>' : '<span class="tag ok">' + T('Cả lớp đủ bài', 'All caught up') + '</span>') + '</div>' +
+        rows.map(r => '<div class="owe-row"><span class="owe-n">' + r.n + '</span><b>' + esc(r.p.eng || r.p.name) + '</b><span class="small muted">' + esc(r.o.map(o => o.practice ? o.label : T('Tiết ', 'L') + o.lesson + (o.label ? ' ' + videoLabel(o.label) : '')).join(', ')) + '</span></div>').join('') + '</div>';
+    }).join('') + '</div>';
+  });
+  return h;
+}
+
 function viewSchedule(week) {
   if (!week) return dayBar() + '<div class="card empty">' + T('File Schedule chưa có tuần này.', 'This week is not on the Schedule yet.') + '</div>';
   const all = week.data.sessions.filter(s => s.day === day).sort((a, b) => a.start - b.start);
-  const list = isManager() && filters.showAll ? all : Q.mine(all, me.name);
-  const myTasks = week.data.tasks.filter(t => [t.teacher, t.ta].some(n => Q.nameKey(n) === Q.nameKey(me.name))).sort((a, b) => a.done - b.done);
+  const list = isManager() && filters.showAll ? all : all.filter(teaches);
   let h = dayBar();
+  // Attendance of today's classes is read in the background, at most once a minute when something is missing.
+  if (day === today() && !alertLoading && Date.now() - alertTried > 60000 && alertSessions(week).some(s => !trackers[classOf(s).key])) { alertTried = Date.now(); setTimeout(() => loadAlerts().catch(() => {}), 0); }
   if (isManager()) h += '<div class="tabs"><button class="' + (filters.showAll ? '' : 'on') + '" data-act="scope" data-v="">Lịch của tôi</button><button class="' + (filters.showAll ? 'on' : '') + '" data-act="scope" data-v="1">Cả trung tâm</button></div>';
+  h += alertsBlock(week);
+  if (!(isManager() && filters.showAll)) h += dutyBlock(week);
   if (isManager() && filters.showAll && all.length) {
     h += dayStats(all);
     const kinds = KINDS.filter(([k]) => all.some(s => kindOf(s) === k));
     if (kinds.length > 1) h += '<div class="chips">' + [['', T('Tất cả', 'All')]].concat(kinds.map(([k]) => [k, kindName(k)])).map(([k, label]) => '<button class="' + ((filters.kind || '') === k ? 'on' : '') + '" data-act="kind" data-v="' + k + '">' + esc(label) + '</button>').join('') + '</div>';
   }
   const shown = isManager() && filters.showAll && filters.kind ? list.filter(s => kindOf(s) === filters.kind) : list;
-  h += shown.length ? dayParts(shown) : '<div class="card empty">' + T('Không có buổi nào trong ngày này.', 'No sessions on this day.') + '</div>';
-  if (myTasks.length) h += '<div class="part p-1"><h2>' + T('Important Task của tôi', 'My important tasks') + '</h2><span>' + myTasks.length + T(' việc · chạm ✓ khi xong', ' · tap ✓ when done') + '</span></div><div class="list">' + myTasks.map(t => taskRow(t, week, true)).join('') + '</div>';
+  if (shown.length) h += (isManager() && filters.showAll ? '' : '<div class="part p-1"><h2>' + T('Lớp tôi dạy', 'My classes') + '</h2><span>' + shown.length + T(' buổi', ' sessions') + '</span></div>') + dayParts(shown);
+  else if (isManager() && filters.showAll) h += '<div class="card empty">' + T('Không có buổi nào trong ngày này.', 'No sessions on this day.') + '</div>';
   h += returnsBlock(week);
+  h += myTaskBlock(week);
+  if (!/class="(part|card)/.test(h.slice(dayBar().length))) h += '<div class="card empty">' + T('Hôm nay bạn không có lớp hay việc nào.', 'Nothing for you on this day.') + '</div>';
   return h;
 }
 
@@ -714,7 +871,7 @@ function render() {
   if (!me) return;
   const active = document.activeElement;
   if (active && $('main').contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName)) return;
-  const items = [['lich', T('Lịch', 'Schedule')], ['cong', T('Công của tôi', 'My hours')]].concat(isManager() ? [['dieuhanh', 'Điều hành']] : []).concat(isOwner() ? [['nguoi', 'Người dùng']] : []);
+  const items = [['lich', T('Lịch', 'Schedule')]].concat(isManager() || myHomerooms().some(x => isMe(x.cm)) ? [['lopcn', T('Lớp chủ nhiệm', 'Homeroom')]] : []).concat([['cong', T('Công của tôi', 'My hours')]]).concat(isManager() ? [['dieuhanh', 'Điều hành']] : []).concat(isOwner() ? [['nguoi', 'Người dùng']] : []);
   $('btnLang').textContent = lang === 'en' ? 'Tiếng Việt' : 'English';
   paintTheme();
   $('btnOut').textContent = T('Thoát', 'Sign out');
@@ -727,6 +884,7 @@ function render() {
   else if (view === 'dieuhanh' && isManager()) h += viewManager(week);
   else if (view === 'nguoi' && isOwner()) h += viewNguoi();
   else if (view === 'cong') h += viewPay();
+  else if (view === 'lopcn') h += viewHomerooms();
   else h += viewSchedule(week);
   $('main').innerHTML = h;
   paintSave();
@@ -776,7 +934,7 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if (!b || b.tagName === 'SELECT' || b.tagName === 'INPUT' || b.tagName === 'TEXTAREA') return;
   const act = b.dataset.act, v = b.dataset.v;
-  if (act === 'view') { view = v; render(); guarded(() => view === 'nguoi' ? loadNguoi() : view === 'dieuhanh' ? loadPanel() : view === 'cong' ? loadPay(filters.payMonth) : weekOf(day)); }
+  if (act === 'view') { view = v; render(); guarded(() => view === 'lopcn' ? loadHomerooms() : view === 'nguoi' ? loadNguoi() : view === 'dieuhanh' ? loadPanel() : view === 'cong' ? loadPay(filters.payMonth) : weekOf(day)); }
   if (act === 'panel') { panel = v; filters.person = ''; render(); guarded(loadPanel); }
   if (act === 'day') { day = Q.addDays(day, Number(b.dataset.n)); render(); guarded(() => view === 'dieuhanh' ? loadPanel() : weekOf(day)); }
   if (act === 'today') { day = today(); render(); guarded(() => weekOf(day)); }
@@ -790,6 +948,11 @@ document.addEventListener('click', e => {
   if (act === 'tick' || act === 'grade') {
     const ctx = classContext(current), pupil = ctx.tracker.pupils[Number(b.dataset.i)];
     if (act === 'tick') tickPupil(ctx, pupil); else setGrade(ctx, pupil, v);
+  }
+  if (act === 'cnLoad') guarded(() => loadHomerooms(b.dataset.k));
+  if (act === 'present') {
+    const s = findSession(b.dataset.row, b.dataset.day), ctx = classContext(s), pupil = ctx.tracker.pupils.find(p => p.name === b.dataset.name), m = ctx.marks.get(pupil.name);
+    appendMark(s, pupil, Q.tickStatus(s, today(), minutesNow()), m && m.contact, m && m.note); render();
   }
   if (act === 'absence' || act === 'contact') {
     const s = findSession(b.dataset.row, b.dataset.day), ctx = classContext(s), pupil = ctx.tracker.pupils.find(p => p.name === b.dataset.name);
@@ -837,6 +1000,9 @@ async function enter() {
     render();
     await guarded(() => weekOf(day));
     flush();
+    startAlerts();
+    if (view === 'lich') loadAlerts().catch(() => {});
+    weekOf(Q.addDays(today(), 7)).catch(() => {});
   } catch (e) {
     if (e.status === 401) return;
     me = me || { name: '', role: '' };

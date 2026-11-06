@@ -46,7 +46,7 @@
 
   // One week tab, A1:M: tasks above the table, then the table itself. The header row moves between weeks.
   function parseWeek(rows) {
-    const out = { sessions: [], tasks: [], returns: [], head: -1 };
+    const out = { sessions: [], tasks: [], returns: [], duty: { days: {}, general: '' }, head: -1 };
     const head = (rows || []).findIndex(r => r && clean(r[3]) === 'CLASS' && clean(r[12]) === 'CLASS STATUS');
     if (head < 0) return out;
     out.head = head;
@@ -71,6 +71,7 @@
     }
     out.tasks = parseTasks(rows, head);
     out.returns = parseReturns(rows, head);
+    out.duty = parseDuty(rows, head);
     return out;
   }
   function yearOf(rows, head) {
@@ -87,6 +88,28 @@
       const lines = String(r[4] || '').split('\n'), back = String(r[5] || '').split('\n');
       out.push({ row: i + 1, done: /^TRUE$/i.test(clean(r[0])), teacher: who, cls: clean(r[2]), what,
         lessonDay: dateIn(lines[0]), gradeDue: dateIn(lines[1]), ta: clean(back[0]), returnDue: dateIn(back[1]) });
+    }
+    return out;
+  }
+  // TA work plan at the top of a week tab: a "LỊCH LÀM VIỆC TA" title, a row of days, then rows
+  // "Đi làm: A, B (note)", "Nghỉ: ...", "Khóa cửa: ...", "Ghi chú: ..." and one "Lưu ý chung: ..." line.
+  function parseDuty(rows, head) {
+    const out = { days: {}, general: '' }, stop = head > 0 ? head : (rows || []).length;
+    let top = -1, col0 = -1;
+    for (let i = 0; i < Math.min(stop, 10) && top < 0; i++) (rows[i] || []).forEach((v, c) => { if (top < 0 && /^LỊCH LÀM VIỆC TA/i.test(clean(v))) { top = i; col0 = c; } });
+    if (top < 0) return out;
+    const dayRow = rows[top + 1] || [], cols = [];
+    for (let c = col0; c < col0 + 7; c++) { const d = dateIn(String(dayRow[c] || '').replace(/\n/g, ' '), yearOf(rows, head)); if (d) { cols.push([c, d]); out.days[d] = { work: [], off: [], lock: [], note: '' }; } }
+    const names = text => String(text || '').split(/[,;\n]/).map(clean).filter(Boolean).map(x => { const m = x.match(/^(.*?)\s*\((.*)\)\s*$/); return m ? { name: clean(m[1]), note: clean(m[2]) } : { name: x, note: '' }; });
+    for (let i = top + 2; i < Math.min(stop, top + 10); i++) {
+      const r = rows[i] || [], first = clean(r[col0]);
+      if (/^Lưu ý chung/i.test(first)) { out.general = clean(first.replace(/^Lưu ý chung\s*:?/i, '')); continue; }
+      const kind = /^Đi làm/i.test(first) ? 'work' : /^Nghỉ/i.test(first) ? 'off' : /^Khóa cửa/i.test(first) ? 'lock' : /^Ghi chú/i.test(first) ? 'note' : '';
+      if (!kind) break;
+      cols.forEach(([c, d]) => {
+        const body = String(r[c] || '').replace(/^[^:]*:/, '');
+        if (kind === 'note') out.days[d].note = clean(body); else out.days[d][kind] = names(body);
+      });
     }
     return out;
   }
@@ -247,7 +270,7 @@
   }
 
   /* ---------- Roll call ---------- */
-  const PRESENT = ['Có mặt', 'Đến muộn'], ABSENT = ['Có phép', 'Không phép'];
+  const PRESENT = ['Có mặt', 'Đến muộn'], ABSENT = ['Đã báo nghỉ', 'Chưa báo nghỉ', 'Có phép', 'Không phép'];
   // minutesNow is minutes since midnight of "today".
   function rollCall(session, marks, today, minutesNow) {
     const closeAt = session.start + ROLL_CALL_MINUTES;
@@ -358,7 +381,7 @@
     return (titles || []).filter(t => { const m = String(t).match(/^\s*(\d{2}\.\d{2}\.\d{4})\s*-\s*(\d{2}\.\d{2}\.\d{4})\s*$/); return m && dateIn(m[1]) <= last && dateIn(m[2]) >= first; });
   }
 
-  return { parseReturns, ARRIVE_BEFORE, ROLL_CALL_MINUTES, OPEN_BEFORE, PRESENT, ABSENT, clean, key, iso, fromIso, addDays, dayText, dateIn, colName, parseTime, clock, weekTab,
+  return { parseDuty, parseReturns, ARRIVE_BEFORE, ROLL_CALL_MINUTES, OPEN_BEFORE, PRESENT, ABSENT, clean, key, iso, fromIso, addDays, dayText, dateIn, colName, parseTime, clock, weekTab,
     parseWeek, taskState, mine, staffOf, sessionKey, trackerBlocks, practiceColumns, findBlock, videoState, isAbsentMark, gradeOf, pupilOf, owedVideos,
     latest, rollCall, tickStatus, pupilState, lateMinutes, monthSummary, nameKey, parsePay, parseMarking, payTable, payOf, hoursText, tabsOfMonth };
 }));
