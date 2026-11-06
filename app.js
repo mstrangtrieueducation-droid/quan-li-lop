@@ -564,13 +564,30 @@ function monthPanel() {
 /* ---------- Người dùng: the owner's page, same as the tuition app ---------- */
 const isOwner = () => me && /chủ/i.test(me.role);
 let nguoi = null, nguoiMoi = null;
-async function loadNguoi() { nguoi = await call('nguoi', {}); render(); }
+async function loadNguoi() {
+  // This week and last week from the Schedule give the full name list for the picker.
+  await Promise.all([call('nguoi', {}).then(r => { nguoi = r; }), weekOf(today()), weekOf(Q.addDays(today(), -7))].map(p => Promise.resolve(p).catch(() => null)));
+  render();
+}
+// Every name on the Schedule plus the staff sheet, each with a suggested role; names that already have a link are left out.
+function nguoiChoices() {
+  const out = new Map(), add = (name, role) => { const n = Q.clean(name).toUpperCase(); if (n && n.length <= 60 && !out.has(n)) out.set(n, role); };
+  (nguoi ? nguoi.staff : []).forEach(p => add(p.name, ['GV', 'TA', 'Quản lí'].includes(p.role) ? p.role : 'GV'));
+  const ss = Object.values(weeks).flatMap(w => (w && w.data ? w.data.sessions : []));
+  ss.forEach(x => add(x.teacher, 'GV'));
+  ss.forEach(x => { add(x.ta, 'TA'); add(x.video, 'TA'); });
+  const taken = new Set((nguoi ? nguoi.people : []).map(p => Q.clean(p.name).toUpperCase()));
+  return [...out].filter(([n]) => !taken.has(n)).sort((a, b) => a[0].localeCompare(b[0], 'vi')).map(([name, role]) => ({ name, role }));
+}
 function viewNguoi() {
   const d = drafts.person = drafts.person || { role: 'GV' };
   let h = '<h2>Người dùng</h2><p class="sub">Mỗi người một link riêng, không cần đăng nhập. Xoá người là link đó hết hiệu lực.</p>';
   if (nguoiMoi) h += '<div class="card"><h3>Link của ' + esc(nguoiMoi.name) + '</h3><p>Link chỉ hiện lần này. Gửi riêng cho ' + esc(nguoiMoi.name) + ', đừng dán vào nhóm. Ai có link là vào được với tên người này.</p><p style="word-break:break-all;user-select:all">' + esc(nguoiMoi.link) + '</p><button class="primary" data-act="nguoiCopy">Copy link</button></div>';
-  const names = nguoi ? nguoi.staff.filter(s => !nguoi.people.some(p => p.name === s.name)) : [];
-  h += '<div class="card"><h3>Thêm người</h3><p>Tên phải đúng như trên file Schedule thì lịch và công mới khớp.</p><input data-act="personField" data-k="name" list="tenNhanSu" placeholder="Tên trên Schedule" maxlength="60" value="' + esc(d.name || '') + '"><datalist id="tenNhanSu">' + names.map(s => '<option value="' + esc(s.name) + '"></option>').join('') + '</datalist> <select data-act="personField" data-k="role" aria-label="Vai trò">' + ['GV', 'TA', 'Quản lí'].map(r => '<option' + (d.role === r ? ' selected' : '') + '>' + r + '</option>').join('') + '</select> <button class="primary" data-act="nguoiThem">Tạo link</button></div>';
+  const names = nguoiChoices(), other = d.pick === '__khac';
+  h += '<div class="card"><h3>Thêm người</h3><p>Chọn tên trong danh sách (lấy từ Schedule tuần này, tuần trước và bảng nhân sự). Người đã có link không hiện ở đây.</p>' +
+    '<select data-act="personPick" aria-label="Tên"><option value="">— Chọn tên —</option>' + names.map(s => '<option value="' + esc(s.name) + '"' + (d.pick === s.name ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '<option value="__khac"' + (other ? ' selected' : '') + '>Tên khác (gõ tay)…</option></select> ' +
+    (other ? '<input data-act="personField" data-k="name" placeholder="Tên đúng như trên Schedule" maxlength="60" value="' + esc(d.name || '') + '"> ' : '') +
+    '<select data-act="personField" data-k="role" aria-label="Vai trò">' + ['GV', 'TA', 'Quản lí'].map(r => '<option' + (d.role === r ? ' selected' : '') + '>' + r + '</option>').join('') + '</select> <button class="primary" data-act="nguoiThem">Tạo link</button></div>';
   h += '<div class="card"><h3>Đang có link</h3>';
   if (!nguoi) h += '<p>Đang đọc…</p>';
   else if (!nguoi.people.length) h += '<p>Chưa cấp link cho ai.</p>';
@@ -579,7 +596,7 @@ function viewNguoi() {
 }
 async function nguoiThem() {
   const d = drafts.person || {};
-  if (!Q.clean(d.name)) return say('Hãy nhập tên.', 'bad');
+  if (!Q.clean(d.name)) return say('Hãy chọn tên.', 'bad');
   try { const r = await call('them', { name: d.name, role: d.role || 'GV' }); nguoiMoi = { name: r.name, link: location.origin + location.pathname + '#k=' + r.key }; drafts.person = { role: 'GV' }; await loadNguoi(); }
   catch (e) { say('Không tạo được: ' + e.message, 'bad'); }
 }
@@ -731,6 +748,11 @@ document.addEventListener('change', e => {
   if (b.dataset.act === 'filter') { filters[b.dataset.k] = b.value; b.blur(); render(); if (b.dataset.k === 'payMonth' && b.value) guarded(() => loadPay(b.value)); }
   if (b.dataset.act === 'errField') { drafts.err[b.dataset.k] = b.value; }
   if (b.dataset.act === 'personField') { drafts.person = drafts.person || {}; drafts.person[b.dataset.k] = b.value; }
+  if (b.dataset.act === 'personPick') {
+    const d = drafts.person = drafts.person || { role: 'GV' }, c = nguoiChoices().find(x => x.name === b.value);
+    d.pick = b.value; d.name = b.value === '__khac' ? '' : b.value; if (c) d.role = c.role;
+    render();
+  }
   if (b.dataset.act === 'staffField') {
     const s = findSession(b.dataset.row), p = Q.staffOf(s).find(x => x.name === b.dataset.p), k = staffKey({ day: s.day, cls: s.cls, time: Q.clock(s.start), person: p.name }), o = staffLatest().get(k);
     const row = [stamp(), s.day, p.name, p.role, s.cls, Q.clock(s.start), Q.clock(p.due), o.status, b.dataset.field === 'minutes' ? b.value : o.minutes, b.dataset.field === 'note' ? b.value : o.note, me.name];
