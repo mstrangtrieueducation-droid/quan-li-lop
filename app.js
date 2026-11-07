@@ -600,7 +600,8 @@ function alertsBlock(week) {
 const owedCache = {};
 let owedLoading = false, owedTried = 0;
 const isSecondary = s => /^(IELTS|FIGHTER)\s/i.test(Q.clean(s.cls));
-const owedSessions = week => week ? week.data.sessions.filter(s => s.day === day && !s.off && isSecondary(s) && classOf(s) && alertScope(week, s)).sort((a, b) => a.start - b.start) : [];
+const owedScope = (week, s) => isManager() || onDuty(week, s.day) || isMe(cmOf(s));
+const owedSessions = week => week ? week.data.sessions.filter(s => s.day === day && !s.off && isSecondary(s) && classOf(s) && owedScope(week, s)).sort((a, b) => a.start - b.start) : [];
 async function loadOwed(week) {
   if (owedLoading) return;
   const want = [...new Set(owedSessions(week).map(s => classOf(s).tracker))].filter(t => { const h = owedCache[t + '|' + day]; return !h || Date.now() - h.at > 600000; });
@@ -748,21 +749,28 @@ function viewSchedule(week) {
   if (isManager()) h += '<div class="tabs"><button class="' + (filters.showAll ? '' : 'on') + '" data-act="scope" data-v="">Lịch của tôi</button><button class="' + (filters.showAll ? 'on' : '') + '" data-act="scope" data-v="1">Cả trung tâm</button></div>';
   h += payNoticeBlock();
   h += checkinBlock(week);
-  h += alertsBlock(week);
-  h += ladderBlock(week);
-  h += owedBlock(week);
-  if (!(isManager() && filters.showAll)) h += dutyBlock(week);
+  let today_ = alertsBlock(week);
+  const secs = [];
   if (isManager() && filters.showAll && all.length) {
     h += dayStats(all);
     const kinds = KINDS.filter(([k]) => all.some(s => kindOf(s) === k));
     if (kinds.length > 1) h += '<div class="chips">' + [['', T('Tất cả', 'All')]].concat(kinds.map(([k]) => [k, kindName(k)])).map(([k, label]) => '<button class="' + ((filters.kind || '') === k ? 'on' : '') + '" data-act="kind" data-v="' + k + '">' + esc(label) + '</button>').join('') + '</div>';
   }
   const shown = isManager() && filters.showAll && filters.kind ? list.filter(s => kindOf(s) === filters.kind) : list;
-  if (shown.length) h += (isManager() && filters.showAll ? '' : '<div class="part p-1"><h2>' + T('Lớp tôi dạy', 'My classes') + '</h2><span>' + shown.length + T(' buổi', ' sessions') + '</span></div>') + dayParts(shown);
-  else if (isManager() && filters.showAll) h += '<div class="card empty">' + T('Không có buổi nào trong ngày này.', 'No sessions on this day.') + '</div>';
-  h += returnsBlock(week);
-  h += myTaskBlock(week);
-  if (!/class="(part|card)/.test(h.slice(dayBar().length))) h += '<div class="card empty">' + T('Hôm nay bạn không có lớp hay việc nào.', 'Nothing for you on this day.') + '</div>';
+  if (shown.length) today_ += (isManager() && filters.showAll ? '' : '<div class="part p-1"><h2>' + T('Lớp tôi dạy', 'My classes') + '</h2><span>' + shown.length + T(' buổi', ' sessions') + '</span></div>') + dayParts(shown);
+  else if (isManager() && filters.showAll) today_ += '<div class="card empty">' + T('Không có buổi nào trong ngày này.', 'No sessions on this day.') + '</div>';
+  // Each tab carries its own count; a tab with nothing in it is not shown.
+  const ladderHtml = ladderBlock(week), owedHtml = owedBlock(week), workHtml = (isManager() && filters.showAll ? '' : dutyBlock(week)) + returnsBlock(week), taskHtml = myTaskBlock(week);
+  const count = html => (html.match(/class="card row/g) || []).length;
+  secs.push({ k: 'homnay', label: T('Hôm nay', 'Today'), html: today_, n: (today_.match(/class="card row alert/g) || []).length, hot: /class="card row alert/.test(today_) });
+  if (ladderHtml) secs.push({ k: 'phat', label: T('Phạt & phụ huynh', 'Penalties & parents'), html: ladderHtml, n: typeof ladderTodo === 'function' ? ladderTodo(week) : count(ladderHtml), hot: /class="card row lad[^"]*late/.test(ladderHtml) });
+  if (owedHtml) secs.push({ k: 'baino', label: T('Bài nợ IELTS/FIGHTER', 'IELTS/FIGHTER owed'), html: owedHtml, n: count(owedHtml) });
+  if (workHtml) secs.push({ k: 'lamviec', label: T('Lịch làm & trả bài', 'Rota & returns'), html: workHtml, n: count(workHtml) });
+  if (taskHtml) secs.push({ k: 'task', label: 'Important Task', html: taskHtml, n: (taskHtml.match(/data-act="task"/g) || []).length });
+  const live = secs.filter(x => x.html), pick = live.find(x => x.k === filters.sec) || live[0];
+  if (live.length > 1) h += '<div class="sectabs" role="tablist">' + live.map(x => '<button role="tab" class="' + (x === pick ? 'on' : '') + (x.hot ? ' hot' : '') + '" data-act="sec" data-v="' + x.k + '">' + esc(x.label) + (x.n ? '<i>' + x.n + '</i>' : '') + '</button>').join('') + '</div>';
+  if (pick && pick.html) h += pick.html;
+  else h += '<div class="card empty">' + T('Hôm nay bạn không có lớp hay việc nào.', 'Nothing for you on this day.') + '</div>';
   return h;
 }
 
@@ -1109,6 +1117,7 @@ document.addEventListener('click', e => {
   if (act === 'day') { day = Q.addDays(day, Number(b.dataset.n)); render(); guarded(() => view === 'dieuhanh' ? loadPanel() : weekOf(day)); }
   if (act === 'today') { day = today(); render(); guarded(() => weekOf(day)); }
   if (act === 'scope') { filters.showAll = Boolean(v); render(); }
+  if (act === 'sec') { filters.sec = v; render(); window.scrollTo(0, 0); }
   if (act === 'kind') { filters.kind = v; render(); }
   if (act === 'back') { view = 'lich'; current = null; render(); }
   if (act === 'llOpen') { view = 'lenlop'; document.body.classList.add('lenlop'); render(); }
