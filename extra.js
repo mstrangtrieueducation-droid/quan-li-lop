@@ -22,8 +22,23 @@ function caPair(rows, d, person, kind) {
   const first = list[0], last = list[list.length - 1];
   return { first, status: last.status, by: last !== first ? last.by : '', decided: last !== first ? last : null };
 }
+// Owner 07/11: TAs and managers are due at the centre by the rota: Mon–Fri 15:30; Sat and Sun morning 8:45;
+// Saturday afternoon 14:30, Sunday afternoon 13:30. Morning or afternoon comes from the rota note ("sáng"/"chiều"),
+// else from the time of the press (before noon = morning). A class that starts earlier still sets an earlier time.
+const ROTA_DUE = { week: 15 * 60 + 30, am: 8 * 60 + 45, sat: 14 * 60 + 30, sun: 13 * 60 + 30 };
+function rotaDue(week, d) {
+  if (!me || isOwner()) return null;
+  const x = dutyOf(week, d), mine = x && x.work.find(p => isMe(p.name));
+  if (!(isManager() || mine || (!x && /^TA$/i.test(Q.clean(me.role))))) return null;
+  const wd = new Date(d + 'T12:00:00').getDay();
+  if (wd >= 1 && wd <= 5) return ROTA_DUE.week;
+  const note = Q.key(mine ? mine.note : ''), pm = wd === 6 ? ROTA_DUE.sat : ROTA_DUE.sun;
+  if (/SANG|CA NGAY/.test(note)) return ROTA_DUE.am;
+  if (/CHIEU/.test(note)) return pm;
+  return d === today() && minutesNow() >= 12 * 60 ? pm : ROTA_DUE.am;
+}
 function myDue(week, d) {
-  let due = null;
+  let due = rotaDue(week, d);
   (week ? week.data.sessions : []).filter(s => s.day === d && !s.off).forEach(s => Q.staffOf(s).forEach(p => { if (isMe(p.name) && (due === null || p.due < due)) due = p.due; }));
   return due;
 }
@@ -605,3 +620,126 @@ function ladderTodo(week) {
   if (!ladder.rows) return 0;
   return ladder.rows.filter(r => (isManager() || isTaSide(week) || isMe(homeroom[Q.key(r.cls)] || '')) && !contactDone(r, contactRule(r))).length;
 }
+
+/* ---------- Notification bell (owner 07/11): what needs me now, each line opens the right place ----------
+ * Built from what the app already reads; refreshed every 3 minutes while the app is open. */
+const bell = { open: false, busy: false, seen: new Set(), first: true };
+function bellItems() {
+  if (!me) return [];
+  const saved = day, out = [], now = minutesNow(), t = today();
+  day = t;
+  try {
+    const week = weeks[Q.weekTab(tabs, t)] || null;
+    const add = (k, icon, text, n, hot, go) => out.push({ k, icon, text, n: n || 1, hot: !!hot, go });
+    if (week) {
+      const alerts = (alertsBlock(week).match(/class="card row alert/g) || []).length;
+      if (alerts) add('alert', '🚨', alerts + T(' lớp hôm nay chưa rõ điểm danh', ' classes with open attendance'), alerts, true, { view: 'lich', sec: 'homnay' });
+    }
+    // My own check-in.
+    if (!isOwner() && ca.rows) {
+      const due = myDue(week, t), vin = caPair(ca.rows, t, me.name, 'Vào ca'), vout = caPair(ca.rows, t, me.name, 'Ra ca');
+      if (!vin && due !== null && now >= due - 15) add('in', '📍', T('Bạn chưa bấm Vào ca (có mặt trước ', 'Not checked in yet (due ') + Q.clock(due) + ')', 1, now > due, { view: 'lich', sec: 'homnay' });
+      if (vin && vin.status === 'Không duyệt') add('inno', '📍', T('Vào ca hôm nay không được duyệt', 'Check-in today was not approved'), 1, true, { view: 'lich', sec: 'homnay' });
+      if (vin && !vout && isPartTime(me.name) && now >= 20 * 60) add('out', '🕘', T('Về nhớ bấm Ra ca để tính giờ', 'Check out before you leave'), 1, false, { view: 'lich', sec: 'homnay' });
+    }
+    // Managers: check-ins waiting for a decision (not their own).
+    if (isManager() && ca.all) {
+      const keys = new Set(ca.all.filter(r => r.day === t && !sameName(r.person, me.name)).map(r => Q.key(r.person) + '|' + r.kind));
+      const waiting = [...keys].filter(k => { const [p, kind] = k.split('|'), x = caPair(ca.all, t, ca.all.find(r => Q.key(r.person) === p).person, kind); return x && x.status === 'Chờ duyệt'; }).length;
+      if (waiting) add('wait', '✅', waiting + T(' lượt vào ca chờ duyệt', ' check-ins to approve'), waiting, false, { view: 'dieuhanh', panel: 'ca' });
+    }
+    // Parents to message or call (penalty ladder).
+    if (ladder.rows) {
+      const mine = r => isManager() || isTaSide(week) || isMe(homeroom[Q.key(r.cls)] || '');
+      const todo = ladder.rows.filter(r => mine(r)).map(r => ({ r, rule: contactRule(r) })).filter(x => !contactDone(x.r, x.rule));
+      const late = todo.filter(x => t > x.rule.due && (viToIso(x.r.since) || t) >= CONTACT_START).length, mineToo = todo.filter(x => canContact(x.r, x.rule)).length;
+      if (todo.length) add('lad', '📞', todo.length + T(' phụ huynh cần nhắn / gọi', ' parents to contact') + (late ? T(' · ' + late + ' quá hạn', ' · ' + late + ' overdue') : '') + (mineToo && mineToo < todo.length ? T(' (' + mineToo + ' việc của bạn)', ' (' + mineToo + ' yours)') : ''), todo.length, late > 0, { view: 'lich', sec: 'phat' });
+    }
+    if (week) {
+      // Important Task due today or overdue.
+      const tasks = week.data.tasks.map(x => Object.assign({}, x, { ta: staffNow(x.ta, x.cls) })).filter(x => !x.done && (isMe(x.teacher) || isMe(x.ta)));
+      const dueOf = x => isMe(x.teacher) ? x.gradeDue : x.returnDue, over = tasks.filter(x => dueOf(x) && dueOf(x) < t).length, now_ = tasks.filter(x => dueOf(x) === t).length;
+      if (over) add('tlate', '⏰', over + T(' Important Task quá hạn', ' important tasks overdue'), over, true, { view: 'lich', sec: 'task' });
+      if (now_) add('ttoday', '📝', now_ + T(' Important Task đến hạn hôm nay', ' important tasks due today'), now_, false, { view: 'lich', sec: 'task' });
+      // Homework returns that are mine today.
+      const last = Q.key(me.name).split(' ').pop(), ret = (week.data.returns || []).filter(x => x.day === t && !x.done && Q.key(x.who) === last).length;
+      if (ret) add('ret', '📚', ret + T(' lớp cần trả BTVN hôm nay', ' homework returns today'), ret, now >= 21 * 60, { view: 'lich', sec: 'lamviec' });
+    }
+    // Payroll days 8 to 10.
+    const dm = Number(t.slice(8, 10));
+    if (dm >= 8 && dm <= 10) {
+      payNoticeBlock();
+      if (payNudge && isOwner()) {
+        const rows = payNudge.rows || [], left = rows.filter(r => r.person && !(r.state && r.state.check && !r.state.check.stale)).length, wrong = rows.filter(r => r.state && r.state.check && r.state.check.action === 'Báo sai').length;
+        if (wrong) add('pwrong', '💰', wrong + T(' người báo sai lương', ' payslips reported wrong'), wrong, true, { view: 'luong' });
+        if (left) add('pleft', '💰', left + T(' người chưa xác nhận lương', ' payslips not confirmed'), 1, false, { view: 'luong' });
+      } else if (payNudge && payNudge.slip) {
+        const c = payNudge.state && payNudge.state.check;
+        if ((!c || c.stale) && t <= payNudge.dates.check) add('pay', '💰', T('Bảng lương đã có, xác nhận trước ' + viDate(payNudge.dates.check), 'Payslip ready, please confirm'), 1, t === payNudge.dates.check, { view: 'luong' });
+      }
+    }
+  } catch (e) { /* the bell never breaks the page */ }
+  finally { day = saved; }
+  return out;
+}
+function paintBell() {
+  const b = document.getElementById('btnBell');
+  if (!b || !me) return;
+  const items = bellItems(), n = items.reduce((s, x) => s + x.n, 0), hot = items.some(x => x.hot);
+  b.innerHTML = '🔔' + (n ? '<i class="' + (hot ? 'hot' : '') + '">' + (n > 99 ? '99+' : n) + '</i>' : '');
+  b.setAttribute('aria-label', T('Thông báo: ', 'Notifications: ') + n);
+  b.classList.toggle('ring', hot);
+  try { document.title = (n ? '(' + n + ') ' : '') + T('Quản lí lớp', 'Class manager'); } catch (e) {}
+  let p = document.getElementById('bellPanel');
+  if (!bell.open) { if (p) p.remove(); return; }
+  if (!p) { p = document.createElement('div'); p.id = 'bellPanel'; document.body.appendChild(p); }
+  const ask = 'Notification' in window && Notification.permission === 'default';
+  p.innerHTML = '<div class="bell-veil" data-act="bell"></div><div class="bell-box" role="dialog" aria-label="' + T('Thông báo', 'Notifications') + '"><div class="row-top"><b>🔔 ' + T('Thông báo', 'Notifications') + '</b><span class="spacer"></span><button class="quiet" data-act="bell">' + T('Đóng', 'Close') + '</button></div>' +
+    (items.length ? items.map((x, i) => '<button class="bell-item' + (x.hot ? ' hot' : '') + '" data-act="bellGo" data-i="' + i + '"><span>' + x.icon + '</span><span>' + esc(x.text) + '</span><span class="muted">›</span></button>').join('')
+      : '<div class="small muted">' + T('Không có việc gì cần bạn lúc này.', 'Nothing needs you right now.') + '</div>') +
+    (ask ? '<button class="quiet small" data-act="bellAsk">' + T('Báo cả khi app chạy nền (máy tính)', 'Notify me in the background (computer)') + '</button>' : '') +
+    '<div class="small muted">' + T('Tự cập nhật 3 phút một lần khi app đang mở.', 'Updates every 3 minutes while the app is open.') + '</div></div>';
+}
+// A new urgent line while the app is in the background shows a computer notification, once per line per day.
+function bellNotify() {
+  const items = bellItems().filter(x => x.hot), fresh = items.filter(x => !bell.seen.has(today() + x.k + x.n));
+  items.forEach(x => bell.seen.add(today() + x.k + x.n));
+  if (bell.first) { bell.first = false; return; }
+  if (!fresh.length || !document.hidden || !('Notification' in window) || Notification.permission !== 'granted') return;
+  try { new Notification(T('Quản lí lớp', 'Class manager'), { body: fresh.map(x => x.text).join('\n'), icon: 'logo.png', tag: 'ql-bell' }); } catch (e) {}
+}
+async function bellRefresh() {
+  if (!me || bell.busy) return;
+  bell.busy = true;
+  try {
+    const week = weeks[Q.weekTab(tabs, today())] || null, jobs = [];
+    // My check-in is read again only while it can still change (not in yet, or a part-time TA not out yet).
+    if (!isOwner() && (!ca.rows || !caPair(ca.rows, today(), me.name, 'Vào ca') || (isPartTime(me.name) && !caPair(ca.rows, today(), me.name, 'Ra ca')))) jobs.push(loadCa(true));
+    if (isManager()) jobs.push(loadCaAll(true));
+    if (isManager() || isTaSide(week) || Object.values(homeroom).some(n => isMe(n))) jobs.push(loadLadder(Date.now() - ladder.at > 600000));
+    if (view !== 'lich' && week) { const saved = day; day = today(); const need = alertSessions(week).length; day = saved; if (need) jobs.push(loadMarks(true).then(() => { const s = day; day = today(); return loadAlerts().finally(() => { day = s; }); })); }
+    await Promise.all(jobs.map(j => j.catch(() => {})));
+  } finally { bell.busy = false; }
+  render();
+  bellNotify();
+}
+const renderBeforeBell = render;
+render = function () { renderBeforeBell(); paintBell(); };
+setTimeout(function tick() { bellRefresh().catch(() => {}); setTimeout(tick, document.hidden ? 300000 : 180000); }, 8000);
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  if (b.dataset.act === 'bell') { bell.open = !bell.open; paintBell(); }
+  if (b.dataset.act === 'bellAsk') { try { Notification.requestPermission().then(paintBell); } catch (e) {} }
+  if (b.dataset.act === 'bellGo') {
+    const x = bellItems()[Number(b.dataset.i)];
+    bell.open = false;
+    if (!x) return paintBell();
+    day = today(); view = x.go.view;
+    if (x.go.sec) filters.sec = x.go.sec;
+    if (x.go.panel) { panel = x.go.panel; filters.person = ''; }
+    if (view === 'lich' && isManager()) filters.showAll = false;
+    render(); window.scrollTo(0, 0);
+    if (view === 'dieuhanh') guarded(loadPanel); else if (view === 'lich') guarded(() => weekOf(day));
+  }
+});
