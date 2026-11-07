@@ -1065,10 +1065,10 @@ async function loadPay(month, force) {
   return (payCache[month] = { at: Date.now(), entries: wanted.flatMap(t => weeks[t].pay), marking: Q.parseMarking(data[data.length - 1]).filter(x => x.day.startsWith(month)) });
 }
 function viewPay() {
-  const month = filters.payMonth, hit = payCache[month], who = isManager() && filters.payPerson ? filters.payPerson : me.name;
+  const month = filters.payMonth, hit = payCache[month], who = isOwner() && filters.payPerson ? filters.payPerson : me.name; // owner 07/11: managers do not see other people's pay or hours
   const names = hit ? [...new Set(hit.entries.filter(e => e.count).map(e => e.person).concat(hit.marking.map(x => x.person)))].sort((a, b) => a.localeCompare(b, 'vi')) : [];
   let h = '<div class="filters"><input type="month" data-act="filter" data-k="payMonth" value="' + esc(month) + '" aria-label="' + T('Tháng', 'Month') + '">' +
-    (isManager() ? '<select data-act="filter" data-k="payPerson" aria-label="Người"><option value="">' + esc(me.name) + '</option>' + names.filter(n => n !== Q.key(me.name)).map(n => '<option' + (n === filters.payPerson ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select>' : '') + '</div>';
+    (isOwner() ? '<select data-act="filter" data-k="payPerson" aria-label="Người"><option value="">' + esc(me.name) + '</option>' + names.filter(n => n !== Q.key(me.name)).map(n => '<option' + (n === filters.payPerson ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select>' : '') + '</div>';
   if (!hit) return h + '<div class="card empty">' + T('Đang đọc lịch của tháng…', 'Reading the month…') + '</div>';
   const pay = Q.payOf(hit.entries, who, month, today()), marking = hit.marking.filter(x => x.person === Q.key(who));
   if (!pay.rows.length && !marking.length && !pay.duty) return h + '<div class="card empty">' + T('Tháng này chưa có buổi nào của ', 'No sessions this month for ') + esc(who) + '.</div>';
