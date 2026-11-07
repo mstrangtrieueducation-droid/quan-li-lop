@@ -535,7 +535,9 @@ async function loadHomeroom() {
   keep('homeroom', { rows, at: Date.now() });
   setHomeroom(rows);
 }
-const cmOf = s => homeroom[Q.key(s.cls)] || staffNow(s.ta, s.cls);
+// Owner 07/11: THU HIEN is the homeroom of every IELTS and FIGHTER class; an invigilator in the session row still opens the class.
+const BLOCK_CM = [[/^FIGHTERs/i, 'THU HIEN'], [/^IELTSs/i, 'THU HIEN']];
+const cmOf = s => homeroom[Q.key(s.cls)] || (BLOCK_CM.find(([re]) => re.test(Q.clean(s.cls))) || [])[1] || staffNow(s.ta, s.cls);
 const dutyOf = (week, d) => (week && week.data.duty && week.data.duty.days[d]) || null;
 const onDuty = (week, d) => { const x = dutyOf(week, d); return !!x && x.work.some(p => isMe(p.name)); };
 // Sessions this person stands in front of: teacher or video, never homeroom duty.
