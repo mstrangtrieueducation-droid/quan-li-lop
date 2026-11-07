@@ -168,20 +168,49 @@
   .ll-title { flex: 1; min-width: 0; display: grid; }
   .ll-title b { font-size: 20px; line-height: 1.2; }
   .ll-title span { color: var(--muted, #667); font-size: 14px; }
-  .ll-list { display: grid; gap: 4px; grid-auto-rows: minmax(52px, 1fr); }
-  .ll-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 48px 64px; gap: 4px; align-items: stretch; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 3px; touch-action: manipulation; }
-  .ll-row.top { background: var(--warn-soft); border-color: var(--warn); }
-  .ll-row.off { grid-template-columns: minmax(0, 1fr) auto 64px; background: var(--bad-soft); border-color: var(--bad); }
-  .ll-row button { min-height: 44px; padding: 0 6px; border-radius: 9px; }
-  .ll-main { display: flex; align-items: center; gap: 8px; text-align: left; border: 0; background: transparent; min-width: 0; font-weight: 700; }
-  .ll-main:active:not(:disabled) { background: var(--brand-soft); }
-  .ll-rank { width: 30px; flex: none; text-align: center; font-size: 20px; }
-  .ll-name { font-size: clamp(17px, 2.6vw, 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ll-row.off .ll-name { color: var(--bad); text-decoration: line-through; }
-  .ll-count { min-width: 66px; font-size: 19px; font-weight: 700; }
-  .ll-minus { font-size: 22px; font-weight: 700; }
-  .ll-absent { font-size: 14px; font-weight: 600; }
-  .ll-off { align-self: center; color: var(--bad); font-weight: 700; padding: 0 6px; }
+  .checkin .big, button.big { min-height: 54px; font-size: 18px; font-weight: 800; border-radius: 12px; }
+  .kpi .krow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 14px; padding: 2px 0; }
+  .kbar { display: inline-block; width: 90px; height: 8px; border-radius: 6px; background: var(--soft); vertical-align: middle; overflow: hidden; }
+  .kbar i { display: block; height: 100%; background: var(--brand); border-radius: 6px; }
+  .kscore { font-size: 26px; font-weight: 800; } .kscore.ok { color: var(--ok); } .kscore.warn { color: var(--warn); } .kscore.bad { color: var(--bad); }
+  tr.strong td { font-weight: 800; } td.num { text-align: right; white-space: nowrap; }
+  .form-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+  .form-grid label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .card textarea, .form-grid input, .form-grid select { width: 100%; font-size: 15px; padding: 8px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  .owe-row .warn { color: var(--warn); } .owe-row .bad { color: var(--bad); }
+  .ll-podium { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+  .ll-podium span { background: var(--warn-soft); border: 1px solid var(--warn); border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 15px; white-space: nowrap; }
+  .ll-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+  .ll-tile { display: grid; grid-template-columns: minmax(0, 1fr) auto 92px; gap: 6px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 6px; min-height: 76px; touch-action: manipulation; }
+  .ll-tile.top { background: var(--warn-soft); border-color: var(--warn); }
+  .ll-tile.off { grid-template-columns: minmax(0, 1fr) auto; background: var(--bad-soft); border-color: var(--bad); }
+  .ll-namebtn { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; column-gap: 6px; text-align: left; border: 0; background: transparent; min-width: 0; min-height: 60px; padding: 2px 4px; border-radius: 10px; }
+  .ll-namebtn:active { background: var(--brand-soft); }
+  .ll-rank { text-align: center; font-size: 22px; font-weight: 700; color: var(--muted); }
+  .ll-name { font-size: clamp(18px, 2.4vw, 25px); font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ll-flags { grid-column: 2; display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
+  .ll-flags i { font-style: normal; font-size: 11px; font-weight: 600; color: var(--bad); background: var(--bad-soft); border-radius: 6px; padding: 1px 5px; }
+  .ll-flags i.n { color: var(--brand); background: var(--brand-soft); }
+  .ll-tile.off .ll-name { color: var(--bad); text-decoration: line-through; }
+  .ll-num { display: inline-block; font-size: 22px; font-weight: 800; min-width: 62px; text-align: right; }
+  .ll-plus { min-height: 64px; border-radius: 14px; font-size: 22px; font-weight: 800; border: 2px solid #e0a800; background: linear-gradient(180deg, #ffd84d, #f5b700); color: #4a3200; box-shadow: 0 3px 0 #c48f00; }
+  .ll-plus:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #c48f00; }
+  .ll-plus.check { background: var(--card); color: var(--muted); border-color: var(--line); box-shadow: none; }
+  .ll-plus.check.on { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+  .ll-off { color: var(--bad); font-weight: 700; padding: 0 8px; }
+  .fly-star, .fly-spark, .fly-plus { position: fixed; z-index: 60; pointer-events: none; font-size: 30px; line-height: 1; }
+  .fly-spark { font-size: 16px; color: #f5b700; }
+  .fly-plus { font-size: 22px; font-weight: 800; color: #c48f00; }
+  .ll-veil { position: fixed; inset: 0; background: rgba(10, 20, 40, .35); z-index: 40; }
+  .ll-sheet { position: fixed; z-index: 41; left: 50%; bottom: 0; transform: translateX(-50%); width: min(100%, 640px); background: var(--card); border-radius: 18px 18px 0 0; padding: 14px 16px 18px; display: grid; gap: 10px; box-shadow: 0 -8px 30px rgba(0,0,0,.2); }
+  .ll-sheet-name { font-size: 22px; }
+  .ll-sheet-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .ll-sheet-row button { min-height: 52px; padding: 0 16px; font-size: 16px; font-weight: 700; border-radius: 12px; }
+  .ll-sheet-row button.low { color: var(--bad); border-color: var(--bad); } .ll-sheet-row button.good { color: var(--ok); border-color: var(--ok); }
+  .ll-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ll-chips button { min-height: 46px; padding: 0 14px; border-radius: 999px; font-size: 15px; }
+  .ll-chips button.on { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); font-weight: 700; }
+  .ll-sheet textarea { width: 100%; font-size: 16px; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
   /* Class */
   .class-head { padding: 14px; display: grid; gap: 4px; }
   .class-head h1 { font-size: 20px; font-weight: 700; }
@@ -285,5 +314,6 @@
 <script src="config.js"></script>
 <script src="logic.js"></script>
 <script src="app.js"></script>
+<script src="extra.js"></script>
 </body>
 </html>
