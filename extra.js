@@ -1094,3 +1094,162 @@ staffPanel = function (week) {
       (status ? '<input type="text" placeholder="Ghi chú" aria-label="Ghi chú" data-act="staffField" data-field="note" data-row="' + r.s.row + '" data-p="' + esc(r.p.name) + '" value="' + esc(o.note) + '">' : '') + '</div></div>';
   }).join('') + '</div>';
 };
+
+/* ---------- Lesson report deadline (owner 07/11: the homeroom reports every lesson of their class, due the day after the lesson) ----------
+ * KIDS classes only: their sheets have the "Nhận xét buổi học" report on the BÁO CÁO tab (same tab id in every KIDS sheet).
+ * The homeroom makes the report there, sends it, then taps "Đã report" here; the tap is a row in BAO_CAO_TIET.
+ * Counting starts with lessons on REPORT_START, so older lessons are never shown as overdue. */
+const REPORT_START = '2026-11-07', REPORT_GID = 21002610, REPORT_DONE = 'Đã report', REPORT_UNDO = 'Bỏ report';
+const reportCm = s => /^KIDS\s*\d+$/i.test(Q.clean(s.cls)) ? homeroom[Q.key(s.cls)] || '' : '';
+const reportLink = s => { const c = classOf(s); return c && c.tracker ? 'https://docs.google.com/spreadsheets/d/' + encodeURIComponent(c.tracker) + '/edit#gid=' + REPORT_GID : ''; };
+const rp = { tried: 0, loading: false };
+function ensureReportData(force) {
+  if (rp.loading || (!force && Date.now() - rp.tried < 60000)) return;
+  rp.tried = Date.now(); rp.loading = true;
+  Promise.all([loadReports(force), weekOf(today()), weekOf(Q.addDays(today(), -7)), loadHomeroom()].map(p => Promise.resolve(p).catch(() => null)))
+    .finally(() => { rp.loading = false; render(); });
+}
+// One line per lesson that needs a report; who: '' = everyone (managers), else only that homeroom.
+function reportItems(who) {
+  const t = today(), now = minutesNow(), seen = new Set(), out = [];
+  const rows = reports.rows || [];
+  Object.values(weeks).forEach(w => (w.data.sessions || []).forEach(s => {
+    if (s.off || isGroup(s) || s.day < REPORT_START || s.day > t || (s.day === t && s.end > now)) return;
+    const cm = reportCm(s);
+    if (!cm || (who && !sameName(cm, who))) return;
+    const k = Q.sessionKey(s);
+    if (seen.has(k)) return;
+    seen.add(k);
+    const mine = rows.filter(r => r.day === s.day && Q.key(r.cls) === Q.key(s.cls) && String(r.lesson) === String(s.lesson));
+    const last = mine[mine.length - 1], done = last && Q.clean(last.text) !== REPORT_UNDO ? mine.find(r => Q.clean(r.text) !== REPORT_UNDO) : null;
+    const due = Q.addDays(s.day, 1), doneDay = done ? viToIso(done.at) : '';
+    const state = done ? (doneDay && doneDay > due ? 'late' : 'ok') : t > due ? 'over' : t === due ? 'today' : 'soon';
+    out.push({ s, cm, due, done, state, k, days: t > due ? Math.round((new Date(t + 'T12:00:00') - new Date(due + 'T12:00:00')) / 86400000) : 0 });
+  }));
+  const rank = { over: 0, today: 1, soon: 2, late: 3, ok: 4 };
+  return out.sort((a, b) => rank[a.state] - rank[b.state] || (a.s.day + Q.clock(a.s.start)).localeCompare(b.s.day + Q.clock(b.s.start)));
+}
+const canReport = x => isManager() || isMe(x.cm);
+function reportChip(x) {
+  if (x.state === 'ok') return '<span class="tag ok">✓ ' + T('Đã report ', 'Reported ') + esc(String(x.done.at).slice(0, 5) + ' ' + String(x.done.at).slice(11, 16)) + '</span>';
+  if (x.state === 'late') return '<span class="tag warn">' + T('Report muộn ', 'Late ') + esc(String(x.done.at).slice(0, 5)) + '</span>';
+  if (x.state === 'over') return '<span class="tag bad">' + T('Quá hạn ', 'Overdue ') + x.days + T(' ngày', ' d') + ' (' + T('hạn ', 'due ') + esc(viDate(x.due).slice(0, 5)) + ')</span>';
+  if (x.state === 'today') return '<span class="tag warn">' + T('Hạn hôm nay, trước 23:59', 'Due today by 23:59') + '</span>';
+  return '<span class="tag">' + T('Hạn ', 'Due ') + esc(dayLabel(x.due)) + '</span>';
+}
+function reportRow(x, showCm) {
+  const s = x.s, link = reportLink(s), open = x.state !== 'ok' && x.state !== 'late';
+  return '<div class="rp-row ' + x.state + '"><div class="rp-what"><b>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</b><span class="small muted">' + esc(dayLabel(s.day)) + ' ' + Q.clock(s.start) + (showCm ? ' · CN ' + esc(x.cm) : '') + (x.done && x.done.by ? ' · ' + esc(x.done.by) : '') + '</span></div>' + reportChip(x) +
+    '<span class="spacer"></span>' + (link && open ? '<a class="btn quiet" href="' + esc(link) + '" target="_blank" rel="noopener">' + T('Mở BÁO CÁO', 'Open report tab') + '</a>' : '') +
+    (canReport(x) ? (open ? '<button class="good" data-act="rpDone" data-k="' + esc(x.k) + '">' + T('Đã report ✓', 'Mark reported') + '</button>' : '<button class="quiet small" data-act="rpUndo" data-k="' + esc(x.k) + '">' + T('Bỏ', 'Undo') + '</button>') : '') + '</div>';
+}
+function reportSection() {
+  ensureReportData();
+  const all = reportItems(isManager() ? '' : me.name), head = '<div class="part p-1"><h2>' + T('Report tiết học', 'Lesson reports') + '</h2><span>' + T('Hạn: hết ngày hôm sau ngày học', 'Due: end of the day after the lesson') + '</span></div>';
+  const how = '<div class="small muted">' + T('Mở tab BÁO CÁO của lớp, chọn "Nhận xét buổi học", điền ngày học, dán nhận xét GV, tick B8, gửi phụ huynh, rồi bấm "Đã report ✓" ở đây.', 'Open the class BÁO CÁO tab, make the lesson report, send it, then tap "Mark reported".') + '</div>';
+  if (!reports.rows) return head + '<div class="card empty">' + T('Đang đọc…', 'Reading…') + '</div>';
+  if (!all.length) return head + how + '<div class="card empty">' + T('Chưa có tiết nào cần report (tính từ ' + viDate(REPORT_START) + ').', 'No lesson to report yet.') + '</div>';
+  const recent = all.filter(x => x.state !== 'ok' || x.s.day >= Q.addDays(today(), -3));
+  const count = st => all.filter(x => x.state === st).length;
+  let h = head + how + '<div class="count">' + (count('over') ? '<span class="tag bad">' + count('over') + T(' quá hạn', ' overdue') + '</span>' : '') + (count('today') ? '<span class="tag warn">' + count('today') + T(' hạn hôm nay', ' due today') + '</span>' : '') + (count('soon') ? '<span class="tag">' + count('soon') + T(' hạn mai', ' due tomorrow') + '</span>' : '') + '<span class="tag ok">' + (count('ok') + count('late')) + T(' đã report', ' reported') + '</span></div>';
+  if (isManager()) {
+    const by = new Map();
+    recent.forEach(x => { const k = Q.key(x.cm); if (!by.has(k)) by.set(k, { cm: x.cm, list: [] }); by.get(k).list.push(x); });
+    h += [...by.values()].sort((a, b) => b.list.filter(x => x.state === 'over').length - a.list.filter(x => x.state === 'over').length || a.cm.localeCompare(b.cm, 'vi')).map(g => {
+      const over = g.list.filter(x => x.state === 'over').length;
+      return '<div class="card row"><div class="row-top"><b>' + esc(g.cm) + '</b>' + (over ? '<span class="tag bad">' + over + T(' quá hạn', ' overdue') + '</span>' : '<span class="tag ok">' + T('Đúng hạn', 'On time') + '</span>') + '</div>' + g.list.map(x => reportRow(x, false)).join('') + '</div>';
+    }).join('');
+  } else h += '<div class="card row">' + recent.map(x => reportRow(x, false)).join('') + '</div>';
+  return h;
+}
+function reportTick(k, undo) {
+  const x = reportItems('').find(y => y.k === k);
+  if (!x || !canReport(x)) return;
+  const row = [stamp(), x.s.day, x.s.cls, String(x.s.lesson), undo ? REPORT_UNDO : REPORT_DONE, me.name];
+  reports.rows = reports.rows || [];
+  reports.rows.push({ at: row[0], day: row[1], cls: row[2], lesson: row[3], text: row[4], by: row[5] });
+  queue({ kind: 'append', file: CONFIG.quanLiId, tab: 'BAO_CAO_TIET', row });
+  render();
+  if (!undo) say(T('Đã ghi report ', 'Reported ') + x.s.cls + T(' tiết ', ' lesson ') + x.s.lesson + '.');
+}
+const isCm = () => !!me && Object.values(homeroom).some(n => isMe(n));
+// Homeroom page: lesson reports first, then the web homework still owed.
+const viewHomeroomsBeforeRp = viewHomerooms;
+viewHomerooms = function () {
+  const owed = viewHomeroomsBeforeRp().replace('<h2>' + T('Lớp chủ nhiệm', 'Homeroom classes') + '</h2>', '<div class="part p-2"><h2>' + T('Bài web học sinh còn nợ', 'Web homework still owed') + '</h2></div>');
+  return '<h2>' + T('Lớp chủ nhiệm', 'Homeroom classes') + '</h2>' + (isManager() || isCm() ? reportSection() : '') + owed;
+};
+// The bell: my lessons to report; the owner and managers also see overdue ones across homerooms.
+const bellItemsBeforeRp = bellItems;
+bellItems = function () {
+  const out = bellItemsBeforeRp();
+  try {
+    if (!me || isBoard() || !reports.rows) return out;
+    const mine = isCm() ? reportItems(me.name).filter(x => x.state === 'over' || x.state === 'today') : [];
+    if (mine.length) { const over = mine.filter(x => x.state === 'over').length; out.push({ k: 'rp', icon: '📝', text: mine.length + T(' tiết cần report', ' lessons to report') + (over ? T(' · ' + over + ' quá hạn', ' · ' + over + ' overdue') : T(' (hạn hôm nay)', ' (due today)')), n: mine.length, hot: over > 0 || minutesNow() >= 20 * 60, go: { view: 'lopcn' } }); }
+    if (isManager()) { const others = reportItems('').filter(x => x.state === 'over' && !isMe(x.cm)).length; if (others) out.push({ k: 'rpall', icon: '📝', text: others + T(' tiết chủ nhiệm quá hạn report', ' homeroom reports overdue'), n: others, hot: false, go: { view: 'lopcn' } }); }
+  } catch (e) {}
+  return out;
+};
+setInterval(() => { if (me && !isBoard() && (isCm() || isManager())) ensureReportData(true); }, 300000);
+setTimeout(() => { if (me && !isBoard() && (isCm() || isManager())) ensureReportData(); }, 6000);
+
+/* ---------- "Việc cần làm" on the schedule page (owner 07/11: the homeroom and TA layout must be clear) ----------
+ * One list at the top of today: everything that needs me, with its deadline and a button to the place. The tabs below stay for detail. */
+function todoCard() {
+  if (!me || isBoard() || day !== today()) return '';
+  const items = bellItems().map((x, i) => Object.assign({ i }, x)).filter(x => !['in', 'inno', 'out', 'rp'].includes(x.k));
+  const reps = isCm() && reports.rows ? reportItems(me.name).filter(x => x.state === 'over' || x.state === 'today' || x.state === 'soon') : [];
+  if (!items.length && !reps.length) return '<div class="card row todo empty-todo"><b>✅ ' + T('Việc cần làm hôm nay', 'To do today') + '</b><span class="small muted">' + T('Chưa có việc nào cần bạn.', 'Nothing needs you right now.') + '</span></div>';
+  return '<div class="card row todo"><div class="row-top"><b>✅ ' + T('Việc cần làm hôm nay', 'To do today') + '</b><span class="small muted">' + (items.length + reps.length) + T(' việc', ' items') + '</span></div>' +
+    reps.map(x => '<div class="todo-item' + (x.state === 'over' ? ' hot' : '') + '"><span class="ico">📝</span><span class="txt">' + T('Report ', 'Report ') + esc(x.s.cls) + T(' tiết ', ' lesson ') + esc(x.s.lesson) + ' <span class="muted">(' + esc(viDate(x.s.day).slice(0, 5)) + ')</span></span>' + reportChip(x) +
+      (reportLink(x.s) ? '<a class="btn quiet" href="' + esc(reportLink(x.s)) + '" target="_blank" rel="noopener">' + T('Mở BÁO CÁO', 'Open') + '</a>' : '') + '<button class="good" data-act="rpDone" data-k="' + esc(x.k) + '">' + T('Đã report ✓', 'Done') + '</button></div>').join('') +
+    items.map(x => '<div class="todo-item' + (x.hot ? ' hot' : '') + '"><span class="ico">' + x.icon + '</span><span class="txt">' + esc(x.text) + '</span>' + (x.hot ? '<span class="tag bad">' + T('Làm ngay', 'Now') + '</span>' : '') + '<button class="quiet" data-act="bellGo" data-i="' + x.i + '">' + T('Mở ›', 'Open ›') + '</button></div>').join('') + '</div>';
+}
+const checkinBlockBeforeTodo = checkinBlock;
+checkinBlock = function (week) { return checkinBlockBeforeTodo(week) + todoCard(); };
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  if (b.dataset.act === 'rpDone') reportTick(b.dataset.k, false);
+  if (b.dataset.act === 'rpUndo') reportTick(b.dataset.k, true);
+});
+
+/* ---------- Penalty ladder by day (owner 07/11: "phạt hs mức nọ kia là hiển thị theo ngày") ----------
+ * The default view follows the day picked at the top: classes of that day in time order, each with its pupils, level and what to do.
+ * "Tất cả" lists everyone by the day they entered their level, newest first. */
+ladderBlock = function (week) {
+  if (!ladder.rows) { if (Date.now() - ladder.tried > 60000) { ladder.tried = Date.now(); setTimeout(() => loadLadder().then(render).catch(() => {}), 0); } return penaltyBlock(week); }
+  const dayCls = new Map();
+  (week ? week.data.sessions : []).filter(s => s.day === day && !s.off).forEach(s => { const k = Q.key(s.cls); if (!dayCls.has(k) || dayCls.get(k).start > s.start) dayCls.set(k, s); });
+  const mine = x => isManager() || isTaSide(week) || isMe(homeroom[Q.key(x.cls)] || '');
+  const list = ladder.rows.filter(mine).map(x => { const rule = contactRule(x), done = contactDone(x, rule); return { x, rule, done, late: !done && today() > rule.due && (viToIso(x.since) || today()) >= CONTACT_START, s: dayCls.get(Q.key(x.cls)), since: viToIso(x.since) }; });
+  if (!list.length) return '';
+  const todo = list.filter(l => !l.done).length, late = list.filter(l => l.late).length, onDay = list.filter(l => l.s);
+  const mode = ['ngay', 'can', 'tat'].includes(filters.lad) ? filters.lad : 'ngay';
+  let h = '<div class="part p-alert"><h2>' + T('Học sinh trong danh sách phạt', 'Pupils on the penalty ladder') + '</h2><span>' + list.length + T(' HS', ' pupils') + (late ? ' · ' + late + T(' quá hạn liên hệ', ' contact overdue') : '') + '</span></div>';
+  h += '<div class="chips">' + [['ngay', esc(dayLabel(day)) + ' · ' + onDay.length], ['can', T('Cần liên hệ PH', 'To contact') + ' · ' + todo], ['tat', T('Tất cả theo ngày vào mức', 'All, by date') + ' · ' + list.length]].map(([k, t]) => '<button class="' + (mode === k ? 'on' : '') + '" data-act="ladMode" data-v="' + k + '">' + t + '</button>').join('') + '</div>';
+  h += '<details class="card row lad-legend"><summary>' + T('Việc từng mức · nhắn tin hôm nay: ', 'What each level means · messages today: ') + '<b>' + (isFriday(today()) ? 'THUY TRANG' : T('quản lí', 'managers')) + '</b></summary>' + [1, 2, 3, 4, 5].map(l => '<div class="small"><span class="lvl l' + l + '">M' + l + '</span> ' + esc(LADDER_ACT[l]) + (l >= 4 ? T(' Hạn 2 ngày.', ' Within 2 days.') : '') + '</div>').join('') + '</details>';
+  const line = ({ x, rule, done, late }) => {
+    const m = x.name.match(/^(.*?)\s*\(([^)]+)\)\s*$/), eng = m ? m[2] : '', full = m ? m[1] : x.name;
+    return '<div class="lad lv' + x.level + (late ? ' late' : '') + '"><div class="lad-line"><span class="lvl l' + x.level + '">M' + x.level + '</span><b>' + esc(eng || full) + '</b>' + (mode !== 'tat' && x.since ? '<span class="small muted">' + T('từ ', 'since ') + esc(String(x.since).slice(0, 5)) + '</span>' : '') +
+      (done ? '<span class="tag ok">✓ ' + esc(rule.action.replace('Đã ', '')) + ' · ' + esc(done.by) + '</span>' : '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Gọi', 'Call') : T('Nhắn', 'Message')) + ' · ' + esc(rule.who) + (rule.call ? ' · ' + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>') +
+      '<span class="spacer"></span>' + (!done && canContact(x, rule) ? '<button class="good" data-act="ladTick" data-cls="' + esc(x.cls) + '" data-name="' + esc(x.name) + '">' + esc(rule.action) + '</button>' : '') +
+      (x.level === 2 ? '<button class="quiet" data-act="ladCopy" data-cls="' + esc(x.cls) + '" data-name="' + esc(eng || full) + '">' + T('Bài chép', 'Copy text') + '</button>' : '') + '</div>' +
+      '<div class="small lad-do">' + esc(LADDER_ACT[x.level] || '') + '</div>' +
+      '<details class="lad-more"><summary>' + esc(x.reason || T('Chi tiết', 'Details')) + '</summary><div class="small">' + esc(full) + ' · ' + T('vào mức từ ', 'since ') + esc(x.since) + '</div>' + (x.owed.length ? '<div class="small muted">' + T('Còn nợ: ', 'Owes: ') + esc(x.owed.join('; ')) + '</div>' : '') + '</details></div>';
+  };
+  const groups = new Map(), add = (k, title, sort, l) => { if (!groups.has(k)) groups.set(k, { title, sort, items: [] }); groups.get(k).items.push(l); };
+  const shown = mode === 'ngay' ? onDay : mode === 'can' ? list.filter(l => !l.done) : list;
+  if (mode === 'tat') shown.forEach(l => add(l.since || '0', l.since ? T('Vào mức ngày ', 'Since ') + dayLabel(l.since) : T('Chưa rõ ngày', 'No date'), l.since || '0', l));
+  else shown.forEach(l => add(l.x.cls, '<b>' + esc(l.x.cls) + '</b>' + (l.s ? '<span class="tag">' + T('học ', 'class ') + Q.clock(l.s.start) + '</span>' : ''), l.s ? String(l.s.start).padStart(5, '0') : '99999' + l.x.cls, l));
+  if (!shown.length) return h + '<div class="card empty">' + (mode === 'ngay' ? T('Các lớp học ' + dayLabel(day) + ' không có học sinh nào trong danh sách phạt.', 'No pupil on the ladder in classes on this day.') : mode === 'can' ? T('Đã liên hệ phụ huynh đủ.', 'All parents contacted.') : T('Không có học sinh nào.', 'Nobody here.')) + '</div>' + (ladder.copy ? copySheet(ladder.copy) : '');
+  const ordered = [...groups.values()].sort((a, b) => mode === 'tat' ? b.sort.localeCompare(a.sort) : a.sort.localeCompare(b.sort, 'vi', { numeric: true }));
+  h += '<div class="grid">' + ordered.map(g => {
+    g.items.sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || b.late - a.late || b.x.level - a.x.level);
+    return '<div class="card row lad-class"><div class="row-top">' + (mode === 'tat' ? '<b>' + esc(g.title) + '</b>' : g.title) + '<span class="spacer"></span><span class="muted small">' + g.items.length + T(' HS', '') + '</span></div>' +
+      g.items.map(l => mode === 'tat' ? line(l).replace('<b>', '<b>' + esc(l.x.cls) + ' · ') : line(l)).join('') + '</div>';
+  }).join('') + '</div>';
+  if (ladder.copy) h += copySheet(ladder.copy);
+  return h;
+};
