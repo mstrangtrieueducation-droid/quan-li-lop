@@ -42,6 +42,9 @@ function caHours(rows, person, prefix) {
   });
   return { days: list, total, open, rejected, waiting };
 }
+// Owner 07/11: only part-time TAs check out (paid by the hour); everyone else only checks in.
+const PART_TIME_TA = ['PHUONG THANH', 'THU HIEN', 'HA PHUONG', 'BAO KHANH'];
+const isPartTime = name => PART_TIME_TA.some(n => sameName(n, name)) || Object.values(weeks).some(w => (w.pay || []).some(e => e.kind === 'Part-time' && sameName(e.person, name)));
 const caTag = st => '<span class="tag ' + (st === 'Tự duyệt' || st === 'Đã duyệt' ? 'ok' : st === 'Không duyệt' ? 'bad' : 'warn') + '">' + esc(st) + '</span>';
 function checkinBlock(week) {
   if (day !== today() || !me) return '';
@@ -53,9 +56,9 @@ function checkinBlock(week) {
   if (!ca.rows) return h + '<div class="small muted">' + T('Đang đọc…', 'Reading…') + '</div></div>';
   if (vin) h += '<div class="small">' + T('Vào ca ', 'In at ') + '<b>' + esc(vin.first.time) + '</b>' + (vin.first.late ? T(' · muộn ', ' · late ') + vin.first.late + T(' phút', ' min') : '') + ' ' + caTag(vin.status) + (vin.by ? ' <span class="muted">' + esc(vin.by) + '</span>' : '') + '</div>';
   if (vout) { const a = hm(vin && vin.first.time), b = hm(vout.first.time); h += '<div class="small">' + T('Ra ca ', 'Out at ') + '<b>' + esc(vout.first.time) + '</b> ' + caTag(vout.status) + (a != null && b > a ? ' · ' + T('làm ', 'worked ') + '<b>' + esc(Q.hoursText(b - a, lang)) + '</b>' : '') + '</div>'; }
-  else if (vin) h += '<div class="small muted">' + T('Về nhớ bấm Ra ca để tính giờ làm.', 'Press Check out when you leave so your hours count.') + '</div>';
+  else if (vin && isPartTime(me.name)) h += '<div class="small muted">' + T('Về nhớ bấm Ra ca để tính giờ làm.', 'Press Check out when you leave so your hours count.') + '</div>';
   if (!vin) h += '<button class="primary big" data-act="caIn"' + (ca.busy ? ' disabled' : '') + '>' + (ca.busy ? T('Đang lấy vị trí…', 'Getting location…') : T('📍 Vào ca', '📍 Check in')) + '</button>';
-  else if (!vout) h += '<button class="big" data-act="caOut"' + (ca.busy ? ' disabled' : '') + '>' + (ca.busy ? T('Đang lấy vị trí…', 'Getting location…') : T('Ra ca', 'Check out')) + '</button>';
+  else if (!vout && isPartTime(me.name)) h += '<button class="big" data-act="caOut"' + (ca.busy ? ' disabled' : '') + '>' + (ca.busy ? T('Đang lấy vị trí…', 'Getting location…') : T('Ra ca', 'Check out')) + '</button>';
   if (!ca.centres) h += '<div class="small muted">' + T('Cô Trang chưa đặt vị trí trung tâm, tạm thời quản lí chấm công như cũ.', 'The centre location is not set yet.') + '</div>';
   return h + '</div>';
 }
@@ -127,7 +130,7 @@ function caPanel(week) {
     return '<div class="small">' + esc(kind) + ' <b>' + esc(f.time) + '</b>' + (f.due ? T(' (phải có mặt ', ' (due ') + esc(f.due) + ')' : '') + (f.dist >= 0 ? ' · ' + f.dist + ' m' : '') + (f.note ? ' · ' + esc(f.note) : '') + ' ' + caTag(v.status) + (v.by ? ' <span class="muted">' + esc(v.by) + '</span>' : '') +
       (can ? ' <button class="quiet good" data-act="caDecide" data-v="Đã duyệt" data-day="' + esc(f.day) + '" data-p="' + esc(f.person) + '" data-kind="' + esc(kind) + '">' + T('Duyệt', 'Approve') + '</button><button class="quiet low" data-act="caDecide" data-v="Không duyệt" data-day="' + esc(f.day) + '" data-p="' + esc(f.person) + '" data-kind="' + esc(kind) + '">' + T('Không duyệt', 'Reject') + '</button>' : '') + '</div>';
   };
-  h += '<div class="list">' + list.map(x => { const hrs = isOwner() ? caHours(ca.all, x.p.name, day).total : 0; return '<div class="card row"><div class="row-top"><b>' + esc(x.p.name) + '</b>' + (hrs ? '<span class="tag ok">' + esc(Q.hoursText(hrs, lang)) + '</span>' : x.vin && !x.vout ? '<span class="tag warn">' + T('chưa ra ca', 'not out') + '</span>' : '') + (x.p.due !== null ? '<span class="muted small">' + T('Có mặt trước ', 'Due ') + Q.clock(x.p.due) + '</span>' : '<span class="muted small">' + T('Lịch TA', 'TA rota') + '</span>') + '</div>' +
+  h += '<div class="list">' + list.map(x => { const hrs = isOwner() ? caHours(ca.all, x.p.name, day).total : 0; return '<div class="card row"><div class="row-top"><b>' + esc(x.p.name) + '</b>' + (hrs ? '<span class="tag ok">' + esc(Q.hoursText(hrs, lang)) + '</span>' : x.vin && !x.vout && isPartTime(x.p.name) ? '<span class="tag warn">' + T('chưa ra ca', 'not out') + '</span>' : '') + (x.p.due !== null ? '<span class="muted small">' + T('Có mặt trước ', 'Due ') + Q.clock(x.p.due) + '</span>' : '<span class="muted small">' + T('Lịch TA', 'TA rota') + '</span>') + '</div>' +
     (x.vin ? line(x, x.vin, 'Vào ca') + line(x, x.vout, 'Ra ca') : '<div class="small muted">' + T('Chưa vào ca', 'Not checked in') + '</div>') + '</div>'; }).join('') + '</div>';
   const m = day.slice(0, 7), who = [...new Set(ca.all.filter(r => String(r.day).startsWith(m)).map(r => Q.clean(r.person).toUpperCase()))].sort((a, b) => a.localeCompare(b, 'vi'));
   // The month's hours per person are pay figures: owner only. Managers still approve each day's check-ins.
