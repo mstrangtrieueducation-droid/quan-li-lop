@@ -162,10 +162,18 @@ function slipCard(d) {
   if (d.locked) return '<div class="card empty">' + T('Bảng lương ' + monthName(d.month) + ' sẽ hiện ngày ' + viDate(d.dates.show) + '.', 'This month shows on ' + viDate(d.dates.show) + '.') + '</div>';
   if (d.ambiguous) return '<div class="card notice bad">' + T('Có nhiều dòng giống tên ' + esc(d.person) + ': ' + esc(d.ambiguous.join(', ')) + '. Cô Trang ghi tên đầy đủ trong bảng lương hoặc báo để tách tên.', 'Several rows match ' + esc(d.person) + '.') + '</div>';
   if (!d.slip) return '<div class="card empty">' + (d.tabs && d.tabs.length ? T('Chưa thấy dòng của ' + esc(d.person) + ' trong ' + esc(d.tabs.join(', ')) + '. Báo cô Trang giúp.', 'No row for you yet.') : T('Bảng lương ' + monthName(d.month) + ' chưa được lập (chưa có tab NVVN/GVNN của tháng).', 'This month has no payroll tab yet.')) + '</div>';
-  const s = d.slip, big = /CÒN LẠI|THỰC NHẬN|^TỔNG/i;
-  return '<div class="card class-head"><div class="small muted">' + esc(s.tab) + '</div><h1>' + esc(s.net || '—') + '</h1><div><b>' + esc(s.name) + '</b>' + (s.role ? ' · ' + esc(s.role) : '') + '</div></div>' +
-    '<div class="card table"><table><tbody>' + s.items.map(x => '<tr' + (big.test(x.label) ? ' class="strong"' : '') + '><td>' + esc(x.label) + '</td><td class="num">' + esc(x.value) + '</td></tr>').join('') + '</tbody></table></div>' +
-    (s.rules ? '<details class="card row"><summary>' + T('Cách tính của bạn (ghi chú trong bảng lương)', 'Your pay rules') + '</summary><div class="detail small">' + esc(s.rules) + '</div></details>' : '');
+  // Owner 07/11 "hiển thị đẹp hơn": income, deductions, then what is paid, in one language at a time.
+  const s = d.slip, isTotal = x => /^(TỔNG|CỘNG)/i.test(x.label), totals = s.items.map((x, i) => isTotal(x) ? i : -1).filter(i => i >= 0);
+  const cut1 = totals[0] != null ? totals[0] : s.items.length, cut2 = totals[1] != null ? totals[1] : s.items.length;
+  const income = s.items.slice(0, cut1 + 1), deduct = s.items.slice(cut1 + 1, cut2 + 1), paid = s.items.slice(cut2 + 1);
+  const label = l => { const words = String(l).split(' '); let k = 0; while (k < words.length && !/[a-z]/.test(words[k])) k++; const vi = words.slice(0, k).join(' ').trim(), en = words.slice(k).join(' ').replace(/^\(|\)$/g, '').trim(); const pick = lang === 'en' ? (en || vi) : (vi || en); return pick.charAt(0) + pick.slice(1).toLowerCase().replace(/\bielts\b/i, 'IELTS').replace(/\btncn\b/i, 'TNCN').replace(/\bbhxh\b/i, 'BHXH'); };
+  const row = x => '<div class="slip-row' + (isTotal(x) ? ' total' : '') + (/^0 đ$/.test(x.value) ? ' zero' : '') + '"><span>' + esc(label(x.label)) + '</span><b>' + esc(x.value) + '</b></div>';
+  const section = (title, list, cls) => list.length ? '<div class="slip-sec ' + cls + '"><h3>' + title + '</h3>' + list.map(row).join('') + '</div>' : '';
+  const net = paid.find(x => /CÒN LẠI/i.test(x.label)) || paid.find(x => /THỰC NHẬN/i.test(x.label)), rest = paid.filter(x => x !== net);
+  return '<div class="card slip"><div class="slip-head"><div><div class="small muted">' + esc(s.tab) + '</div><b class="slip-name">' + esc(s.name) + '</b>' + (s.role ? '<div class="small muted">' + esc(s.role) + '</div>' : '') + '</div>' +
+    '<div class="slip-net"><span>' + esc(net ? label(net.label) : T('Thực nhận', 'Net')) + '</span><b>' + esc(s.net || (net && net.value) || '—') + '</b>' + rest.map(x => '<small>' + esc(label(x.label)) + ': ' + esc(x.value) + '</small>').join('') + '</div></div>' +
+    '<div class="slip-grid">' + section(T('Thu nhập', 'Earnings'), income, 'in') + section(T('Khấu trừ', 'Deductions'), deduct, 'out') + '</div>' +
+    (s.rules ? '<details class="slip-rules"><summary>' + T('Cách tính lương của bạn', 'Your pay rules') + '</summary><ul>' + s.rules.split(/\n/).map(l => l.replace(/^\s*[-•]\s*/, '').trim()).filter(Boolean).map(l => '<li>' + esc(l) + '</li>').join('') + '</ul></details>' : '') + '</div>';
 }
 function payStateLine(st) {
   if (!st) return '';
