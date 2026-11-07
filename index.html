@@ -341,6 +341,19 @@
   .bell-box { position: fixed; z-index: 31; top: 56px; right: max(16px, calc(50vw - 584px)); width: min(380px, calc(100vw - 32px)); max-height: calc(100vh - 80px); overflow: auto; background: var(--card); color: var(--ink); border-radius: 14px; padding: 12px; display: grid; gap: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
   .bell-item { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; text-align: left; width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--soft); color: var(--ink); font-size: 14px; min-height: 44px; }
   .bell-item.hot { border-color: var(--bad); background: var(--bad-soft); }
+  .board-code { white-space: nowrap; font: 700 clamp(40px, 9vw, 64px)/1.1 system-ui, sans-serif; letter-spacing: .08em; color: var(--head); text-align: center; padding: 12px 0; font-variant-numeric: tabular-nums; }
+  :root[data-theme="dark"] .board-code { color: var(--ink); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .board-code { color: var(--ink); } }
+  .board-head { display: flex; align-items: center; gap: 16px; margin: 4px 0 12px; }
+  .board-clock { font: 700 44px/1 system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+  .board-list { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+  .board-cls { display: grid; gap: 6px; text-align: left; padding: 18px 20px; min-height: 120px; border-radius: 16px; border: 2px solid var(--line); background: var(--card); color: var(--ink); font-size: 16px; }
+  .board-cls b { font-size: 26px; }
+  .board-cls i { font-style: normal; font-weight: 700; color: var(--muted); }
+  .board-cls.now { border-color: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+  .board-cls.now i { color: var(--ok); font-size: 20px; }
+  .board-cls.later { opacity: .6; }
+  .board-cls.done { opacity: .8; }
 </style>
 </head>
 <body>
@@ -350,6 +363,8 @@
     <h1>Quản lí lớp</h1>
     <p id="loginText">Vui lòng mở app bằng link riêng quản lí đã gửi cho bạn.</p>
     <p id="loginMsg"></p>
+    <button class="big" data-act="boardStart">📺 Đây là màn hình lớp</button>
+    <div id="boardCode"></div>
     <button id="btnLangLogin" class="quiet">English</button>
   </div>
 </div>
