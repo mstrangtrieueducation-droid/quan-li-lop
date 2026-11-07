@@ -507,6 +507,8 @@ async function loadLadder(force) {
   outbox.filter(x => x.kind === 'append' && x.tab === 'LIEN_HE_PH').forEach(x => ladder.contacts.push(contactOf(x.row)));
   ladder.at = Date.now();
 }
+// Ticks began on 07/11: a level entered earlier may have been handled outside the app, so it is never shown as overdue.
+const CONTACT_START = '2026-11-07';
 const isFriday = d => new Date(d + 'T12:00:00').getDay() === 5;
 function contactRule(x) {
   const since = viToIso(x.since) || today();
@@ -524,7 +526,7 @@ function ladderBlock(week) {
   const todayCls = new Map();
   (week ? week.data.sessions : []).filter(s => s.day === day && !s.off).forEach(s => { const k = Q.key(s.cls); if (!todayCls.has(k) || todayCls.get(k).start > s.start) todayCls.set(k, s); });
   const mine = x => isManager() || isTaSide(week) || isMe(homeroom[Q.key(x.cls)] || '') || (todayCls.get(Q.key(x.cls)) && teaches(todayCls.get(Q.key(x.cls))));
-  const list = ladder.rows.filter(mine).map(x => { const rule = contactRule(x), done = contactDone(x, rule); return { x, rule, done, late: !done && today() > rule.due, s: todayCls.get(Q.key(x.cls)) }; });
+  const list = ladder.rows.filter(mine).map(x => { const rule = contactRule(x), done = contactDone(x, rule); return { x, rule, done, late: !done && today() > rule.due && (viToIso(x.since) || today()) >= CONTACT_START, s: todayCls.get(Q.key(x.cls)) }; });
   if (!list.length) return '';
   list.sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || b.late - a.late || (a.s ? 0 : 1) - (b.s ? 0 : 1) || b.x.level - a.x.level || a.x.cls.localeCompare(b.x.cls, 'vi', { numeric: true }));
   const todo = list.filter(l => !l.done).length, late = list.filter(l => l.late).length;
