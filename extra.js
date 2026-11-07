@@ -448,3 +448,120 @@ document.addEventListener('change', e => {
   if (b.dataset.act === 'payPick' && b.value) { pay.month = b.value; pay.person = ''; loadLuong(true); }
   if (b.dataset.act === 'kpiPick' && b.value) { filters.kpiMonth = b.value; kpi.data = null; render(); loadKpi(b.value, false).catch(err => say(err.message, 'bad')); }
 });
+/* ---------- Penalty ladder with parent contact (owner 07/11) ----------
+ * Levels come from the Schedule's ladder state (AUTO_KIDS_MUC_PHAT). Each entry into a level needs one contact:
+ * L1–L3 a message (Fridays THUY TRANG, other days a manager), L4 a call by the homeroom, L5 a call by a manager,
+ * calls within 2 days of entering the level. A tick is a row in LIEN_HE_PH, so everyone on duty sees it done. */
+const LADDER_ACT = {
+  1: 'TA trực hoặc quản lí gọi ra nhắc nhở trong giờ học; nhắn tin cho phụ huynh.',
+  2: 'Ở lại chép bài phạt theo độ tuổi; TA hoặc quản lí nhắc phụ huynh.',
+  3: 'Không cho vào lớp, ra ngoài bù bài; nhờ phụ huynh mang thiết bị đến để con làm bài.',
+  4: 'Chủ nhiệm gọi điện trực tiếp tư vấn phụ huynh.',
+  5: 'Quản lí nhắn tin hoặc gọi điện tư vấn nghỉ học.'
+};
+// Penalty copy texts by age, chosen from the class's book.
+const COPY_TEXTS = {
+  nho: { title: 'Bài chép phạt · 5–7 tuổi', how: 'Chép mỗi câu 2 lần, đọc to cho TA nghe.', lines: [
+    ['I do my homework every day.', 'Con làm bài tập mỗi ngày.'],
+    ['I watch the video and speak.', 'Con xem video và nói theo.'],
+    ['I send my video to my teacher.', 'Con gửi video cho cô.'],
+    ['I try my best.', 'Con cố gắng hết sức.'],
+    ['I am a good student.', 'Con là học sinh chăm ngoan.']] },
+  giua: { title: 'Bài chép phạt · 7–9 tuổi', how: 'Chép mỗi câu 1 lần cả tiếng Anh và tiếng Việt, rồi đọc to cho TA nghe.', lines: [
+    ['I finish my homework before the next lesson.', 'Con làm xong bài trước buổi học sau.'],
+    ['I practise speaking with the video every day.', 'Con luyện nói theo video mỗi ngày.'],
+    ['I film myself clearly, with my face and my voice.', 'Con quay rõ mặt và rõ tiếng.'],
+    ['If I forget my homework, I make it up the same day.', 'Quên bài thì con bù ngay trong ngày.'],
+    ['I listen to my teacher and follow the class rules.', 'Con nghe lời cô và làm theo nội quy lớp.'],
+    ['I keep my books and notebooks ready.', 'Con chuẩn bị đủ sách vở.'],
+    ['Homework helps me remember new words.', 'Bài tập giúp con nhớ từ mới.'],
+    ['I am responsible for my own learning.', 'Con tự chịu trách nhiệm việc học của mình.']] },
+  lon: { title: 'Bài chép phạt · 9–12 tuổi', how: 'Chép 10 câu tiếng Anh, rồi viết 3 câu tiếng Việt: con còn nợ bài nào, vì sao, và con sẽ bù vào lúc nào.', lines: [
+    ['Homework is my responsibility, not my parents\'.', 'Bài tập là trách nhiệm của con, không phải của bố mẹ.'],
+    ['I plan my week so that every video is done before the deadline.', 'Con lên kế hoạch để mọi video xong trước hạn.'],
+    ['A late or missing video means I fall behind my class.', 'Nộp muộn hay thiếu bài là con tụt lại so với lớp.'],
+    ['I watch the model video first, then practise until I can speak without reading.', 'Con xem video mẫu rồi luyện đến khi nói được không cần nhìn.'],
+    ['I check that my video shows my face and has clear sound before I send it.', 'Con kiểm tra video rõ mặt, rõ tiếng trước khi gửi.'],
+    ['When I do not understand, I ask my teacher instead of skipping the task.', 'Không hiểu thì con hỏi cô, không bỏ bài.'],
+    ['I make up every missing task within two days.', 'Con bù mọi bài còn thiếu trong 2 ngày.'],
+    ['Keeping my promises helps my teacher and my friends trust me.', 'Giữ lời hứa giúp cô và bạn tin con.'],
+    ['Small daily practice is better than a lot of work at the last minute.', 'Luyện một chút mỗi ngày tốt hơn dồn vào phút cuối.'],
+    ['From today, I will hand in all my homework on time.', 'Từ hôm nay, con nộp đủ bài đúng hạn.']] }
+};
+function ageGroupOf(cls) {
+  const books = [];
+  Object.values(weeks).forEach(w => w.data.sessions.forEach(s => { if (Q.key(s.cls) === Q.key(cls) && s.book) books.push(Q.clean(s.book).toUpperCase()); }));
+  const b = books.pop() || '';
+  if (/PHONICS|PEPPA|FAMILY AND FRIENDS 1|\bFF ?1\b|KINDY|KINDER/.test(b)) return 'nho';
+  if (/DISCOVER [3-6]|SCIENCE G[2-5]|CRITICAL|DEBATE|THINKING/.test(b)) return 'lon';
+  return 'giua';
+}
+const ladder = { rows: null, contacts: null, at: 0, tried: 0, copy: null };
+const viToIso = s => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : ''; };
+const contactOf = r => ({ at: r[0], cls: Q.clean(r[1]), name: Q.clean(r[2]), level: Number(r[3]) || 0, since: Q.clean(r[4]), action: Q.clean(r[5]), note: r[6] || '', by: r[7] || '' });
+async function loadLadder(force) {
+  if (!force && ladder.rows && Date.now() - ladder.at < 300000) return;
+  const [[rows], [contacts]] = await Promise.all([batchGet(CONFIG.scheduleId, ["'AUTO_KIDS_MUC_PHAT'!A2:M400"]), batchGet(CONFIG.diemDanhId, ['LIEN_HE_PH!A2:H'])]);
+  ladder.rows = rows.map(r => ({ checked: Q.clean(r[0]), cls: Q.clean(r[1]), name: Q.clean(r[2]), level: Number(r[3]) || 0, since: Q.clean(r[4]), reason: Q.clean(r[5]), owed: String(r[6] || '').split('\n').map(Q.clean).filter(Boolean) })).filter(x => x.level >= 1 && x.cls && x.name);
+  ladder.contacts = contacts.map(contactOf);
+  outbox.filter(x => x.kind === 'append' && x.tab === 'LIEN_HE_PH').forEach(x => ladder.contacts.push(contactOf(x.row)));
+  ladder.at = Date.now();
+}
+const isFriday = d => new Date(d + 'T12:00:00').getDay() === 5;
+function contactRule(x) {
+  const since = viToIso(x.since) || today();
+  if (x.level >= 4) return { action: 'Đã gọi PH', who: x.level === 4 ? (homeroom[Q.key(x.cls)] || T('Chủ nhiệm', 'Homeroom')) : T('Quản lí', 'Manager'), due: Q.addDays(since, 2), call: true };
+  return { action: 'Đã nhắn PH', who: isFriday(today()) ? 'THUY TRANG' : T('Quản lí', 'Manager'), due: since, call: false };
+}
+const contactDone = (x, rule) => (ladder.contacts || []).filter(c => sameName(c.cls, x.cls) && c.name === x.name && c.level === x.level && c.since === x.since && c.action === rule.action).pop();
+function canContact(x, rule) {
+  if (isManager()) return true;
+  if (rule.call) return x.level === 4 && isMe(homeroom[Q.key(x.cls)] || '');
+  return isFriday(today()) && isMe('THUY TRANG');
+}
+function ladderBlock(week) {
+  if (!ladder.rows) { if (Date.now() - ladder.tried > 60000) { ladder.tried = Date.now(); setTimeout(() => loadLadder().then(render).catch(() => {}), 0); } return penaltyBlock(week); }
+  const todayCls = new Map();
+  (week ? week.data.sessions : []).filter(s => s.day === day && !s.off).forEach(s => { const k = Q.key(s.cls); if (!todayCls.has(k) || todayCls.get(k).start > s.start) todayCls.set(k, s); });
+  const mine = x => isManager() || isTaSide(week) || isMe(homeroom[Q.key(x.cls)] || '') || (todayCls.get(Q.key(x.cls)) && teaches(todayCls.get(Q.key(x.cls))));
+  const list = ladder.rows.filter(mine).map(x => { const rule = contactRule(x), done = contactDone(x, rule); return { x, rule, done, late: !done && today() > rule.due, s: todayCls.get(Q.key(x.cls)) }; });
+  if (!list.length) return '';
+  list.sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || b.late - a.late || (a.s ? 0 : 1) - (b.s ? 0 : 1) || b.x.level - a.x.level || a.x.cls.localeCompare(b.x.cls, 'vi', { numeric: true }));
+  const todo = list.filter(l => !l.done).length, late = list.filter(l => l.late).length;
+  let h = '<div class="part p-alert"><h2>' + T('Học sinh trong danh sách phạt', 'Pupils on the penalty ladder') + '</h2><span>' + list.length + T(' HS', ' pupils') + (todo ? ' · ' + todo + T(' chưa liên hệ PH', ' parents to contact') : '') + (late ? ' · ' + late + T(' quá hạn', ' overdue') : '') + '</span></div>';
+  h += '<div class="small muted">' + T('Hôm nay nhắn tin phụ huynh: ', 'Messages today: ') + '<b>' + (isFriday(today()) ? 'THUY TRANG' : T('quản lí', 'managers')) + '</b>. ' + T('Mức 4 chủ nhiệm gọi, mức 5 quản lí gọi, trong 2 ngày kể từ khi vào mức.', 'Level 4 homeroom calls, level 5 a manager calls, within 2 days.') + '</div>';
+  h += '<div class="grid">' + list.map(({ x, rule, done, late, s }) => {
+    const m = x.name.match(/^(.*?)\s*\(([^)]+)\)\s*$/), eng = m ? m[2] : '', full = m ? m[1] : x.name;
+    return '<div class="card row lad lv' + x.level + (late ? ' late' : '') + '"><div class="row-top"><span class="lvl">M' + x.level + '</span><b>' + esc(eng || full) + '</b><span class="muted small">' + esc(x.cls) + (s ? ' · ' + T('học ', 'class ') + Q.clock(s.start) : '') + '</span><span class="spacer"></span><span class="small muted">' + T('từ ', 'since ') + esc(x.since.slice(0, 5)) + '</span></div>' +
+      '<div class="small">' + esc(LADDER_ACT[x.level] || '') + '</div>' +
+      '<div class="small muted">' + esc(x.reason) + (x.owed.length ? ' · ' + T('còn nợ: ', 'owes: ') + esc(x.owed.join('; ')) : '') + '</div>' +
+      '<div class="choices">' + (done ? '<span class="tag ok">✓ ' + esc(rule.action) + ' · ' + esc(done.by) + ' ' + esc(String(done.at).slice(0, 5)) + '</span>' :
+        '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Cần gọi PH', 'Call parents') : T('Cần nhắn PH', 'Message parents')) + ' · ' + esc(rule.who) + (rule.call ? T(' · hạn ', ' · by ') + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>' +
+        (canContact(x, rule) ? '<button class="good" data-act="ladTick" data-cls="' + esc(x.cls) + '" data-name="' + esc(x.name) + '">' + esc(rule.action) + '</button>' : '')) +
+      (x.level === 2 ? '<button class="quiet" data-act="ladCopy" data-cls="' + esc(x.cls) + '" data-name="' + esc(eng || full) + '">' + T('Bài chép phạt', 'Copy text') + '</button>' : '') + '</div></div>';
+  }).join('') + '</div>';
+  if (ladder.copy) h += copySheet(ladder.copy);
+  return h;
+}
+function copySheet(c) {
+  const t = COPY_TEXTS[ageGroupOf(c.cls)];
+  return '<div class="ll-veil" data-act="ladCopyClose"></div><div class="ll-sheet print-sheet" role="dialog"><div class="row-top no-print"><b>' + esc(t.title) + '</b><span class="spacer"></span><button class="quiet" data-act="ladPrint">' + T('In', 'Print') + '</button><button class="quiet" data-act="ladCopyClose">' + T('Đóng', 'Close') + '</button></div>' +
+    '<div class="copy-text"><h3>' + esc(t.title) + '</h3><div>' + T('Học sinh: ', 'Pupil: ') + '<b>' + esc(c.name) + '</b> · ' + esc(c.cls) + ' · ' + T('Ngày ', 'Date ') + esc(viDate(today())) + '</div><p><i>' + esc(t.how) + '</i></p><ol>' +
+    t.lines.map(l => '<li><b>' + esc(l[0]) + '</b><br><span>' + esc(l[1]) + '</span></li>').join('') + '</ol><div class="sign">' + T('Học sinh ký tên: ……………………      TA: ……………………', 'Pupil: ……………      TA: ……………') + '</div></div></div>';
+}
+function ladTick(b) {
+  const x = (ladder.rows || []).find(r => sameName(r.cls, b.dataset.cls) && r.name === b.dataset.name);
+  if (!x) return;
+  const rule = contactRule(x), row = [stamp(), x.cls, x.name, String(x.level), x.since, rule.action, '', me.name];
+  ladder.contacts.push(contactOf(row));
+  queue({ kind: 'append', file: CONFIG.diemDanhId, tab: 'LIEN_HE_PH', row });
+  render();
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  if (b.dataset.act === 'ladTick') ladTick(b);
+  if (b.dataset.act === 'ladCopy') { ladder.copy = { cls: b.dataset.cls, name: b.dataset.name }; render(); }
+  if (b.dataset.act === 'ladCopyClose') { ladder.copy = null; render(); }
+  if (b.dataset.act === 'ladPrint') window.print();
+});

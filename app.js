@@ -749,7 +749,7 @@ function viewSchedule(week) {
   h += payNoticeBlock();
   h += checkinBlock(week);
   h += alertsBlock(week);
-  h += penaltyBlock(week);
+  h += ladderBlock(week);
   h += owedBlock(week);
   if (!(isManager() && filters.showAll)) h += dutyBlock(week);
   if (isManager() && filters.showAll && all.length) {
