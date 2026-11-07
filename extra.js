@@ -887,3 +887,169 @@ document.addEventListener('click', e => {
     guarded(() => Promise.all([loadMarks(true), loadTracker(classOf(s), true), loadBehave(true).catch(() => {})]));
   }
 });
+
+/* ---------- Class screen as rows (owner 07/11 spec) ----------
+ * One row per pupil: name (red ! past the limit) · − ⭐ n + · Mất trật tự · Mất tập trung · Cảnh cáo (reason box) · Nghỉ.
+ * Ticks and warnings are saved in HANH_VI exactly as before; a tap on the name still opens the pupil's panel to take one off. */
+const WARN_LIMIT = 3, TICKS = ['Mất trật tự', 'Mất tập trung'], CANH_CAO = 'Cảnh cáo';
+BEHAVIOUR_EN[CANH_CAO] = 'Warning';
+if (!BEHAVIOURS.includes(CANH_CAO)) BEHAVIOURS.push(CANH_CAO);
+const REASONS = ['Nói chuyện riêng', 'Không làm theo yêu cầu', 'Quên sách vở', 'Nói tiếng Việt nhiều', 'Đi lại tự do'];
+let llReason = null;
+const tickTotal = counts => TICKS.reduce((n, t) => n + (counts[t] || 0), 0);
+
+viewLenLop = function () {
+  const ctx = classContext(current), s = ctx.session;
+  if (!ctx.tracker) return '<div class="card empty">' + T('Đang đọc sheet lớp…', 'Reading the class sheet…') + '</div>';
+  const edit = canTeach(s), behave = behaveFor(s), dis = edit ? '' : ' disabled';
+  const rows = ctx.tracker.pupils.map((p, i) => { const m = ctx.marks.get(p.name); return { p, i, stars: starsOf(ctx, p), off: !!m && (m.status === NGHI || Q.ABSENT.includes(m.status)), here: !!m && Q.PRESENT.includes(m.status), b: behave.get(p.name) }; });
+  rows.sort((a, b) => a.off - b.off || a.i - b.i);
+  const scores = [...new Set(rows.filter(r => !r.off && r.stars).map(r => r.stars))].sort((a, b) => b - a), medal = ['🥇', '🥈', '🥉'];
+  const unmarked = rows.filter(r => !r.off && !r.here).length, noStars = !ctx.tracker.blocks.length, group = isGroup(s);
+  const starOk = !noStars && ctx.block && ctx.block.stars >= 0;
+  const podium = rows.filter(r => !r.off && r.stars && scores.indexOf(r.stars) < 3).sort((a, b) => b.stars - a.stars).slice(0, 5);
+  let h = '<div class="ll-head"><button class="quiet" data-act="llExit" aria-label="' + T('Thoát', 'Exit') + '">‹</button><div class="ll-title"><b>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</b><span>' + sessionTime(s) + ' · ' + rows.filter(r => r.here).length + '/' + rows.length + T(' có mặt', ' here') + '</span></div>' +
+    (podium.length ? '<div class="ll-podium" aria-label="' + T('Dẫn đầu', 'Leaders') + '">' + podium.map(r => '<span>' + (medal[scores.indexOf(r.stars)] || '') + ' ' + esc(r.p.eng || r.p.name) + ' <b>' + r.stars + '</b></span>').join('') + '</div>' : '') +
+    (edit && unmarked && !group ? '<button class="primary" data-act="llAll">' + T('Còn lại có mặt', 'Rest are here') + '</button>' : '') + '</div>';
+  if (noStars) h += '<div class="notice">' + T('Sheet lớp này không có cột Số sao, nên chỉ điểm danh và nhắc nhở.', 'This class sheet has no star column.') + '</div>';
+  else if (ctx.problem || !starOk) h += '<div class="notice">' + esc(columnWarning(ctx) || T('Tiết này chưa có cột Số sao trong sheet lớp, TA mở cột giúp.', 'This lesson has no star column yet, TA please open it.')) + '</div>';
+  if (!edit) h += '<div class="notice">' + T('Buổi này chưa mở hoặc không phân công cho bạn, chỉ xem được.', 'This session is not open or not assigned to you, view only.') + '</div>';
+  else h += '<div class="small muted rv-hint">' + T('Bấm Nghỉ cho bạn vắng, rồi "Còn lại có mặt". Nhắc quá ' + WARN_LIMIT + ' lần thì hiện dấu ! đỏ. Bấm nhầm: chạm tên để bớt.', 'Tap Absent for missing pupils, then "Rest are here". More than ' + WARN_LIMIT + ' reminders shows a red !. Mis-tap: tap the name to take one off.') + '</div>';
+  h += '<div class="rv-list" role="list">' + rows.map(r => {
+    const rank = r.off || !r.stars ? 0 : scores.indexOf(r.stars) + 1, name = r.p.eng || r.p.name, counts = tagCounts(r.b ? r.b.tags : []), n = tickTotal(counts), over = n > WARN_LIMIT, warned = counts[CANH_CAO] || 0;
+    const live = r.off ? ' disabled' : dis, badge = c => c ? '<span class="rv-badge">' + c + '</span>' : '';
+    return '<div class="ll-tile rv-row' + (r.off ? ' off' : rank === 1 ? ' top' : '') + (r.here ? ' here' : '') + (over ? ' over' : '') + '" role="listitem" data-i="' + r.i + '">' +
+      '<button class="rv-name" data-act="llMenu" data-i="' + r.i + '" aria-label="' + T('Mở mục của ', 'Open ') + esc(name) + '">' + (rank ? '<span class="rv-rank">' + (medal[rank - 1] || '#' + rank) + '</span>' : '') +
+        '<span class="ll-name">' + esc(name) + '</span>' + (over ? '<span class="rv-alert" title="' + T('Nhắc ', 'Reminded ') + n + T(' lần', ' times') + '" aria-label="' + T('Nhắc quá ' + WARN_LIMIT + ' lần', 'Over ' + WARN_LIMIT + ' reminders') + '">!</span>' : '') + '</button>' +
+      (noStars ? '' : '<div class="rv-stars"><button class="rv-minus" data-act="llDown" data-i="' + r.i + '"' + (starOk && r.stars ? live : ' disabled') + ' aria-label="' + T('Bớt 1 sao của ', 'One star off ') + esc(name) + '">−</button>' +
+        '<span class="ll-num rv-num" aria-label="' + r.stars + T(' sao', ' stars') + '">⭐ <b>' + r.stars + '</b></span>' +
+        '<button class="ll-plus rv-plus" data-act="llStar" data-i="' + r.i + '"' + (starOk ? live : ' disabled') + ' aria-label="' + T('Thêm 1 sao cho ', 'Add a star for ') + esc(name) + '">+</button></div>') +
+      TICKS.map((t, k) => '<button class="rv-tick' + (counts[t] ? ' on' : '') + '" data-act="llTick" data-i="' + r.i + '" data-k="' + k + '" data-v="' + k + '"' + live + '>' + esc(tagText(t)) + badge(counts[t]) + '</button>').join('') +
+      '<button class="rv-warn' + (over ? ' hot' : '') + (warned ? ' on' : '') + '" data-act="llReason" data-i="' + r.i + '"' + live + '>⚠️ ' + T('Cảnh cáo', 'Warning') + badge(warned) + '</button>' +
+      (group && !r.off ? '<button class="rv-here' + (r.here ? ' on' : '') + '" data-act="llHere" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.here + '">✓</button>' : '') +
+      '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? T('Nghỉ ✓', 'Absent ✓') : T('Nghỉ', 'Absent')) + '</button>' +
+      '</div>';
+  }).join('') + '</div>';
+  const open = llReason != null ? rows.find(r => r.i === llReason) : null;
+  if (open) h += reasonBox(open, edit);
+  else if (llMenu != null) h += llSheet(ctx, rows.find(r => r.i === llMenu), edit, noStars);
+  return h;
+};
+
+// The warning box: an optional reason (typed, or one tap on a common one), then one big button.
+function reasonBox(r, edit) {
+  const name = r.p.eng || r.p.name, dis = edit ? '' : ' disabled', counts = tagCounts(r.b ? r.b.tags : []), n = tickTotal(counts), draft = drafts['llreason:' + r.p.name] || '';
+  return '<div class="ll-veil" data-act="llClose"></div><div class="ll-sheet rv-box" role="dialog" aria-label="' + T('Cảnh cáo ', 'Warn ') + esc(name) + '">' +
+    '<div class="row-top"><b class="ll-sheet-name">⚠️ ' + T('Cảnh cáo', 'Warning') + ' · ' + esc(name) + '</b><span class="spacer"></span><button class="quiet" data-act="llClose">' + T('Đóng', 'Close') + '</button></div>' +
+    (n ? '<div class="small' + (n > WARN_LIMIT ? ' rv-over-note' : ' muted') + '">' + T('Đã nhắc ', 'Reminded ') + n + T(' lần trong buổi', ' times this lesson') + (n > WARN_LIMIT ? T(' (quá ' + WARN_LIMIT + ' lần)', ' (over ' + WARN_LIMIT + ')') : '') + '</div>' : '') +
+    '<div class="ll-chips">' + REASONS.map(t => '<button class="' + (draft === t ? 'on' : '') + '" data-act="llReasonPick" data-i="' + r.i + '" data-v="' + esc(t) + '"' + dis + '>' + esc(tagText(t)) + '</button>').join('') + '</div>' +
+    '<textarea data-act="llReasonText" data-name="' + esc(r.p.name) + '" rows="2" maxlength="200" placeholder="' + T('Lý do (không bắt buộc)…', 'Reason (optional)…') + '"' + dis + '>' + esc(draft) + '</textarea>' +
+    '<div class="ll-sheet-row"><button class="rv-give" data-act="llWarnGive" data-i="' + r.i + '"' + dis + '>⚠️ ' + T('Ghi cảnh cáo', 'Give warning') + '</button></div></div>';
+}
+
+/* Star motion. Up: a gold star rises from + and melts into the count. Down: the star turns red, shatters and the pieces fall. */
+const rvMotion = () => !!document.body.animate && !reduceMotion();
+const rvAt = el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+const rvNum = i => document.querySelector('.rv-row[data-i="' + i + '"] .rv-num');
+function rvBit(cls, text, x, y) {
+  const d = document.createElement('div');
+  d.className = cls; if (text) d.textContent = text;
+  d.style.left = x + 'px'; d.style.top = y + 'px';
+  document.body.appendChild(d);
+  return d;
+}
+function starUp(i) {
+  const from = document.querySelector('.rv-plus[data-i="' + i + '"]'), num = rvNum(i);
+  if (!from || !num || !rvMotion()) return;
+  const a = rvAt(from), b = rvAt(num), dx = b.x - a.x, dy = b.y - a.y, star = rvBit('rv-fly', '⭐', a.x, a.y);
+  star.animate([
+    { transform: 'translate(-50%,-50%) scale(.5)', opacity: 0 },
+    { transform: 'translate(calc(-50% + ' + dx * 0.4 + 'px), calc(-50% - 95px)) scale(2) rotate(200deg)', opacity: 1, offset: 0.5 },
+    { transform: 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px)) scale(.3) rotate(360deg)', opacity: 0.3 }
+  ], { duration: 800, easing: 'cubic-bezier(.3,.7,.4,1)' }).onfinish = () => {
+    star.remove();
+    const n = rvNum(i), row = document.querySelector('.rv-row[data-i="' + i + '"]');
+    if (n) n.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.6)', textShadow: '0 0 18px rgba(245,183,0,.95)' }, { transform: 'scale(1)' }], { duration: 480, easing: 'ease-out' });
+    if (row) row.animate([{ boxShadow: '0 0 0 0 rgba(245,183,0,.7)' }, { boxShadow: '0 0 0 14px rgba(245,183,0,0)' }], { duration: 600 });
+    for (let k = 0; k < 8; k++) {
+      const ang = k / 8 * Math.PI * 2, r = 30 + Math.random() * 16, sp = rvBit('fly-spark', k % 2 ? '✦' : '✨', b.x, b.y);
+      sp.animate([{ transform: 'translate(-50%,-50%) scale(.4)', opacity: 1 }, { transform: 'translate(calc(-50% + ' + Math.cos(ang) * r + 'px), calc(-50% + ' + Math.sin(ang) * r + 'px)) scale(1)', opacity: 0 }], { duration: 520, easing: 'ease-out' }).onfinish = () => sp.remove();
+    }
+    const plus = rvBit('fly-plus', '+1', b.x + 30, b.y);
+    plus.animate([{ transform: 'translate(-50%,-50%)', opacity: 1 }, { transform: 'translate(-50%,-170%)', opacity: 0 }], { duration: 800, easing: 'ease-out' }).onfinish = () => plus.remove();
+  };
+}
+function starDown(i) {
+  const num = rvNum(i);
+  if (!num || !rvMotion()) return;
+  const c = rvAt(num), star = rvBit('rv-fly rv-red', '★', c.x - 14, c.y);
+  num.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-7px)' }, { transform: 'translateX(7px)' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(0)' }], { duration: 360 });
+  star.animate([
+    { transform: 'translate(-50%,-50%) scale(1)', color: '#f5b700' },
+    { transform: 'translate(-50%,-50%) scale(1.8) rotate(-14deg)', color: '#dc2626', offset: 0.55 },
+    { transform: 'translate(-50%,-50%) scale(2) rotate(10deg)', color: '#b91c1c' }
+  ], { duration: 360, easing: 'ease-out' }).onfinish = () => {
+    star.remove();
+    for (let k = 0; k < 10; k++) {
+      const ang = k / 10 * Math.PI * 2 + Math.random() * 0.4, r = 38 + Math.random() * 30, sx = Math.cos(ang) * r, sy = Math.sin(ang) * r, fall = 130 + Math.random() * 90, spin = (Math.random() * 2 - 1) * 600;
+      const s = rvBit('rv-shard', '', c.x - 14, c.y);
+      s.animate([
+        { transform: 'translate(-50%,-50%) rotate(0deg)', opacity: 1, easing: 'ease-out' },
+        { transform: 'translate(calc(-50% + ' + sx + 'px), calc(-50% + ' + sy + 'px)) rotate(' + spin / 3 + 'deg)', opacity: 1, offset: 0.3, easing: 'ease-in' },
+        { transform: 'translate(calc(-50% + ' + sx * 1.4 + 'px), calc(-50% + ' + (sy + fall) + 'px)) rotate(' + spin + 'deg) scale(.6)', opacity: 0 }
+      ], { duration: 950 }).onfinish = () => s.remove();
+    }
+    const minus = rvBit('rv-minus-fly', '−1', c.x + 30, c.y);
+    minus.animate([{ transform: 'translate(-50%,-50%)', opacity: 1 }, { transform: 'translate(-50%, 60%)', opacity: 0 }], { duration: 850, easing: 'ease-in' }).onfinish = () => minus.remove();
+  };
+}
+// A reminder tick: its badge pops; the tick that goes past the limit shakes the row so the class sees it.
+function tickPop(i, k, crossed) {
+  if (crossed) return shakeTile(i);
+  if (!rvMotion()) return;
+  const b = document.querySelector('.rv-row[data-i="' + i + '"] .rv-tick[data-k="' + k + '"] .rv-badge'), row = document.querySelector('.rv-row[data-i="' + i + '"]');
+  if (b) b.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.8)' }, { transform: 'scale(1)' }], { duration: 380, easing: 'ease-out' });
+  if (row) row.animate([{ boxShadow: '0 0 0 0 rgba(245,158,11,.7)' }, { boxShadow: '0 0 0 12px rgba(245,158,11,0)' }], { duration: 550 });
+}
+
+const llActionBeforeRows = llAction;
+llAction = function (act, i, v) {
+  if (act === 'llClose' || act === 'llExit') llReason = null;
+  if (!['llTick', 'llDown', 'llStar', 'llReason', 'llReasonPick', 'llWarnGive'].includes(act)) return llActionBeforeRows(act, i, v);
+  const ctx = classContext(current), pupil = i != null && ctx.tracker ? ctx.tracker.pupils[Number(i)] : null;
+  if (!pupil || !canTeach(ctx.session)) return;
+  if (act === 'llStar' || act === 'llDown') {
+    const was = starsOf(ctx, pupil);
+    if (act === 'llDown' && !was) return;
+    setStars(ctx, pupil, was + (act === 'llStar' ? 1 : -1));
+    const moved = starsOf(ctx, pupil) !== was;
+    render();
+    if (moved) (act === 'llStar' ? starUp : starDown)(i);
+    return;
+  }
+  if (act === 'llReason') { llMenu = null; llWarn = null; llReason = Number(i); render(); return; }
+  if (act === 'llReasonPick') { const k = 'llreason:' + pupil.name; drafts[k] = drafts[k] === v ? '' : v; render(); return; }
+  const old = behaveFor(ctx.session).get(pupil.name), tags = old ? old.tags.slice() : [], note = old ? old.note : '';
+  const hereNow = () => { const m = ctx.marks.get(pupil.name); if (!(m && (Q.PRESENT.includes(m.status) || m.status === NGHI || Q.ABSENT.includes(m.status)))) appendMark(ctx.session, pupil, Q.tickStatus(ctx.session, today(), minutesNow()), m && m.contact, '', STAR_WAIT); };
+  if (act === 'llTick') {
+    const t = TICKS[Number(v)];
+    if (!t) return;
+    const before = tickTotal(tagCounts(tags));
+    tags.push(t); setBehave(ctx, pupil, tags, note); hereNow();
+    render(); tickPop(i, v, before <= WARN_LIMIT && before + 1 > WARN_LIMIT);
+    return;
+  }
+  if (act === 'llWarnGive') {
+    const key = 'llreason:' + pupil.name, why = Q.clean(drafts[key] || '');
+    delete drafts[key];
+    tags.push(CANH_CAO);
+    setBehave(ctx, pupil, tags, why ? (Q.clean(note) ? Q.clean(note) + '; ' : '') + T('Cảnh cáo: ', 'Warning: ') + why : note);
+    hereNow();
+    llReason = null; render(); shakeTile(i);
+    say(T('Đã ghi cảnh cáo cho ', 'Warning saved for ') + (pupil.eng || pupil.name) + '.');
+  }
+};
+document.addEventListener('input', e => {
+  const b = e.target.closest('[data-act="llReasonText"]');
+  if (b) drafts['llreason:' + b.dataset.name] = b.value;
+});
