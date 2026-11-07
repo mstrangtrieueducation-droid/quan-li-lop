@@ -350,6 +350,22 @@ function flyStar(i) {
     plus.animate([{ transform: 'translate(-50%,-50%)', opacity: 1 }, { transform: 'translate(-50%,-160%)', opacity: 0 }], { duration: 800, easing: 'ease-out' }).onfinish = () => plus.remove();
   };
 }
+// Owner 07/11: behaviour is marked right on the class screen, and the class sees it. Two modes on the same tiles:
+// ⭐ adds a star, ⚠️ opens big behaviour buttons; a warning stays in red on the pupil's tile for everyone to see.
+let llMode = '', llWarn = null;
+const tagCounts = tags => { const c = {}; (tags || []).forEach(t => { c[t] = (c[t] || 0) + 1; }); return c; };
+const tagText = t => lang === 'en' ? BEHAVIOUR_EN[t] || t : t;
+function shakeTile(i) {
+  const tile = document.querySelector('.ll-tile[data-i="' + i + '"]');
+  if (!tile || !tile.animate || reduceMotion()) return;
+  tile.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-10px)' }, { transform: 'translateX(10px)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(0)' }], { duration: 420 });
+  tile.animate([{ boxShadow: '0 0 0 0 rgba(220,38,38,.8)' }, { boxShadow: '0 0 0 16px rgba(220,38,38,0)' }], { duration: 700 });
+  const r = tile.getBoundingClientRect(), mark = document.createElement('div');
+  mark.className = 'fly-warn'; mark.textContent = '⚠️';
+  mark.style.left = r.left + r.width / 2 + 'px'; mark.style.top = r.top + r.height / 2 + 'px';
+  document.body.appendChild(mark);
+  mark.animate([{ transform: 'translate(-50%,-50%) scale(3)', opacity: 0 }, { transform: 'translate(-50%,-50%) scale(1.4)', opacity: 1, offset: 0.3 }, { transform: 'translate(-50%,-50%) scale(1)', opacity: 0 }], { duration: 900, easing: 'ease-out' }).onfinish = () => mark.remove();
+}
 function viewLenLop() {
   const ctx = classContext(current), s = ctx.session;
   if (!ctx.tracker) return '<div class="card empty">' + T('Đang đọc sheet lớp…', 'Reading the class sheet…') + '</div>';
@@ -360,48 +376,67 @@ function viewLenLop() {
   const scores = [...new Set(rows.filter(r => !r.off && r.stars).map(r => r.stars))].sort((a, b) => b - a), medal = ['🥇', '🥈', '🥉'];
   const unmarked = rows.filter(r => !r.off && !r.here).length, noStars = !ctx.tracker.blocks.length, group = isGroup(s);
   const podium = rows.filter(r => !r.off && r.stars && scores.indexOf(r.stars) < 3).sort((a, b) => b.stars - a.stars).slice(0, 5);
+  const anyMarked = rows.some(r => r.here || r.off);
+  const mode = llMode === 'warn' ? 'warn' : llMode === 'roll' || (!llMode && !anyMarked) || (noStars && llMode !== 'warn') ? 'roll' : 'star';
+  // The opening mode is chosen once; a tick must not switch the screen under the teacher's finger.
+  if (!llMode) llMode = mode;
   let h = '<div class="ll-head"><button class="quiet" data-act="llExit" aria-label="' + T('Thoát', 'Exit') + '">‹</button><div class="ll-title"><b>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</b><span>' + sessionTime(s) + ' · ' + rows.filter(r => !r.off).length + '/' + rows.length + T(' có mặt', ' here') + '</span></div>' +
     (podium.length ? '<div class="ll-podium" aria-label="' + T('Dẫn đầu', 'Leaders') + '">' + podium.map(r => '<span>' + (medal[scores.indexOf(r.stars)] || '') + ' ' + esc(r.p.eng || r.p.name) + ' <b>' + r.stars + '</b></span>').join('') + '</div>' : '') +
     (edit && unmarked && !group ? '<button class="primary" data-act="llAll">' + T('Còn lại có mặt', 'Rest are here') + '</button>' : '') + '</div>';
-  if (noStars) h += '<div class="notice">' + T('Sheet lớp này không có cột Số sao, màn này dùng để điểm danh: bấm ✓ là có mặt.', 'This class sheet has no star column, so this screen takes attendance: press ✓ for present.') + '</div>';
+  if (edit) h += '<div class="ll-modes" role="tablist"><button class="roll' + (mode === 'roll' ? ' on' : '') + '" data-act="llMode" data-v="roll">✓ ' + T('Điểm danh', 'Roll call') + ' <small>' + rows.filter(r => r.here).length + '/' + rows.length + '</small></button>' + (noStars ? '' : '<button class="star' + (mode === 'star' ? ' on' : '') + '" data-act="llMode" data-v="star">⭐ ' + T('Thêm sao', 'Stars') + '</button>') + '<button class="warn' + (mode === 'warn' ? ' on' : '') + '" data-act="llMode" data-v="warn">⚠️ ' + T('Nhắc nhở', 'Warnings') + '</button></div>';
+  if (edit && mode === 'roll') h += '<div class="small muted">' + T('Bấm ✓ cho từng bạn có mặt, hoặc "Còn lại có mặt" cho cả lớp. Bạn nghỉ: chạm tên, chọn Nghỉ. Thêm sao cũng tính là có mặt.', 'Tap ✓ for each pupil here, or "Rest are here". Absent: tap the name, choose Absent.') + '</div>';
+  if (noStars) h += '<div class="notice">' + T('Sheet lớp này không có cột Số sao, nên chỉ điểm danh và nhắc nhở.', 'This class sheet has no star column.') + '</div>';
   else if (ctx.problem || (ctx.block && ctx.block.stars < 0)) h += '<div class="notice">' + esc(columnWarning(ctx) || T('Tiết này chưa có cột Số sao trong sheet lớp, TA mở cột giúp.', 'This lesson has no star column yet, TA please open it.')) + '</div>';
   if (!edit) h += '<div class="notice">' + T('Buổi này chưa mở hoặc không phân công cho bạn, chỉ xem được.', 'This session is not open or not assigned to you, view only.') + '</div>';
-  h += '<div class="ll-grid" role="list">' + rows.map(r => {
-    const rank = r.off || !r.stars ? 0 : scores.indexOf(r.stars) + 1, name = r.p.eng || r.p.name, dis = edit ? '' : ' disabled', tags = r.b ? r.b.tags : [], note = r.b ? Q.clean(r.b.note) : '';
-    return '<div class="ll-tile' + (r.off ? ' off' : rank === 1 ? ' top' : '') + '" role="listitem" data-i="' + r.i + '">' +
-      '<button class="ll-namebtn" data-act="llMenu" data-i="' + r.i + '" aria-label="' + T('Mở mục của ', 'Open ') + esc(name) + '"><span class="ll-rank">' + (r.off ? '' : rank ? (medal[rank - 1] || '#' + rank) : '') + '</span><span class="ll-name">' + esc(name) + '</span>' +
-      (tags.length || note ? '<span class="ll-flags">' + tags.map(t => '<i>' + esc(lang === 'en' ? BEHAVIOUR_EN[t] || t : t) + '</i>').join('') + (note ? '<i class="n">✎</i>' : '') + '</span>' : '') + '</button>' +
-      (r.off ? '<span class="ll-off">' + T('Nghỉ', 'Absent') + '</span>' :
-        noStars ? '<button class="ll-plus check' + (r.here ? ' on' : '') + '" data-act="llHere" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.here + '">✓</button>' :
-        '<span class="ll-num" aria-label="' + r.stars + T(' sao', ' stars') + '">⭐ ' + r.stars + '</span><button class="ll-plus" data-act="llStar" data-i="' + r.i + '"' + dis + ' aria-label="' + T('Thêm 1 sao cho ', 'Add a star for ') + esc(name) + '">+⭐</button>') +
+  h += '<div class="ll-grid' + (mode === 'warn' ? ' warn-mode' : '') + '" role="list">' + rows.map(r => {
+    const rank = r.off || !r.stars ? 0 : scores.indexOf(r.stars) + 1, name = r.p.eng || r.p.name, dis = edit ? '' : ' disabled', tags = r.b ? r.b.tags : [], note = r.b ? Q.clean(r.b.note) : '', counts = tagCounts(tags), warns = tags.length;
+    const action = r.off ? '<span class="ll-off">' + T('Nghỉ', 'Absent') + '</span>' :
+      mode === 'warn' ? '<button class="ll-warnbtn" data-act="llWarnOpen" data-i="' + r.i + '"' + dis + ' aria-label="' + T('Nhắc nhở ', 'Warn ') + esc(name) + '">⚠️</button>' :
+      mode === 'roll' || noStars ? '<button class="ll-plus check' + (r.here ? ' on' : '') + '" data-act="llHere" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.here + '">' + (r.here ? '✓ ' + T('Có mặt', 'Here') : '✓') + '</button>' :
+      '<button class="ll-plus" data-act="llStar" data-i="' + r.i + '"' + dis + ' aria-label="' + T('Thêm 1 sao cho ', 'Add a star for ') + esc(name) + '">+⭐</button>';
+    return '<div class="ll-tile' + (r.off ? ' off' : rank === 1 ? ' top' : '') + (warns ? ' warned' : '') + '" role="listitem" data-i="' + r.i + '">' +
+      '<button class="ll-namebtn" data-act="llMenu" data-i="' + r.i + '" aria-label="' + T('Mở mục của ', 'Open ') + esc(name) + '"><span class="ll-rank">' + (r.off ? '' : rank ? (medal[rank - 1] || '#' + rank) : '') + '</span><span class="ll-name">' + esc(name) + '</span></button>' +
+      '<div class="ll-act">' + (noStars || r.off ? '' : '<span class="ll-num" aria-label="' + r.stars + T(' sao', ' stars') + '">⭐ ' + r.stars + '</span>') + (warns ? '<span class="ll-wcount">⚠️ ' + warns + '</span>' : '') + '<span class="spacer"></span>' + action + '</div>' +
+      (warns || note ? '<div class="ll-flags">' + Object.keys(counts).map(t => '<i>' + esc(tagText(t)) + (counts[t] > 1 ? ' ×' + counts[t] : '') + '</i>').join('') + (note ? '<i class="n">✎</i>' : '') + '</div>' : '') +
       '</div>';
   }).join('') + '</div>';
-  if (llMenu != null) h += llSheet(ctx, rows.find(r => r.i === llMenu), edit, noStars);
+  if (llWarn != null) h += warnPicker(rows.find(r => r.i === llWarn), edit);
+  else if (llMenu != null) h += llSheet(ctx, rows.find(r => r.i === llMenu), edit, noStars);
   return h;
 }
-// One pupil's own panel: fewer stars, typed count, absent, behaviour and a note.
+// Big buttons, one tap each: the class watches the warning land on the tile.
+function warnPicker(r, edit) {
+  if (!r) return '';
+  const name = r.p.eng || r.p.name, dis = edit ? '' : ' disabled';
+  return '<div class="ll-veil" data-act="llClose"></div><div class="ll-sheet warn-sheet" role="dialog" aria-label="' + esc(name) + '"><div class="row-top"><b class="ll-sheet-name">⚠️ ' + esc(name) + '</b><span class="spacer"></span><button class="quiet" data-act="llClose">' + T('Đóng', 'Close') + '</button></div>' +
+    '<div class="warn-grid">' + BEHAVIOURS.map(t => '<button data-act="llWarnAdd" data-i="' + r.i + '" data-v="' + esc(t) + '"' + dis + '>' + esc(tagText(t)) + '</button>').join('') + '<button class="other" data-act="llWarnOther" data-i="' + r.i + '"' + dis + '>' + T('Khác / ghi chú…', 'Other / note…') + '</button></div></div>';
+}
+// One pupil's own panel: fewer stars, typed count, absent, behaviour (a marked chip takes one off) and a note.
 function llSheet(ctx, r, edit, noStars) {
   if (!r) return '';
-  const name = r.p.eng || r.p.name, tags = r.b ? r.b.tags : [], dis = edit ? '' : ' disabled', draft = drafts['llnote:' + r.p.name];
+  const name = r.p.eng || r.p.name, tags = r.b ? r.b.tags : [], counts = tagCounts(tags), dis = edit ? '' : ' disabled', draft = drafts['llnote:' + r.p.name];
   return '<div class="ll-veil" data-act="llClose"></div><div class="ll-sheet" role="dialog" aria-label="' + esc(name) + '">' +
     '<div class="row-top"><b class="ll-sheet-name">' + esc(name) + '</b><span class="muted">' + esc(r.p.name) + '</span><span class="spacer"></span><button class="quiet" data-act="llClose">' + T('Đóng', 'Close') + '</button></div>' +
     '<div class="ll-sheet-row">' + (noStars || r.off ? '' : '<button data-act="llMinus" data-i="' + r.i + '"' + (r.stars ? dis : ' disabled') + '>−1 ⭐</button><button data-act="llType" data-i="' + r.i + '"' + dis + '>' + T('Nhập số sao', 'Type stars') + ' (' + r.stars + ')</button>') +
     '<button class="' + (r.off ? 'good' : 'low') + '" data-act="llOff" data-i="' + r.i + '"' + dis + '>' + (r.off ? T('Có mặt', 'Here') : T('Nghỉ', 'Absent')) + '</button></div>' +
-    '<div class="small muted">' + T('Hành vi trong buổi (chạm để chọn, chạm lại để bỏ)', 'Behaviour this lesson (tap to mark, tap again to clear)') + '</div>' +
-    '<div class="ll-chips">' + BEHAVIOURS.map(t => '<button class="' + (tags.includes(t) ? 'on' : '') + '" data-act="llTag" data-i="' + r.i + '" data-v="' + esc(t) + '"' + dis + ' aria-pressed="' + tags.includes(t) + '">' + esc(lang === 'en' ? BEHAVIOUR_EN[t] : t) + '</button>').join('') + '</div>' +
+    '<div class="small muted">' + T('Hành vi trong buổi: chạm để thêm, chạm chip đang đỏ để bớt 1 lần', 'Behaviour: tap to add, tap a red chip to take one off') + '</div>' +
+    '<div class="ll-chips">' + BEHAVIOURS.map(t => '<button class="' + (counts[t] ? 'on' : '') + '" data-act="llTag" data-i="' + r.i + '" data-v="' + esc(t) + '"' + dis + ' aria-pressed="' + Boolean(counts[t]) + '">' + esc(tagText(t)) + (counts[t] > 1 ? ' ×' + counts[t] : '') + '</button>').join('') + '</div>' +
     '<textarea data-act="llNote" data-name="' + esc(r.p.name) + '" rows="2" maxlength="300" placeholder="' + T('Ghi chú khác…', 'Other note…') + '"' + dis + '>' + esc(draft != null ? draft : r.b ? r.b.note : '') + '</textarea>' +
     '<div class="ll-sheet-row"><button class="primary" data-act="llNoteSave" data-i="' + r.i + '"' + dis + '>' + T('Lưu ghi chú', 'Save note') + '</button>' + (r.b && r.b.by ? '<span class="small muted">' + T('Ghi bởi ', 'By ') + esc(r.b.by) + '</span>' : '') + '</div></div>';
 }
 function llAction(act, i, v) {
   const ctx = classContext(current), pupil = i != null && ctx.tracker ? ctx.tracker.pupils[Number(i)] : null;
-  if (act === 'llExit') { view = 'lop'; llMenu = null; document.body.classList.remove('lenlop'); render(); flush(); return; }
-  if (act === 'llMenu') { llMenu = Number(i); render(); return; }
-  if (act === 'llClose') { llMenu = null; render(); return; }
+  if (act === 'llExit') { view = 'lop'; llMenu = null; llWarn = null; llMode = ''; document.body.classList.remove('lenlop'); render(); flush(); return; }
+  if (act === 'llMode') { llMode = ['warn', 'roll'].includes(v) ? v : 'star'; render(); return; }
+  if (act === 'llMenu') { llWarn = null; llMenu = Number(i); render(); return; }
+  if (act === 'llClose') { llMenu = null; llWarn = null; render(); return; }
   if (act === 'llAll') {
     ctx.tracker.pupils.forEach(p => { const m = ctx.marks.get(p.name); if (!m || !(m.status === NGHI || Q.ABSENT.includes(m.status) || Q.PRESENT.includes(m.status))) appendMark(ctx.session, p, Q.tickStatus(ctx.session, today(), minutesNow()), m && m.contact); });
     render(); return;
   }
   if (!pupil || !canTeach(ctx.session)) return;
+  if (act === 'llWarnOpen') { llMenu = null; llWarn = Number(i); render(); return; }
+  if (act === 'llWarnOther') { llWarn = null; llMenu = Number(i); render(); return; }
   if (act === 'llHere') { tickPupil(ctx, pupil); return; }
   if (act === 'llStar') { setStars(ctx, pupil, starsOf(ctx, pupil) + 1); render(); flyStar(i); return; }
   if (act === 'llMinus') { setStars(ctx, pupil, starsOf(ctx, pupil) - 1); render(); return; }
@@ -417,6 +452,13 @@ function llAction(act, i, v) {
     llMenu = null; render(); return;
   }
   const old = behaveFor(ctx.session).get(pupil.name), tags = old ? old.tags.slice() : [], note = old ? old.note : '';
+  // A warning counts each time it is given; a marked person also counts as here.
+  if (act === 'llWarnAdd') {
+    tags.push(v); setBehave(ctx, pupil, tags, note);
+    const m = ctx.marks.get(pupil.name);
+    if (!(m && (Q.PRESENT.includes(m.status) || m.status === NGHI || Q.ABSENT.includes(m.status)))) appendMark(ctx.session, pupil, Q.tickStatus(ctx.session, today(), minutesNow()), m && m.contact, '', STAR_WAIT);
+    llWarn = null; render(); shakeTile(i); return;
+  }
   if (act === 'llTag') { const k = tags.indexOf(v); if (k >= 0) tags.splice(k, 1); else tags.push(v); setBehave(ctx, pupil, tags, note); render(); return; }
   if (act === 'llNoteSave') {
     const text = Q.clean(drafts['llnote:' + pupil.name] != null ? drafts['llnote:' + pupil.name] : note);
@@ -730,7 +772,7 @@ function viewHomerooms() {
     if (isManager()) h += '<div class="part p-2"><h2>' + esc(cm) + '</h2><span>' + items.length + T(' lớp', ' classes') + '</span></div>';
     h += '<div class="grid">' + items.map(x => {
       const t = trackers[x.cls.key], next = x.next ? dayLabel(x.next.day) + ' ' + Q.clock(x.next.start) : '';
-      const title = '<div class="row-top"><b>' + esc(x.cls.name) + '</b>' + (next ? '<span class="small muted">' + T('Buổi tới ', 'Next ') + esc(next) + '</span>' : '') + '<span class="spacer"></span>' + (x.last ? '<button class="quiet" data-act="open" data-row="' + x.last.row + '" data-day="' + x.last.day + '" title="' + esc(dayLabel(x.last.day)) + '">' + T('Báo cáo buổi vừa học', 'Last lesson report') + '</button>' : '') + (x.next ? '<button class="quiet" data-act="open" data-row="' + x.next.row + '" data-day="' + x.next.day + '">' + T('Mở lớp', 'Open') + '</button>' : '') + '</div>';
+      const title = '<div class="row-top"><b>' + esc(x.cls.name) + '</b>' + (next ? '<span class="small muted">' + T('Buổi tới ', 'Next ') + esc(next) + '</span>' : '') + '<span class="spacer"></span>' + (x.next ? '<button class="quiet" data-act="open" data-row="' + x.next.row + '" data-day="' + x.next.day + '">' + T('Mở lớp', 'Open') + '</button>' : '') + '</div>';
       if (!t || t.light) return '<div class="card row cn">' + title + '<button data-act="cnLoad" data-k="' + esc(x.cls.key) + '">' + T('Xem bài còn nợ', 'Show missing homework') + '</button></div>';
       const owed = Q.owedVideos(t.pupils, t.blocks, t.practices, t.cell, { day: Q.addDays(today(), 1) });
       const rows = t.pupils.map((p, i) => ({ p, n: owed[i].length, o: owed[i] })).filter(r => r.n).sort((a, b) => b.n - a.n);
@@ -821,7 +863,8 @@ function viewClass() {
       '<div class="who"><b>' + esc(p.eng || p.name) + '</b><span class="small muted">' + esc(p.name) + (state && !on ? ' · ' + esc(stateText(state)) : m && m.status === 'Đến muộn' ? T(' · Đến muộn', ' · Late') : '') + (g === '/' ? T(' · Sheet ghi vắng', ' · Sheet says absent') : '') + (value && !g ? T(' · Có ghi chú', ' · Has a note') : '') + '</span></div>' + grades +
       (owedText ? '<div class="owed">' + T('Thiếu video: ', 'Missing video: ') + esc(owedText) + '</div>' : '') + '</div>';
   }).join('') + '</div>';
-  return h + reportBlock(ctx);
+  // Owner 07/11: the lesson report lives in the class sheet's BÁO CÁO tab, not here.
+  return h;
 }
 
 /* ---------- Manager pages ---------- */
