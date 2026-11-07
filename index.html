@@ -392,6 +392,21 @@
   .rv-give { min-height: 60px; padding: 0 22px; font-size: 18px; font-weight: 800; border-radius: 14px; background: #dc2626; color: #fff; border: 2px solid #991b1b; }
   .rv-over-note { color: var(--bad); font-weight: 700; }
   @media (max-width: 560px) { .rv-name { flex-basis: 100%; } .rv-tick, .rv-warn, .rv-off { padding: 0 12px; font-size: 15px; } }
+  /* To-do card, lesson report deadlines, ladder by day (owner 07/11) */
+  a.btn { display: inline-flex; align-items: center; min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--brand); font-weight: 600; text-decoration: none; white-space: nowrap; }
+  .todo { border-left: 5px solid var(--brand); gap: 8px; }
+  .todo.empty-todo { border-left-color: var(--ok); }
+  .todo-item, .rp-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .todo-item .ico { font-size: 20px; width: 26px; text-align: center; }
+  .todo-item .txt { flex: 1 1 220px; font-weight: 600; }
+  .todo-item.hot .txt { color: var(--bad); }
+  .todo-item button, .rp-row button { min-height: 40px; }
+  .todo-item button.good, .rp-row button.good { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 700; }
+  :root[data-theme="dark"] .todo-item button.good, :root[data-theme="dark"] .rp-row button.good { color: #0b1a10; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .todo-item button.good, :root:not([data-theme="light"]) .rp-row button.good { color: #0b1a10; } }
+  .rp-what { display: grid; flex: 1 1 200px; }
+  .rp-row.over .rp-what b { color: var(--bad); }
+  .lad-do { color: var(--muted); padding: 2px 0 0 2px; }
 </style>
 </head>
 <body>
