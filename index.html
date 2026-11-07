@@ -407,6 +407,34 @@
   .rp-what { display: grid; flex: 1 1 200px; }
   .rp-row.over .rp-what b { color: var(--bad); }
   .lad-do { color: var(--muted); padding: 2px 0 0 2px; }
+  /* Class screen: BTVN grade, 3-lesson history, lock (owner 07/11 spec) */
+  .rv-hist { flex: none; width: 44px; min-height: 60px; padding: 0; font-size: 22px; border-radius: 12px; color: var(--muted); background: var(--card); }
+  .rv-hist.on { color: var(--brand); border-color: var(--brand); }
+  .rv-grade { display: flex; align-items: center; gap: 4px; }
+  .rv-grade button { min-width: 54px; min-height: 60px; padding: 0 8px; border-radius: 12px; font-size: 19px; font-weight: 800; background: var(--card); border: 2px solid; }
+  .rv-grade .gA { color: #1d4ed8; border-color: #93c5fd; } .rv-grade .gA.on { background: #2563eb; border-color: #1d4ed8; color: #fff; }
+  .rv-grade .gB { color: #a21caf; border-color: #f0abfc; } .rv-grade .gB.on { background: #c026d3; border-color: #a21caf; color: #fff; }
+  .rv-grade .gF { color: #b91c1c; border-color: #fca5a5; } .rv-grade .gF.on { background: #dc2626; border-color: #b91c1c; color: #fff; }
+  :root[data-theme="dark"] .rv-grade .gA:not(.on) { color: #93c5fd; } :root[data-theme="dark"] .rv-grade .gB:not(.on) { color: #f0abfc; } :root[data-theme="dark"] .rv-grade .gF:not(.on) { color: #fca5a5; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .rv-grade .gA:not(.on) { color: #93c5fd; } :root:not([data-theme="light"]) .rv-grade .gB:not(.on) { color: #f0abfc; } :root:not([data-theme="light"]) .rv-grade .gF:not(.on) { color: #fca5a5; } }
+  .rv-why { font-size: 18px; color: var(--muted); }
+  .rv-gtag { display: inline-block; min-width: 30px; padding: 1px 7px; border-radius: 8px; font-weight: 800; text-align: center; color: #fff; background: var(--muted); }
+  .rv-gtag.gA { background: #2563eb; } .rv-gtag.gB { background: #c026d3; } .rv-gtag.gF { background: #dc2626; }
+  .rv-histbox { flex: 1 1 100%; background: var(--soft); border-radius: 12px; padding: 8px 12px; overflow-x: auto; }
+  .rv-histbox table { width: 100%; border-collapse: collapse; font-size: 15px; table-layout: fixed; }
+  .rv-row .rv-histbox table th, .rv-row .rv-histbox table td { text-align: left; }
+  .rv-row .rv-histbox th:nth-child(1) { width: 26%; } .rv-row .rv-histbox th:nth-child(2) { width: 12%; } .rv-row .rv-histbox th:nth-child(3) { width: 30%; }
+  .rv-histbox th { text-align: left; color: var(--muted); font-weight: 600; padding: 2px 8px 4px 0; }
+  .rv-histbox td { padding: 4px 8px 4px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  .rv-htags { color: var(--bad); font-weight: 600; }
+  .rv-saved { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .rv-lock { position: relative; overflow: hidden; min-height: 52px; padding: 0 18px; border-radius: 14px; font-size: 17px; font-weight: 800; border: 2px solid var(--line); background: var(--card); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  .rv-lock .lbl { position: relative; }
+  .rv-lock .fill { position: absolute; inset: 0; width: 0; background: var(--brand-soft); }
+  .rv-lock.holding .fill { width: 100%; transition: width .7s linear; }
+  .rv-editing { color: var(--ok); font-weight: 800; white-space: nowrap; }
+  .rv-save { min-height: 52px; font-size: 17px; border-radius: 14px; }
+  @media (max-width: 560px) { .rv-grade button { min-width: 46px; } }
 </style>
 </head>
 <body>

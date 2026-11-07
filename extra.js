@@ -901,7 +901,7 @@ const tickTotal = counts => TICKS.reduce((n, t) => n + (counts[t] || 0), 0);
 viewLenLop = function () {
   const ctx = classContext(current), s = ctx.session;
   if (!ctx.tracker) return '<div class="card empty">' + T('Đang đọc sheet lớp…', 'Reading the class sheet…') + '</div>';
-  const edit = canTeach(s), behave = behaveFor(s), dis = edit ? '' : ' disabled';
+  const can = canTeach(s), edit = can && llUnlocked(s), behave = behaveFor(s), dis = edit ? '' : ' disabled';
   const rows = ctx.tracker.pupils.map((p, i) => { const m = ctx.marks.get(p.name); return { p, i, stars: starsOf(ctx, p), off: !!m && (m.status === NGHI || Q.ABSENT.includes(m.status)), here: !!m && Q.PRESENT.includes(m.status), b: behave.get(p.name) }; });
   rows.sort((a, b) => a.off - b.off || a.i - b.i);
   const scores = [...new Set(rows.filter(r => !r.off && r.stars).map(r => r.stars))].sort((a, b) => b - a), medal = ['🥇', '🥈', '🥉'];
@@ -910,17 +910,20 @@ viewLenLop = function () {
   const podium = rows.filter(r => !r.off && r.stars && scores.indexOf(r.stars) < 3).sort((a, b) => b.stars - a.stars).slice(0, 5);
   let h = '<div class="ll-head"><button class="quiet" data-act="llExit" aria-label="' + T('Thoát', 'Exit') + '">‹</button><div class="ll-title"><b>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</b><span>' + sessionTime(s) + ' · ' + rows.filter(r => r.here).length + '/' + rows.length + T(' có mặt', ' here') + '</span></div>' +
     (podium.length ? '<div class="ll-podium" aria-label="' + T('Dẫn đầu', 'Leaders') + '">' + podium.map(r => '<span>' + (medal[scores.indexOf(r.stars)] || '') + ' ' + esc(r.p.eng || r.p.name) + ' <b>' + r.stars + '</b></span>').join('') + '</div>' : '') +
-    (edit && unmarked && !group ? '<button class="primary" data-act="llAll">' + T('Còn lại có mặt', 'Rest are here') + '</button>' : '') + '</div>';
+    (edit && unmarked && !group ? '<button class="primary" data-act="llAll">' + T('Còn lại có mặt', 'Rest are here') + '</button>' : '') + lockBar(can, edit) + '</div>';
   if (noStars) h += '<div class="notice">' + T('Sheet lớp này không có cột Số sao, nên chỉ điểm danh và nhắc nhở.', 'This class sheet has no star column.') + '</div>';
   else if (ctx.problem || !starOk) h += '<div class="notice">' + esc(columnWarning(ctx) || T('Tiết này chưa có cột Số sao trong sheet lớp, TA mở cột giúp.', 'This lesson has no star column yet, TA please open it.')) + '</div>';
-  if (!edit) h += '<div class="notice">' + T('Buổi này chưa mở hoặc không phân công cho bạn, chỉ xem được.', 'This session is not open or not assigned to you, view only.') + '</div>';
+  if (can && !edit) h += '<div class="small muted rv-hint">🔒 ' + T('Đang khoá để học sinh không bấm nhầm. Giáo viên giữ nút "Giữ để sửa" 1 giây để mở. Bấm mũi tên ▸ cạnh tên để xem 3 buổi trước.', 'Locked so pupils cannot change anything. Hold "Hold to edit" for a second. Tap ▸ to see the last 3 lessons.') + '</div>';
+  else if (!edit) h += '<div class="notice">' + T('Buổi này chưa mở hoặc không phân công cho bạn, chỉ xem được.', 'This session is not open or not assigned to you, view only.') + '</div>';
   else h += '<div class="small muted rv-hint">' + T('Bấm Nghỉ cho bạn vắng, rồi "Còn lại có mặt". Nhắc quá ' + WARN_LIMIT + ' lần thì hiện dấu ! đỏ. Bấm nhầm: chạm tên để bớt.', 'Tap Absent for missing pupils, then "Rest are here". More than ' + WARN_LIMIT + ' reminders shows a red !. Mis-tap: tap the name to take one off.') + '</div>';
   h += '<div class="rv-list" role="list">' + rows.map(r => {
     const rank = r.off || !r.stars ? 0 : scores.indexOf(r.stars) + 1, name = r.p.eng || r.p.name, counts = tagCounts(r.b ? r.b.tags : []), n = tickTotal(counts), over = n > WARN_LIMIT, warned = counts[CANH_CAO] || 0;
     const live = r.off ? ' disabled' : dis, badge = c => c ? '<span class="rv-badge">' + c + '</span>' : '';
+    const histOpen = llHist.has(r.p.name);
     return '<div class="ll-tile rv-row' + (r.off ? ' off' : rank === 1 ? ' top' : '') + (r.here ? ' here' : '') + (over ? ' over' : '') + '" role="listitem" data-i="' + r.i + '">' +
+      '<button class="rv-hist' + (histOpen ? ' on' : '') + '" data-act="llHist" data-i="' + r.i + '" aria-expanded="' + histOpen + '" aria-label="' + T('3 buổi trước của ', 'Last 3 lessons of ') + esc(name) + '">' + (histOpen ? '▾' : '▸') + '</button>' +
       '<button class="rv-name" data-act="llMenu" data-i="' + r.i + '" aria-label="' + T('Mở mục của ', 'Open ') + esc(name) + '">' + (rank ? '<span class="rv-rank">' + (medal[rank - 1] || '#' + rank) + '</span>' : '') +
-        '<span class="ll-name">' + esc(name) + '</span>' + (over ? '<span class="rv-alert" title="' + T('Nhắc ', 'Reminded ') + n + T(' lần', ' times') + '" aria-label="' + T('Nhắc quá ' + WARN_LIMIT + ' lần', 'Over ' + WARN_LIMIT + ' reminders') + '">!</span>' : '') + '</button>' +
+        '<span class="ll-name">' + esc(name) + '</span>' + (over ? '<span class="rv-alert" title="' + T('Nhắc ', 'Reminded ') + n + T(' lần', ' times') + '" aria-label="' + T('Nhắc quá ' + WARN_LIMIT + ' lần', 'Over ' + WARN_LIMIT + ' reminders') + '">!</span>' : '') + '</button>' + gradeSeg(ctx, r, live) +
       (noStars ? '' : '<div class="rv-stars"><button class="rv-minus" data-act="llDown" data-i="' + r.i + '"' + (starOk && r.stars ? live : ' disabled') + ' aria-label="' + T('Bớt 1 sao của ', 'One star off ') + esc(name) + '">−</button>' +
         '<span class="ll-num rv-num" aria-label="' + r.stars + T(' sao', ' stars') + '">⭐ <b>' + r.stars + '</b></span>' +
         '<button class="ll-plus rv-plus" data-act="llStar" data-i="' + r.i + '"' + (starOk ? live : ' disabled') + ' aria-label="' + T('Thêm 1 sao cho ', 'Add a star for ') + esc(name) + '">+</button></div>') +
@@ -928,10 +931,12 @@ viewLenLop = function () {
       '<button class="rv-warn' + (over ? ' hot' : '') + (warned ? ' on' : '') + '" data-act="llReason" data-i="' + r.i + '"' + live + '>⚠️ ' + T('Cảnh cáo', 'Warning') + badge(warned) + '</button>' +
       (group && !r.off ? '<button class="rv-here' + (r.here ? ' on' : '') + '" data-act="llHere" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.here + '">✓</button>' : '') +
       '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? T('Nghỉ ✓', 'Absent ✓') : T('Nghỉ', 'Absent')) + '</button>' +
-      '</div>';
+      (histOpen ? histBox(ctx, r) : '') + '</div>';
   }).join('') + '</div>';
   const open = llReason != null ? rows.find(r => r.i === llReason) : null;
-  if (open) h += reasonBox(open, edit);
+  const gOpen = llGradeBox != null ? rows.find(r => r.i === llGradeBox) : null;
+  if (gOpen) h += gradeBox(ctx, gOpen, edit);
+  else if (open) h += reasonBox(open, edit);
   else if (llMenu != null) h += llSheet(ctx, rows.find(r => r.i === llMenu), edit, noStars);
   return h;
 };
@@ -1253,3 +1258,116 @@ ladderBlock = function (week) {
   if (ladder.copy) h += copySheet(ladder.copy);
   return h;
 };
+
+/* ---------- Grade, history and lock on the class screen (owner 07/11 spec) ----------
+ * A+ / B / F beside the name writes the paper-homework cell; B and F open a reason box ("Lý do: …" on the next line of the cell,
+ * so the grade letter stays first and every reader still sees the grade).
+ * ▸ beside a pupil shows the last 3 lessons: stars, BTVN, reminders. The screen starts locked; the teacher holds "Giữ để sửa",
+ * then "Lưu & khoá". Every tap is kept on this device at once and sent to the sheets in the background, so a power cut loses nothing. */
+const LOCK_IDLE = 5 * 60000, HOLD_MS = 700, REASON_TAG = 'Lý do: ';
+const GRADE_REASONS = ['Chưa làm bài', 'Làm thiếu', 'Làm ẩu, sai nhiều', 'Quên sách vở', 'Chưa chữa bài'];
+const llLock = { key: '', open: false, at: 0 };
+let llGradeBox = null;
+const llHist = new Set();
+function llUnlocked(s) {
+  const k = Q.sessionKey(s);
+  if (llLock.key !== k) { llLock.key = k; llLock.open = false; }
+  return llLock.open && Date.now() - llLock.at < LOCK_IDLE;
+}
+function lockBar(can, edit) {
+  if (!can) return '';
+  const left = outbox.length, state = '<span class="rv-saved" id="llSaveState">' + saveText() + '</span>';
+  if (!edit) return state + '<button class="rv-lock" data-act="llUnlock" aria-label="' + T('Giữ 1 giây để mở khoá sửa', 'Hold a second to unlock') + '"><span class="fill"></span><span class="lbl">🔒 ' + T('Giữ để sửa', 'Hold to edit') + '</span></button>';
+  return state + '<span class="rv-editing">✏️ ' + T('Đang sửa', 'Editing') + '</span><button class="primary rv-save" data-act="llSave">💾 ' + T('Lưu & khoá', 'Save & lock') + (left ? ' (' + left + ')' : '') + '</button>';
+}
+const saveText = () => flushFailed ? '⚠️ ' + T('Mất mạng: ' + outbox.length + ' mục giữ trên máy, sẽ tự gửi lại', outbox.length + ' kept on this device, will resend') : outbox.length ? T('Đã giữ trên máy · đang gửi ' + outbox.length + ' mục', 'Kept on device · sending ' + outbox.length) : '✓ ' + T('Đã lưu lên sheet', 'Saved to the sheets');
+const paintSaveBeforeLock = paintSave;
+paintSave = function () { paintSaveBeforeLock(); const el = document.getElementById('llSaveState'); if (el) el.textContent = saveText(); };
+
+const gradeParts = v => { const lines = String(v || '').split('\n'), g = Q.gradeOf(v); return { g, why: lines.slice(1).filter(l => l.startsWith(REASON_TAG)).map(l => l.slice(REASON_TAG.length)).join('; '), rest: lines.slice(1).filter(l => !l.startsWith(REASON_TAG) && Q.clean(l)) }; };
+function gradeSeg(ctx, r, live) {
+  if (!ctx.block || ctx.block.grade < 0) return '';
+  const { g, why } = gradeParts(ctx.tracker.cell(r.p.row, ctx.block.grade)), pick = g === 'A' ? 'A+' : g;
+  return '<div class="rv-grade" role="group" aria-label="' + T('Bài tập về nhà', 'Homework') + '">' + ['A+', 'B', 'F'].map(x => '<button class="g' + x[0] + (pick === x ? ' on' : '') + '" data-act="llGrade" data-i="' + r.i + '" data-v="' + x + '"' + live + ' aria-pressed="' + (pick === x) + '">' + x + '</button>').join('') +
+    (why ? '<span class="rv-why" title="' + esc(why) + '">✎</span>' : '') + '</div>';
+}
+function gradeWrite(ctx, pupil, grade, why) {
+  const { block, tracker, cls, session } = ctx, cur = tracker.cell(pupil.row, block.grade), p = gradeParts(cur);
+  const rest = p.g === '/' ? [] : p.rest, value = grade ? [grade].concat(rest, grade !== 'A+' && Q.clean(why) ? [REASON_TAG + Q.clean(why)] : []).join('\n') : rest.join('\n');
+  gradeCell(cls, tracker, block, pupil, value, pupil.eng + ' · BTVN ' + session.lesson);
+  const m = ctx.marks.get(pupil.name);
+  if (grade && !(m && Q.PRESENT.includes(m.status))) appendMark(session, pupil, Q.tickStatus(session, today(), minutesNow()));
+}
+function gradeBox(ctx, r, edit) {
+  const name = r.p.eng || r.p.name, dis = edit ? '' : ' disabled', cur = gradeParts(ctx.tracker.cell(r.p.row, ctx.block.grade)), key = 'llgrade:' + r.p.name, draft = drafts[key] != null ? drafts[key] : cur.why;
+  return '<div class="ll-veil" data-act="llClose"></div><div class="ll-sheet rv-box" role="dialog" aria-label="BTVN ' + esc(name) + '">' +
+    '<div class="row-top"><b class="ll-sheet-name">BTVN <span class="rv-gtag g' + cur.g[0] + '">' + esc(cur.g) + '</span> · ' + esc(name) + '</b><span class="spacer"></span><button class="quiet" data-act="llClose">' + T('Đóng', 'Close') + '</button></div>' +
+    '<div class="small muted">' + T('Lý do (không bắt buộc). Ghi vào ô BTVN của tiết này trong sheet lớp.', 'Reason (optional), written to the homework cell.') + '</div>' +
+    '<div class="ll-chips">' + GRADE_REASONS.map(t => '<button class="' + (draft === t ? 'on' : '') + '" data-act="llGradePick" data-i="' + r.i + '" data-v="' + esc(t) + '"' + dis + '>' + esc(t) + '</button>').join('') + '</div>' +
+    '<textarea data-act="llGradeText" data-name="' + esc(r.p.name) + '" rows="2" maxlength="200" placeholder="' + T('Lý do cụ thể…', 'Reason…') + '"' + dis + '>' + esc(draft) + '</textarea>' +
+    '<div class="ll-sheet-row"><button class="primary" data-act="llGradeSave" data-i="' + r.i + '"' + dis + '>' + T('Lưu lý do', 'Save reason') + '</button><button data-act="llGradeClear" data-i="' + r.i + '"' + dis + '>' + T('Xoá điểm', 'Clear grade') + '</button></div></div>';
+}
+// The last 3 lessons before this one, read from the class sheet (stars, BTVN) and the behaviour log.
+function histBox(ctx, r) {
+  const s = ctx.session, t = ctx.tracker, here = ctx.block;
+  // Sheets put the newest lesson on the left, so the order comes from the date and lesson number, never the column.
+  const num = b => Number(b.lesson) || 0;
+  const past = t.blocks.filter(b => b !== here && b.date && (b.date < s.day || (b.date === s.day && num(b) && num(b) < (Number(s.lesson) || 0)))).sort((a, b) => b.date.localeCompare(a.date) || num(b) - num(a)).slice(0, 3);
+  if (!past.length) return '<div class="rv-histbox"><span class="small muted">' + T('Chưa có buổi nào trước buổi này trong sheet.', 'No earlier lesson in the sheet.') + '</span></div>';
+  const rows = logs.behave ? logs.behave.rows : [];
+  return '<div class="rv-histbox"><table><thead><tr><th>' + T('Buổi', 'Lesson') + '</th><th>⭐</th><th>BTVN</th><th>' + T('Nhắc nhở', 'Reminders') + '</th></tr></thead><tbody>' + past.map(b => {
+    const star = b.stars >= 0 ? Q.clean(t.cell(r.p.row, b.stars)) : '', gp = b.grade >= 0 ? gradeParts(t.cell(r.p.row, b.grade)) : { g: '', why: '' };
+    const beh = rows.filter(x => x.day === b.date && Q.key(x.cls) === Q.key(s.cls) && String(x.lesson) === String(b.lesson) && x.name === r.p.name).pop();
+    const c = tagCounts(beh ? beh.tags : []), tags = Object.keys(c).map(k => tagText(k) + (c[k] > 1 ? ' ×' + c[k] : '')).join(', ');
+    const absent = gp.g === '/';
+    return '<tr><td>' + esc(viDate(b.date).slice(0, 5)) + (b.lesson ? ' · T' + esc(b.lesson) : '') + '</td><td>' + (absent ? '—' : esc(/^\d+$/.test(star) ? star : star ? '?' : '0')) + '</td><td>' + (absent ? '<span class="tag">' + T('Vắng', 'Absent') + '</span>' : gp.g ? '<span class="rv-gtag g' + gp.g[0] + '">' + esc(gp.g) + '</span>' + (gp.why ? ' <span class="small muted">' + esc(gp.why) + '</span>' : '') : '<span class="muted">—</span>') + '</td><td>' + (tags ? '<span class="rv-htags">' + esc(tags) + '</span>' : '<span class="muted">' + T('Không', 'None') + '</span>') + '</td></tr>';
+  }).join('') + '</tbody></table></div>';
+}
+
+const WRITE_ACTS = ['llStar', 'llDown', 'llTick', 'llWarnGive', 'llWarnAdd', 'llOff', 'llHere', 'llAll', 'llType', 'llMinus', 'llTag', 'llNoteSave', 'llGrade', 'llGradeSave', 'llGradeClear', 'llReason', 'llReasonPick', 'llGradePick'];
+const llActionBeforeLock = llAction;
+llAction = function (act, i, v) {
+  const ctx = classContext(current), s = ctx.session;
+  if (act === 'llExit') { llLock.open = false; llGradeBox = null; llHist.clear(); }
+  if (act === 'llClose') llGradeBox = null;
+  if (act === 'llHist') { const p = ctx.tracker && ctx.tracker.pupils[Number(i)]; if (p) { if (llHist.has(p.name)) llHist.delete(p.name); else llHist.add(p.name); render(); } return; }
+  if (act === 'llUnlock') return;
+  if (act === 'llSave') { llLock.open = false; llGradeBox = null; flush(); render(); say(T('Đã lưu và khoá màn hình lớp.', 'Saved and locked.')); return; }
+  if (WRITE_ACTS.includes(act)) {
+    if (!canTeach(s) || !llUnlocked(s)) return;
+    llLock.at = Date.now();
+  }
+  if (!['llGrade', 'llGradeSave', 'llGradeClear', 'llGradePick'].includes(act)) return llActionBeforeLock(act, i, v);
+  const pupil = i != null && ctx.tracker ? ctx.tracker.pupils[Number(i)] : null;
+  if (!pupil || !ctx.block || ctx.block.grade < 0) return;
+  const key = 'llgrade:' + pupil.name, cur = gradeParts(ctx.tracker.cell(pupil.row, ctx.block.grade));
+  if (act === 'llGrade') {
+    const same = (cur.g === 'A' ? 'A+' : cur.g) === v;
+    if (same && v === 'A+') { if (cur.rest.length) return say(T('Ô BTVN có nhận xét của GV, muốn xoá điểm thì sửa trong sheet.', 'This cell has a teacher comment.'), 'bad'); gradeWrite(ctx, pupil, '', ''); render(); return; }
+    if (!same) gradeWrite(ctx, pupil, v, v === 'A+' ? '' : cur.why);
+    if (v !== 'A+') { llMenu = null; llReason = null; llGradeBox = Number(i); delete drafts[key]; }
+    render(); return;
+  }
+  if (act === 'llGradePick') { drafts[key] = drafts[key] === v ? '' : v; render(); return; }
+  if (act === 'llGradeSave') { gradeWrite(ctx, pupil, cur.g, drafts[key] != null ? drafts[key] : cur.why); delete drafts[key]; llGradeBox = null; render(); return; }
+  if (act === 'llGradeClear') { gradeWrite(ctx, pupil, '', ''); delete drafts[key]; llGradeBox = null; render(); }
+};
+document.addEventListener('input', e => {
+  const b = e.target.closest('[data-act="llGradeText"]');
+  if (b) drafts['llgrade:' + b.dataset.name] = b.value;
+});
+// Hold to unlock: a quick tap by a pupil does nothing; the teacher keeps a finger on it for under a second.
+let holdTimer = null;
+const holdStop = () => { clearTimeout(holdTimer); holdTimer = null; document.querySelectorAll('.rv-lock.holding').forEach(b => b.classList.remove('holding')); };
+const unlockNow = () => { llLock.open = true; llLock.at = Date.now(); holdStop(); render(); };
+document.addEventListener('pointerdown', e => {
+  const b = e.target.closest('[data-act="llUnlock"]');
+  if (!b) return;
+  e.preventDefault(); b.classList.add('holding');
+  holdTimer = setTimeout(unlockNow, HOLD_MS);
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach(t => document.addEventListener(t, e => { if (holdTimer && (t !== 'pointerleave' || e.target.closest && e.target.closest('[data-act="llUnlock"]'))) holdStop(); }, true));
+document.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest('[data-act="llUnlock"]')) e.preventDefault(); });
+document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('[data-act="llUnlock"]')) { e.preventDefault(); unlockNow(); } });
+// After 5 minutes without a tap the screen locks itself again.
+setInterval(() => { if (view === 'lenlop' && llLock.open && Date.now() - llLock.at >= LOCK_IDLE) { llLock.open = false; llGradeBox = null; flush(); render(); } }, 15000);
