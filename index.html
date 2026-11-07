@@ -178,6 +178,13 @@
   .form-grid label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
   .card textarea, .form-grid input, .form-grid select { width: 100%; font-size: 15px; padding: 8px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
   .owe-row .warn { color: var(--warn); } .owe-row .bad { color: var(--bad); }
+  .lad .lvl { display: inline-grid; place-items: center; min-width: 34px; height: 26px; border-radius: 8px; font-weight: 800; font-size: 13px; background: var(--soft); }
+  .lad.lv1 .lvl { background: #FEF9C3; color: #713f12; } .lad.lv2 .lvl { background: #FED7AA; color: #7c2d12; } .lad.lv3 .lvl { background: #FCA5A5; color: #7f1d1d; }
+  .lad.lv4 .lvl { background: #F87171; color: #fff; } .lad.lv5 .lvl { background: #B91C1C; color: #fff; }
+  .lad.late { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad) inset; }
+  .copy-text h3 { margin: 4px 0; } .copy-text ol { padding-left: 22px; display: grid; gap: 8px; } .copy-text li span { color: var(--muted); } .copy-text .sign { margin-top: 18px; }
+  .print-sheet { max-height: 85vh; overflow: auto; }
+  @media print { body * { visibility: hidden !important; } .print-sheet, .print-sheet * { visibility: visible !important; } .print-sheet { position: absolute; inset: 0 auto auto 0; width: 100%; max-height: none; box-shadow: none; transform: none; color: #000; background: #fff; } .no-print { display: none !important; } }
   .ll-podium { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
   .ll-podium span { background: var(--warn-soft); border: 1px solid var(--warn); border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 15px; white-space: nowrap; }
   .ll-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
