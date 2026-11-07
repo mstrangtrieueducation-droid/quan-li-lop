@@ -173,7 +173,8 @@ function slipCard(d) {
   return '<div class="card slip"><div class="slip-head"><div><div class="small muted">' + esc(s.tab) + '</div><b class="slip-name">' + esc(s.name) + '</b>' + (s.role ? '<div class="small muted">' + esc(s.role) + '</div>' : '') + '</div>' +
     '<div class="slip-net"><span>' + esc(net ? label(net.label) : T('Thực nhận', 'Net')) + '</span><b>' + esc(s.net || (net && net.value) || '—') + '</b>' + rest.map(x => '<small>' + esc(label(x.label)) + ': ' + esc(x.value) + '</small>').join('') + '</div></div>' +
     '<div class="slip-grid">' + section(T('Thu nhập', 'Earnings'), income, 'in') + section(T('Khấu trừ', 'Deductions'), deduct, 'out') + '</div>' +
-    (s.rules ? '<details class="slip-rules"><summary>' + T('Cách tính lương của bạn', 'Your pay rules') + '</summary><ul>' + s.rules.split(/\n/).map(l => l.replace(/^\s*[-•]\s*/, '').trim()).filter(Boolean).map(l => '<li>' + esc(l) + '</li>').join('') + '</ul></details>' : '') + '</div>';
+    // Owner 07/11: the payroll's own notes column is not shown; it can differ from what is paid and misleads.
+    '</div>';
 }
 function payStateLine(st) {
   if (!st) return '';
