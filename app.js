@@ -1093,8 +1093,6 @@ function render() {
   const items = [['lich', T('Lịch', 'Schedule')]].concat(isManager() || myHomerooms().some(x => isMe(x.cm)) ? [['lopcn', T('Lớp chủ nhiệm', 'Homeroom')]] : []).concat([['cong', T('Công của tôi', 'My hours')], ['luong', T('Lương', 'Pay')]]).concat(isManager() ? [['dieuhanh', 'Điều hành']] : []).concat(isOwner() ? [['hopdong', T('Hợp đồng', 'Contracts')], ['nguoi', 'Người dùng']] : []);
   $('btnLang').textContent = lang === 'en' ? 'Tiếng Việt' : 'English';
   paintTheme();
-  $('btnOut').textContent = T('Thoát', 'Sign out');
-  if ($('btnMyLink')) $('btnMyLink').textContent = T('Link của tôi', 'My link');
   $('nav').innerHTML = items.map(([k, t]) => '<button class="' + (view === k ? 'on' : '') + '" data-act="view" data-v="' + k + '">' + t + '</button>').join('');
   const week = weeks[Q.weekTab(tabs, day)] || null;
   let h = notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('');
@@ -1247,7 +1245,7 @@ function paintLogin() {
   $('loginText').textContent = T('Vui lòng mở app bằng link riêng quản lí đã gửi cho bạn.', 'Please open the app with the private link your manager sent you.');
   $('btnLangLogin').textContent = lang === 'en' ? 'Tiếng Việt' : 'English';
 }
-$('btnOut').addEventListener('click', () => {
+if ($('btnOut')) $('btnOut').addEventListener('click', () => {
   if (!window.confirm(T('Thoát trên máy này? Muốn vào lại phải mở lại link riêng.', 'Leave on this device? You will need your private link to come back.'))) return;
   accessKey = null; me = null; keep('key', '');
   showLogin(false);

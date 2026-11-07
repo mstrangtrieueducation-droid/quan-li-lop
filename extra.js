@@ -602,13 +602,3 @@ function ladderTodo(week) {
   if (!ladder.rows) return 0;
   return ladder.rows.filter(r => (isManager() || isTaSide(week) || isMe(homeroom[Q.key(r.cls)] || '')) && !contactDone(r, contactRule(r))).length;
 }
-
-/* ---------- My own link, to open the app on another device (owner 07/11: "link tổng của tôi đâu") ----------
- * Copied straight to the clipboard and never shown: whoever holds it opens the app as this person. */
-document.getElementById('btnMyLink').addEventListener('click', async () => {
-  if (!accessKey) return say(T('Chưa vào bằng link riêng trên máy này.', 'Not signed in with a private link on this device.'), 'bad');
-  try {
-    await navigator.clipboard.writeText(location.origin + location.pathname + '#k=' + accessKey);
-    say(T('Đã copy link riêng của bạn. Dán vào trình duyệt trên điện thoại hoặc máy khác để mở. Không gửi link này vào nhóm: ai có link là vào được với tên bạn.', 'Your private link is copied. Paste it into a browser on another device. Do not share it.'));
-  } catch (e) { say(T('Trình duyệt không cho copy. Thử bấm lại, hoặc mở app bằng link cô Trang đã gửi.', 'The browser blocked copying.'), 'bad'); }
-});
