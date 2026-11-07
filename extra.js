@@ -537,22 +537,29 @@ function ladderBlock(week) {
   if (!ladder.rows) { if (Date.now() - ladder.tried > 60000) { ladder.tried = Date.now(); setTimeout(() => loadLadder().then(render).catch(() => {}), 0); } return penaltyBlock(week); }
   const todayCls = new Map();
   (week ? week.data.sessions : []).filter(s => s.day === day && !s.off).forEach(s => { const k = Q.key(s.cls); if (!todayCls.has(k) || todayCls.get(k).start > s.start) todayCls.set(k, s); });
-  const mine = x => isManager() || isTaSide(week) || isMe(homeroom[Q.key(x.cls)] || '') || (todayCls.get(Q.key(x.cls)) && teaches(todayCls.get(Q.key(x.cls))));
+  // Penalties are handled by managers, staff on the TA side and the homeroom; a class teacher does not see them.
+  const mine = x => isManager() || isTaSide(week) || isMe(homeroom[Q.key(x.cls)] || '');
   const list = ladder.rows.filter(mine).map(x => { const rule = contactRule(x), done = contactDone(x, rule); return { x, rule, done, late: !done && today() > rule.due && (viToIso(x.since) || today()) >= CONTACT_START, s: todayCls.get(Q.key(x.cls)) }; });
   if (!list.length) return '';
   list.sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || b.late - a.late || (a.s ? 0 : 1) - (b.s ? 0 : 1) || b.x.level - a.x.level || a.x.cls.localeCompare(b.x.cls, 'vi', { numeric: true }));
   const todo = list.filter(l => !l.done).length, late = list.filter(l => l.late).length;
-  let h = '<div class="part p-alert"><h2>' + T('Học sinh trong danh sách phạt', 'Pupils on the penalty ladder') + '</h2><span>' + list.length + T(' HS', ' pupils') + (todo ? ' · ' + todo + T(' chưa liên hệ PH', ' parents to contact') : '') + (late ? ' · ' + late + T(' quá hạn', ' overdue') : '') + '</span></div>';
-  h += '<div class="small muted">' + T('Hôm nay nhắn tin phụ huynh: ', 'Messages today: ') + '<b>' + (isFriday(today()) ? 'THUY TRANG' : T('quản lí', 'managers')) + '</b>. ' + T('Mức 4 chủ nhiệm gọi, mức 5 quản lí gọi, trong 2 ngày kể từ khi vào mức.', 'Level 4 homeroom calls, level 5 a manager calls, within 2 days.') + '</div>';
-  h += '<div class="grid">' + list.map(({ x, rule, done, late, s }) => {
-    const m = x.name.match(/^(.*?)\s*\(([^)]+)\)\s*$/), eng = m ? m[2] : '', full = m ? m[1] : x.name;
-    return '<div class="card row lad lv' + x.level + (late ? ' late' : '') + '"><div class="row-top"><span class="lvl">M' + x.level + '</span><b>' + esc(eng || full) + '</b><span class="muted small">' + esc(x.cls) + (s ? ' · ' + T('học ', 'class ') + Q.clock(s.start) : '') + '</span><span class="spacer"></span><span class="small muted">' + T('từ ', 'since ') + esc(x.since.slice(0, 5)) + '</span></div>' +
-      '<div class="small">' + esc(LADDER_ACT[x.level] || '') + '</div>' +
-      '<div class="small muted">' + esc(x.reason) + (x.owed.length ? ' · ' + T('còn nợ: ', 'owes: ') + esc(x.owed.join('; ')) : '') + '</div>' +
-      '<div class="choices">' + (done ? '<span class="tag ok">✓ ' + esc(rule.action) + ' · ' + esc(done.by) + ' ' + esc(String(done.at).slice(0, 5)) + '</span>' :
-        '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Cần gọi PH', 'Call parents') : T('Cần nhắn PH', 'Message parents')) + ' · ' + esc(rule.who) + (rule.call ? T(' · hạn ', ' · by ') + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>' +
-        (canContact(x, rule) ? '<button class="good" data-act="ladTick" data-cls="' + esc(x.cls) + '" data-name="' + esc(x.name) + '">' + esc(rule.action) + '</button>' : '')) +
-      (x.level === 2 ? '<button class="quiet" data-act="ladCopy" data-cls="' + esc(x.cls) + '" data-name="' + esc(eng || full) + '">' + T('Bài chép phạt', 'Copy text') + '</button>' : '') + '</div></div>';
+  const mode = filters.lad || 'can', shown = mode === 'can' ? list.filter(l => !l.done) : mode === 'homnay' ? list.filter(l => l.s) : list;
+  let h = '<div class="part p-alert"><h2>' + T('Học sinh trong danh sách phạt', 'Pupils on the penalty ladder') + '</h2><span>' + list.length + T(' HS', ' pupils') + (late ? ' · ' + late + T(' quá hạn', ' overdue') : '') + '</span></div>';
+  h += '<div class="chips">' + [['can', T('Cần liên hệ PH', 'To contact') + ' ' + todo], ['homnay', T('Lớp học hôm nay', 'In class today') + ' ' + list.filter(l => l.s).length], ['tat', T('Tất cả', 'All') + ' ' + list.length]].map(([k, t]) => '<button class="' + (mode === k ? 'on' : '') + '" data-act="ladMode" data-v="' + k + '">' + esc(t) + '</button>').join('') + '</div>';
+  h += '<details class="card row lad-legend"><summary>' + T('Việc từng mức · nhắn tin hôm nay: ', 'What each level means · messages today: ') + '<b>' + (isFriday(today()) ? 'THUY TRANG' : T('quản lí', 'managers')) + '</b></summary>' + [1, 2, 3, 4, 5].map(l => '<div class="small"><span class="lvl l' + l + '">M' + l + '</span> ' + esc(LADDER_ACT[l]) + (l >= 4 ? T(' Hạn 2 ngày.', ' Within 2 days.') : '') + '</div>').join('') + '</details>';
+  if (!shown.length) return h + '<div class="card empty">' + (mode === 'can' ? T('Đã liên hệ phụ huynh đủ.', 'All parents contacted.') : T('Không có học sinh nào.', 'Nobody here.')) + '</div>' + (ladder.copy ? copySheet(ladder.copy) : '');
+  const byCls = new Map();
+  shown.forEach(l => { if (!byCls.has(l.x.cls)) byCls.set(l.x.cls, []); byCls.get(l.x.cls).push(l); });
+  h += '<div class="grid">' + [...byCls.entries()].map(([cls, items]) => {
+    const s0 = items[0].s;
+    return '<div class="card row lad-class"><div class="row-top"><b>' + esc(cls) + '</b>' + (s0 ? '<span class="tag">' + T('học ', 'class ') + Q.clock(s0.start) + '</span>' : '') + '<span class="spacer"></span><span class="muted small">' + items.length + T(' HS', '') + '</span></div>' + items.map(({ x, rule, done, late }) => {
+      const m = x.name.match(/^(.*?)\s*\(([^)]+)\)\s*$/), eng = m ? m[2] : '', full = m ? m[1] : x.name;
+      return '<div class="lad lv' + x.level + (late ? ' late' : '') + '"><div class="lad-line"><span class="lvl l' + x.level + '">M' + x.level + '</span><b>' + esc(eng || full) + '</b>' +
+        (done ? '<span class="tag ok">✓ ' + esc(rule.action.replace('Đã ', '')) + ' · ' + esc(done.by) + '</span>' : '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Gọi', 'Call') : T('Nhắn', 'Message')) + ' · ' + esc(rule.who) + (rule.call ? ' · ' + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>') +
+        '<span class="spacer"></span>' + (!done && canContact(x, rule) ? '<button class="good" data-act="ladTick" data-cls="' + esc(x.cls) + '" data-name="' + esc(x.name) + '">' + esc(rule.action) + '</button>' : '') +
+        (x.level === 2 ? '<button class="quiet" data-act="ladCopy" data-cls="' + esc(x.cls) + '" data-name="' + esc(eng || full) + '">' + T('Bài chép', 'Copy text') + '</button>' : '') + '</div>' +
+        '<details class="lad-more"><summary>' + esc(x.reason || T('Chi tiết', 'Details')) + '</summary><div class="small">' + esc(full) + ' · ' + T('vào mức từ ', 'since ') + esc(x.since) + '</div>' + (x.owed.length ? '<div class="small muted">' + T('Còn nợ: ', 'Owes: ') + esc(x.owed.join('; ')) + '</div>' : '') + '</details></div>';
+    }).join('') + '</div>';
   }).join('') + '</div>';
   if (ladder.copy) h += copySheet(ladder.copy);
   return h;
@@ -575,7 +582,13 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
   if (b.dataset.act === 'ladTick') ladTick(b);
+  if (b.dataset.act === 'ladMode') { filters.lad = b.dataset.v; render(); }
   if (b.dataset.act === 'ladCopy') { ladder.copy = { cls: b.dataset.cls, name: b.dataset.name }; render(); }
   if (b.dataset.act === 'ladCopyClose') { ladder.copy = null; render(); }
   if (b.dataset.act === 'ladPrint') window.print();
 });
+
+function ladderTodo(week) {
+  if (!ladder.rows) return 0;
+  return ladder.rows.filter(r => (isManager() || isTaSide(week) || isMe(homeroom[Q.key(r.cls)] || '')) && !contactDone(r, contactRule(r))).length;
+}

@@ -178,6 +178,19 @@
   .form-grid label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
   .card textarea, .form-grid input, .form-grid select { width: 100%; font-size: 15px; padding: 8px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
   .owe-row .warn { color: var(--warn); } .owe-row .bad { color: var(--bad); }
+  .sectabs { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 4px; position: sticky; top: 0; z-index: 5; background: var(--bg); }
+  .sectabs button { flex: none; min-height: 42px; padding: 0 14px; border-radius: 999px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+  .sectabs button.on { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
+  .sectabs button i { font-style: normal; margin-left: 6px; display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; font-size: 12px; background: var(--soft); color: var(--ink); }
+  .sectabs button.hot i { background: var(--bad); color: #fff; }
+  .lad-class .lad { border-top: 1px solid var(--line); padding: 6px 0; }
+  .lad-class .lad:first-of-type { border-top: 0; }
+  .lad-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .lad-line button { min-height: 36px; padding: 0 10px; font-size: 13px; }
+  .lad-more summary { font-size: 12px; color: var(--muted); cursor: pointer; margin-top: 2px; }
+  .lad.late .lvl { box-shadow: 0 0 0 2px var(--bad); }
+  .lvl.l1 { background: #FEF9C3; color: #713f12; } .lvl.l2 { background: #FED7AA; color: #7c2d12; } .lvl.l3 { background: #FCA5A5; color: #7f1d1d; } .lvl.l4 { background: #F87171; color: #fff; } .lvl.l5 { background: #B91C1C; color: #fff; }
+  .lvl { display: inline-grid; place-items: center; min-width: 34px; height: 24px; border-radius: 8px; font-weight: 800; font-size: 12px; background: var(--soft); }
   .lad .lvl { display: inline-grid; place-items: center; min-width: 34px; height: 26px; border-radius: 8px; font-weight: 800; font-size: 13px; background: var(--soft); }
   .lad.lv1 .lvl { background: #FEF9C3; color: #713f12; } .lad.lv2 .lvl { background: #FED7AA; color: #7c2d12; } .lad.lv3 .lvl { background: #FCA5A5; color: #7f1d1d; }
   .lad.lv4 .lvl { background: #F87171; color: #fff; } .lad.lv5 .lvl { background: #B91C1C; color: #fff; }
