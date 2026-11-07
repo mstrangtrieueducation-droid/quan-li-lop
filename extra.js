@@ -1053,3 +1053,44 @@ document.addEventListener('input', e => {
   const b = e.target.closest('[data-act="llReasonText"]');
   if (b) drafts['llreason:' + b.dataset.name] = b.value;
 });
+
+/* ---------- Teachers are marked once per buổi (owner 07/11: "mỗi buổi chỉ 1 lần với giáo viên", the 10-minute rule stays) ----------
+ * A teacher's classes on one day form one buổi while the next class starts within BUOI_GAP minutes of the last one ending.
+ * The buổi is marked on its first class, due 10 minutes before that class (Q.staffOf already gives start − 10). TAs and video stay per class. */
+const BUOI_GAP = 60;
+function staffRowsOfDay(sessions) {
+  const rows = [], byTeacher = new Map();
+  sessions.slice().sort((a, b) => a.start - b.start).forEach(s => Q.staffOf(s).forEach(p => {
+    const r = { s, p, k: staffKey({ day: s.day, cls: s.cls, time: Q.clock(s.start), person: p.name }), more: [] };
+    if (p.role !== 'GV') return rows.push(r);
+    const k = Q.nameKey(p.name), last = byTeacher.get(k);
+    if (last && s.start - last.end <= BUOI_GAP) { last.row.more.push(s); last.end = Math.max(last.end, s.end); return; }
+    byTeacher.set(k, { row: r, end: s.end });
+    rows.push(r);
+  }));
+  return rows;
+}
+staffPanel = function (week) {
+  if (!week) return dayBar() + '<div class="card empty">File Schedule chưa có tuần này.</div>';
+  const sessions = week.data.sessions.filter(s => s.day === day && !s.off), sites = [...new Set(sessions.map(s => s.site).filter(Boolean))].sort(), latest = staffLatest();
+  const rows = staffRowsOfDay(sessions);
+  const names = [...new Set(rows.map(r => r.p.name))].sort((a, b) => a.localeCompare(b, 'vi'));
+  const atSite = r => !filters.site || [r.s].concat(r.more).some(s => s.site === filters.site);
+  const shown = rows.filter(r => atSite(r) && (!filters.person || r.p.name === filters.person)).sort((a, b) => a.p.due - b.p.due || a.p.name.localeCompare(b.p.name, 'vi'));
+  const blank = shown.filter(r => { const o = latest.get(r.k); return !o || o.status === 'Bỏ chấm'; }).length;
+  const overdue = day === today() ? shown.filter(r => { const o = latest.get(r.k); return (!o || o.status === 'Bỏ chấm') && r.p.due <= minutesNow(); }).length : 0;
+  let h = dayBar() + '<div class="filters"><select data-act="filter" data-k="site"><option value="">Mọi cơ sở, phòng</option>' + sites.map(x => '<option' + (x === filters.site ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select>' +
+    '<select data-act="filter" data-k="person"><option value="">Mọi người</option>' + names.map(x => '<option' + (x === filters.person ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select></div>' +
+    '<div class="count"><span>' + (shown.length - blank) + '/' + shown.length + ' lượt đã chấm</span>' + (overdue ? '<span class="tag bad">' + overdue + ' lượt đến giờ chưa chấm</span>' : '') + '</div>' +
+    '<div class="small muted">Giáo viên chấm 1 lần mỗi buổi, theo lớp đầu tiên của buổi (có mặt trước 10 phút). TA và quay video vẫn chấm theo từng lớp.</div>';
+  if (!shown.length) return h + '<div class="card empty">Không có ca nào.</div>';
+  return h + '<div class="list">' + shown.map(r => {
+    const o = latest.get(r.k), status = o && o.status !== 'Bỏ chấm' ? o.status : '', cls = v => (status === v ? 'on ' : '');
+    const what = r.more.length ? '<b>Buổi ' + (r.more.length + 1) + ' lớp</b> · ' + [r.s].concat(r.more).map(s => esc(s.cls) + ' ' + sessionTime(s)).join(', ') : esc(r.s.cls) + ' · ' + sessionTime(r.s);
+    return '<div class="card row"><div class="row-top"><b>' + esc(r.p.name) + '</b><span class="tag">' + esc(r.p.role) + '</span><span class="muted">' + what + '</span><span class="spacer"></span><span class="room small">' + esc(r.s.site) + '</span></div>' +
+      '<div class="small muted">Phải có mặt trước ' + Q.clock(r.p.due) + (o && o.by ? ' · Chấm lúc ' + esc(String(o.at).slice(-8, -3)) : '') + '</div>' +
+      '<div class="choices" data-k="' + esc(r.k) + '"><button class="' + cls('Đúng giờ') + 'good" data-act="staff" data-v="Đúng giờ" data-row="' + r.s.row + '" data-p="' + esc(r.p.name) + '">Đúng giờ</button><button class="' + cls('Muộn') + 'mid" data-act="staff" data-v="Muộn" data-row="' + r.s.row + '" data-p="' + esc(r.p.name) + '">Muộn</button><button class="' + cls('Vắng') + 'low" data-act="staff" data-v="Vắng" data-row="' + r.s.row + '" data-p="' + esc(r.p.name) + '">Vắng</button>' +
+      (status === 'Muộn' ? '<input type="number" min="0" inputmode="numeric" placeholder="Phút" aria-label="Số phút muộn" data-act="staffField" data-field="minutes" data-row="' + r.s.row + '" data-p="' + esc(r.p.name) + '" value="' + esc(o.minutes) + '">' : '') +
+      (status ? '<input type="text" placeholder="Ghi chú" aria-label="Ghi chú" data-act="staffField" data-field="note" data-row="' + r.s.row + '" data-p="' + esc(r.p.name) + '" value="' + esc(o.note) + '">' : '') + '</div></div>';
+  }).join('') + '</div>';
+};
