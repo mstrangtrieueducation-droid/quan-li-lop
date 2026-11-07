@@ -709,7 +709,7 @@ function bellNotify() {
   try { new Notification(T('Quản lí lớp', 'Class manager'), { body: fresh.map(x => x.text).join('\n'), icon: 'logo.png', tag: 'ql-bell' }); } catch (e) {}
 }
 async function bellRefresh() {
-  if (!me || bell.busy) return;
+  if (!me || bell.busy || isBoard()) return;
   bell.busy = true;
   try {
     const week = weeks[Q.weekTab(tabs, today())] || null, jobs = [];
@@ -741,5 +741,149 @@ document.addEventListener('click', e => {
     if (view === 'lich' && isManager()) filters.showAll = false;
     render(); window.scrollTo(0, 0);
     if (view === 'dieuhanh') guarded(loadPanel); else if (view === 'lich') guarded(() => weekOf(day));
+  }
+});
+
+
+/* ---------- Class touch screen (owner 07/11: log in on the ClassIn board to take the roll) ----------
+ * The board shows a 6-digit code; a manager types it in Điều hành › Màn hình lớp. The board's own link can only open
+ * today's classes for roll call, stars and behaviour; the server refuses everything else. */
+const isBoard = () => !!me && me.role === 'Màn hình';
+const boardPair = { code: '', secret: '', until: 0, timer: null, err: '' };
+const randomText = (n, set) => { const a = new Uint32Array(n); crypto.getRandomValues(a); return [...a].map(x => set[x % set.length]).join(''); };
+async function rawCall(op, args) {
+  const r = await fetch(CONFIG.server, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ op }, args)) });
+  const d = await r.json();
+  if (!d.ok) { const e = new Error(d.error || 'Lỗi máy chủ'); e.status = d.status; throw e; }
+  return d.data;
+}
+function paintBoardCode() {
+  const box = document.getElementById('boardCode');
+  if (!box) return;
+  if (!boardPair.code) { box.innerHTML = boardPair.err ? '<p class="bad">' + esc(boardPair.err) + '</p>' : ''; return; }
+  const left = Math.max(1, Math.round((boardPair.until - Date.now()) / 60000));
+  box.innerHTML = '<div class="board-code" aria-label="' + T('Mã ghép', 'Pairing code') + '">' + boardPair.code.slice(0, 3) + ' ' + boardPair.code.slice(3) + '</div>' +
+    '<p>' + T('Quản lí mở app trên điện thoại › <b>Điều hành › Màn hình lớp</b>, gõ mã này và tên phòng rồi bấm Ghép. Màn hình tự vào sau vài giây.', 'A manager opens the app › <b>Điều hành › Màn hình lớp</b>, types this code and the room name, then presses Pair.') + '</p>' +
+    '<p class="small muted">' + T('Mã dùng được ' + left + ' phút nữa.', 'The code works for ' + left + ' more minutes.') + '</p>';
+}
+async function boardStart() {
+  clearTimeout(boardPair.timer);
+  boardPair.err = '';
+  try {
+    boardPair.code = randomText(6, '0123456789');
+    boardPair.secret = randomText(40, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789');
+    const r = await rawCall('ghepmo', { code: boardPair.code, secret: boardPair.secret });
+    boardPair.until = Date.now() + r.seconds * 1000;
+  } catch (e) { boardPair.code = ''; boardPair.err = T('Chưa lấy được mã: ', 'No code yet: ') + e.message; paintBoardCode(); return; }
+  paintBoardCode();
+  const poll = async () => {
+    if (!boardPair.code) return;
+    if (Date.now() > boardPair.until) { boardPair.code = ''; boardPair.err = T('Mã đã hết hạn, bấm lấy mã mới.', 'The code expired, get a new one.'); paintBoardCode(); return; }
+    try {
+      const r = await rawCall('ghepxem', { code: boardPair.code, secret: boardPair.secret });
+      if (r.ready) { boardPair.code = ''; paintBoardCode(); keep('key', r.key); accessKey = r.key; view = 'bang'; enter(); return; }
+    } catch (e) { if (e.status === 410 || e.status === 403) { boardPair.code = ''; boardPair.err = e.message; paintBoardCode(); return; } }
+    paintBoardCode();
+    boardPair.timer = setTimeout(poll, 4000);
+  };
+  boardPair.timer = setTimeout(poll, 4000);
+}
+
+// On the board: today's classes only, big, in time order. A class opens 30 minutes before it starts.
+function viewBoard() {
+  const t = today(), week = weeks[Q.weekTab(tabs, t)], now = minutesNow();
+  let h = '<div class="board-head"><div class="board-clock">' + Q.clock(now) + '</div><div><b>' + esc(dayLabel(t)) + '</b><div class="small muted">' + esc(me.name) + '</div></div></div>';
+  if (!week) return h + '<div class="card empty">' + T('Đang đọc lịch hôm nay…', 'Reading today\'s schedule…') + '</div>';
+  const all = week.data.sessions.filter(s => s.day === t && !s.off && classOf(s)).sort((a, b) => a.start - b.start);
+  const sites = [...new Set(all.map(s => Q.clean(s.site).toUpperCase()).filter(Boolean))], site = saved.get('boardSite') || '';
+  if (sites.length > 1) h += '<div class="chips">' + [['', T('Tất cả cơ sở', 'All sites')]].concat(sites.map(x => [x, x])).map(([k, label]) => '<button class="' + (site === k ? 'on' : '') + '" data-act="boardSite" data-v="' + esc(k) + '">' + esc(label) + '</button>').join('') + '</div>';
+  const list = site ? all.filter(s => Q.key(s.site) === Q.key(site)) : all;
+  if (!list.length) return h + '<div class="card empty">' + T('Hôm nay không có lớp nào ở đây.', 'No classes here today.') + '</div>';
+  const state = s => now < s.start - 30 ? 'later' : now <= s.end ? 'now' : 'done';
+  return h + '<div class="board-list">' + list.map(s => {
+    const st = state(s);
+    return '<button class="board-cls ' + st + '" data-act="boardOpen" data-row="' + s.row + '" data-day="' + s.day + '"' + (st === 'later' ? ' disabled' : '') + '><b>' + esc(s.cls) + '</b>' +
+      '<span>' + sessionTime(s) + (s.lesson ? T(' · Tiết ', ' · Lesson ') + esc(s.lesson) : '') + '</span><span class="small">GV ' + esc(s.teacher) + (s.site ? ' · ' + esc(s.site) : '') + '</span>' +
+      '<i>' + (st === 'now' ? T('Mở lớp ›', 'Open ›') : st === 'later' ? T('Mở lúc ', 'Opens ') + Q.clock(s.start - 30) : T('Đã học · mở lại', 'Done · reopen')) + '</i></button>';
+  }).join('') + '</div>';
+}
+function renderBoard() {
+  const active = document.activeElement;
+  if (active && $('main').contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName)) return;
+  $('nav').innerHTML = '';
+  const bb = document.getElementById('btnBell');
+  if (bb) bb.hidden = true;
+  $('btnLang').textContent = lang === 'en' ? 'Tiếng Việt' : 'English';
+  paintTheme();
+  if (view !== 'lenlop') { view = 'bang'; document.body.classList.remove('lenlop'); }
+  const notes = notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('');
+  $('main').innerHTML = notes + (loadError ? '<div class="notice bad">' + esc(loadError) + '</div>' : '') + (view === 'lenlop' && current ? viewLenLop() : viewBoard());
+  paintSave();
+}
+const renderBeforeBoard = render;
+render = function () { if (isBoard()) renderBoard(); else renderBeforeBoard(); };
+// The board takes the roll of today's classes only, in the same window as the teacher.
+const canTeachBeforeBoard = canTeach;
+canTeach = s => isBoard() ? s.day === today() && Q.rollCall(s, marksOf(s), today(), minutesNow()).open : canTeachBeforeBoard(s);
+setInterval(() => {
+  if (!isBoard()) return;
+  if (day !== today()) { day = today(); weekOf(day).then(render).catch(() => {}); }
+  if (view !== 'lenlop') render();
+}, 30000);
+setInterval(() => { if (isBoard() && view !== 'lenlop') weekOf(today(), true).then(render).catch(() => {}); }, 600000);
+
+/* Managers pair and remove class screens. */
+PANELS.push(['manhinh', 'Màn hình lớp']);
+const boards = { list: null, tried: 0, busy: false };
+const viewManagerBeforeBoard = viewManager;
+viewManager = function (week) {
+  if (panel !== 'manhinh') return viewManagerBeforeBoard(week);
+  return '<div class="tabs">' + PANELS.map(([k, t]) => '<button class="' + (k === panel ? 'on' : '') + '" data-act="panel" data-v="' + k + '">' + esc(t) + '</button>').join('') + '</div>' + boardPanel();
+};
+function boardPanel() {
+  if (!boards.list && Date.now() - boards.tried > 30000) { boards.tried = Date.now(); setTimeout(() => call('manhinh', {}).then(r => { boards.list = r.boards; render(); }).catch(e => say(e.message, 'bad')), 0); }
+  let h = '<div class="card row"><b>📺 ' + T('Ghép màn hình lớp', 'Pair a class screen') + '</b>' +
+    '<div class="small muted">' + T('Trên màn hình lớp, mở trang app và bấm "Đây là màn hình lớp". Màn hình hiện mã 6 số. Gõ mã và tên phòng ở đây rồi bấm Ghép.', 'On the class screen, open the app page and press "This is a class screen". Type the 6-digit code and the room name here.') + '</div>' +
+    '<div class="choices"><input data-act="xField" data-k="bdCode" inputmode="numeric" autocomplete="off" maxlength="7" placeholder="' + T('Mã 6 số', '6-digit code') + '" value="' + esc(drafts.bdCode || '') + '">' +
+    '<input data-act="xField" data-k="bdName" list="bdNames" maxlength="40" placeholder="' + T('Tên phòng, ví dụ PHÒNG 1 HÀM NGHI', 'Room, e.g. ROOM 1') + '" value="' + esc(drafts.bdName || '') + '">' +
+    '<button class="primary" data-act="boardPairGo"' + (boards.busy ? ' disabled' : '') + '>' + (boards.busy ? T('Đang ghép…', 'Pairing…') : T('Ghép', 'Pair')) + '</button></div>' +
+    '<datalist id="bdNames">' + (boards.list || []).map(b => '<option value="' + esc(b.name.replace(/^MÀN HÌNH\s*/, '')) + '">').join('') + '</datalist>' +
+    '<div class="small muted">' + T('Màn hình lớp chỉ mở được lớp hôm nay để điểm danh, thêm sao và nhắc nhở. Không xem được lương, danh sách phạt, liên hệ phụ huynh hay việc của nhân viên. Ghép lại cùng tên phòng thì link cũ của màn hình đó hết hiệu lực.', 'A class screen only opens today\'s classes for roll call, stars and behaviour.') + '</div></div>';
+  h += '<h2>' + T('Màn hình đang dùng', 'Screens in use') + '</h2>';
+  if (!boards.list) return h + '<div class="card empty">' + T('Đang đọc…', 'Reading…') + '</div>';
+  if (!boards.list.length) return h + '<div class="card empty">' + T('Chưa ghép màn hình nào.', 'No screen yet.') + '</div>';
+  return h + '<div class="list">' + boards.list.map(b => '<div class="card row"><div class="row-top"><b>' + esc(b.name) + '</b><span class="small muted">' + T('ghép ngày ', 'paired ') + esc(b.at) + '</span><span class="spacer"></span><button class="quiet low" data-act="boardDrop" data-id="' + esc(b.id) + '" data-name="' + esc(b.name) + '">' + T('Gỡ', 'Remove') + '</button></div></div>').join('') + '</div>';
+}
+async function boardPairGo() {
+  const code = String(drafts.bdCode || '').replace(/\D/g, ''), name = Q.clean(drafts.bdName || '');
+  if (code.length !== 6) return say(T('Mã gồm 6 số hiện trên màn hình lớp.', 'The code has 6 digits.'), 'bad');
+  if (!name) return say(T('Đặt tên phòng cho màn hình.', 'Name the room.'), 'bad');
+  boards.busy = true; render();
+  try {
+    const r = await call('ghep', { code, name }, 1);
+    drafts.bdCode = '';
+    say(T('Đã ghép ' + r.name + '. Màn hình sẽ tự vào trong vài giây.', 'Paired ' + r.name + '. The screen opens in a few seconds.'));
+    boards.list = (await call('manhinh', {})).boards;
+  } catch (e) { say(T('Chưa ghép được: ', 'Not paired: ') + e.message, 'bad'); }
+  finally { boards.busy = false; render(); }
+}
+async function boardDrop(b) {
+  if (!window.confirm(T('Gỡ ' + b.dataset.name + '? Màn hình đó sẽ phải ghép lại mới dùng được.', 'Remove ' + b.dataset.name + '?'))) return;
+  try { boards.list = (await call('manhinhxoa', { id: b.dataset.id }, 1)).boards; render(); } catch (e) { say(e.message, 'bad'); }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'boardStart') boardStart();
+  if (act === 'boardPairGo') boardPairGo();
+  if (act === 'boardDrop') boardDrop(b);
+  if (act === 'boardSite') { keep('boardSite', b.dataset.v); render(); }
+  if (act === 'boardOpen') {
+    const s = findSession(b.dataset.row, b.dataset.day);
+    if (!s || !classOf(s)) return;
+    current = s; llMode = ''; llMenu = null; llWarn = null; view = 'lenlop';
+    document.body.classList.add('lenlop'); render(); window.scrollTo(0, 0);
+    guarded(() => Promise.all([loadMarks(true), loadTracker(classOf(s), true), loadBehave(true).catch(() => {})]));
   }
 });
