@@ -1064,7 +1064,7 @@ async function guarded(work) {
 async function loadPanel() {
   await weekOf(day);
   await loadManager();
-  if (panel === 'ca') await loadCaAll(true);
+  if (panel === 'ca') await Promise.all([loadCaAll(true), loadCa(true).catch(() => {})]);
   if (panel === 'kpi') { const m = filters.kpiMonth || today().slice(0, 7); if (!(kpi.data && kpi.month === m && kpi.scope === 'all')) await loadKpi(m, false); }
   if (panel === 'vang' || panel === 'cot') {
     await loadMarks();

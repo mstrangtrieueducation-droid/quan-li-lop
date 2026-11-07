@@ -12,7 +12,7 @@ const caRow = r => ({ at: r[0], day: r[1], person: r[2], role: r[3], kind: r[4],
 async function loadCa(force) {
   if (ca.loading || (!force && ca.rows && Date.now() - ca.at < 120000)) return;
   ca.loading = true;
-  try { const d = await call('catoi', { month: xMonth() }); ca.rows = d.checkin.map(caRow); ca.cong = d.cong.map(staffOfRow); ca.centres = d.centres; ca.at = Date.now(); }
+  try { const d = await call('catoi', { month: xMonth() }); ca.rows = d.checkin.map(caRow); ca.cong = d.cong.map(staffOfRow); ca.centres = d.centres; ca.names = d.centreNames || []; ca.at = Date.now(); }
   finally { ca.loading = false; }
 }
 // The first row is the press itself; a later row with the same day, person and kind is a manager's decision.
@@ -85,6 +85,15 @@ async function caCentre() {
     ca.centres = r.centres.length;
   } catch (e) { say(T('Chưa lưu được vị trí: ', 'Could not save: ') + e.message, 'bad'); }
 }
+// The owner can also enter a point from a map: "21.310936, 105.409042" or a Google Maps link.
+async function caCentreTyped() {
+  const name = Q.clean(drafts.caName || ''), text = String(drafts.caPoint || '');
+  const m = text.match(/!3d(-?d+.d+)!4d(-?d+.d+)/) || text.match(/(-?d{1,2}.d{4,})s*,s*(-?d{2,3}.d{4,})/);
+  if (!name) return say(T('Gõ tên cơ sở trước.', 'Type the site name first.'), 'bad');
+  if (!m) return say(T('Chưa đọc được toạ độ. Dán dạng 21.310936, 105.409042 hoặc link Google Maps của đúng điểm.', 'Could not read the coordinates.'), 'bad');
+  try { const r = await call('vaoca', { set: 'centre', manual: true, name, lat: Number(m[1]), lng: Number(m[2]) }, 1); ca.names = r.centres; ca.centres = r.centres.length; drafts.caPoint = ''; say(T('Đã lưu ', 'Saved ') + name + '. ' + T('Các điểm đang dùng: ', 'Points in use: ') + r.centres.join(', ') + '.'); }
+  catch (e) { say(T('Chưa lưu được: ', 'Not saved: ') + e.message, 'bad'); }
+}
 async function loadCaAll(force) {
   if (!force && ca.all && Date.now() - ca.allAt < 60000) return;
   const [rows] = await batchGet(CONFIG.quanLiId, ['CHECKIN!A2:M']);
@@ -124,7 +133,9 @@ function caPanel(week) {
   if (who.length) h += '<h2>' + T('Giờ làm theo vào/ra ca ', 'Hours from check-in ') + esc(monthName(m)) + '</h2><div class="card table"><table><thead><tr><th>' + T('Người', 'Person') + '</th><th>' + T('Giờ', 'Hours') + '</th><th>' + T('Ngày', 'Days') + '</th><th>' + T('Cần xem', 'To check') + '</th></tr></thead><tbody>' +
     who.map(n => { const x = caHours(ca.all, n, m); return '<tr><td>' + esc(n) + '</td><td>' + esc(Q.hoursText(x.total, lang)) + '</td><td>' + x.days.filter(d => d.minutes).length + '</td><td>' + [x.open ? x.open + T(' ngày chưa ra ca', ' not out') : '', x.waiting ? x.waiting + T(' chờ duyệt', ' waiting') : '', x.rejected ? x.rejected + T(' không duyệt', ' rejected') : ''].filter(Boolean).join(', ') + '</td></tr>'; }).join('') + '</tbody></table></div>';
   if (isOwner()) h += '<div class="card row"><b>' + T('Vị trí trung tâm', 'Centre location') + '</b><div class="small muted">' + T('Cô đứng tại cơ sở, đặt tên rồi bấm lưu. Nhân viên trong vòng 150 m quanh điểm này, đúng giờ thì tự được duyệt. Có nhiều cơ sở thì lưu từng nơi.', 'Stand at the centre and save. Staff within 150 m, on time, are approved by themselves.') + '</div>' +
-    '<div class="choices"><input data-act="xField" data-k="caName" placeholder="' + T('Tên cơ sở, ví dụ Cơ sở chính, Villa', 'Name, e.g. Main, Villa') + '" value="' + esc(drafts.caName || '') + '"><button class="primary" data-act="caCentre">' + T('Lưu vị trí tại đây', 'Save this spot') + '</button></div></div>';
+    (ca.names && ca.names.length ? '<div class="small">' + T('Đang dùng: ', 'In use: ') + '<b>' + esc(ca.names.join(', ')) + '</b>' + T(' (lưu lại cùng tên là thay điểm cũ)', '') + '</div>' : '<div class="small bad">' + T('Chưa có điểm nào.', 'No point yet.') + '</div>') +
+    '<div class="choices"><input data-act="xField" data-k="caName" placeholder="' + T('Tên cơ sở, ví dụ Hàm Nghi, Villa Tiên Dung', 'Name, e.g. Main, Villa') + '" value="' + esc(drafts.caName || '') + '"><button class="primary" data-act="caCentre">' + T('Lưu vị trí tại đây', 'Save this spot') + '</button></div>' +
+    '<div class="choices"><input data-act="xField" data-k="caPoint" placeholder="' + T('Hoặc dán toạ độ / link Google Maps của điểm', 'Or paste coordinates / a Maps link') + '" value="' + esc(drafts.caPoint || '') + '"><button data-act="caCentreTyped">' + T('Lưu điểm này', 'Save point') + '</button></div></div>';
   return h;
 }
 
@@ -424,6 +435,7 @@ document.addEventListener('click', e => {
   if (act === 'caIn') caPress('vao');
   if (act === 'caOut') caPress('ra');
   if (act === 'caCentre') caCentre();
+  if (act === 'caCentreTyped') caCentreTyped();
   if (act === 'caDecide') caDecide(b);
   if (act === 'payOpen') { pay.person = b.dataset.p; loadLuong(true); }
   if (act === 'payBack') { pay.person = ''; pay.mine = null; render(); }
