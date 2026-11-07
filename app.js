@@ -1094,6 +1094,7 @@ function render() {
   $('btnLang').textContent = lang === 'en' ? 'Tiếng Việt' : 'English';
   paintTheme();
   $('btnOut').textContent = T('Thoát', 'Sign out');
+  if ($('btnMyLink')) $('btnMyLink').textContent = T('Link của tôi', 'My link');
   $('nav').innerHTML = items.map(([k, t]) => '<button class="' + (view === k ? 'on' : '') + '" data-act="view" data-v="' + k + '">' + t + '</button>').join('');
   const week = weeks[Q.weekTab(tabs, day)] || null;
   let h = notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('');
