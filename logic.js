@@ -257,7 +257,9 @@
   // "NGUYỄN ĐAN KHÁNH LINH\nNew 25.5.2026" -> the name, and the first day the pupil counts.
   function pupilOf(row, number) {
     const label = String(row[0] || ''), lines = label.split('\n'), m = label.match(/\bNew\s+(\d{1,2}[./-]\d{1,2}[./-]20\d{2})/i);
-    return { row: number, name: clean(lines[0]), eng: clean(row[1]), since: m ? dateIn(m[1]) : '' };
+    // IELTS/FIGHTER sheets keep the pupil's private page link in this column: it is never a name and never shown.
+    const eng = clean(row[1]);
+    return { row: number, name: clean(lines[0]), eng: /https?:\/\/|www\.|\.(com|io|app|dev|vn)\b|^[A-Za-z0-9_-]{20,}$/i.test(eng) ? '' : eng, since: m ? dateIn(m[1]) : '' };
   }
 
   // What each pupil still owes before this session. A column nobody submitted is a lesson without web homework.
