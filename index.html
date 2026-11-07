@@ -331,6 +331,16 @@
   .owed-card details summary { font-size: 13px; color: var(--muted); margin-top: 4px; }
   .ret { padding: 10px 12px; } .ret.mine { border-color: var(--k-ta); box-shadow: 0 0 0 2px color-mix(in srgb, var(--k-ta) 35%, transparent); }
   .check button { min-height: 44px; height: 44px; font-size: 20px; border-width: 2px; }
+  .bell { position: relative; font-size: 18px; padding: 4px 10px; }
+  .bell i { position: absolute; top: -4px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--warn); color: #fff; font: 700 11px/18px system-ui, sans-serif; font-style: normal; text-align: center; }
+  .bell i.hot { background: var(--bad); }
+  .bell.ring { animation: bellRing 1.2s ease-in-out 2; transform-origin: 50% 10%; }
+  @keyframes bellRing { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(14deg); } 30% { transform: rotate(-12deg); } 45% { transform: rotate(8deg); } 60% { transform: rotate(-6deg); } 75% { transform: rotate(3deg); } }
+  @media (prefers-reduced-motion: reduce) { .bell.ring { animation: none; } }
+  .bell-veil { position: fixed; inset: 0; z-index: 30; background: rgba(10, 20, 40, .25); }
+  .bell-box { position: fixed; z-index: 31; top: 56px; right: max(16px, calc(50vw - 584px)); width: min(380px, calc(100vw - 32px)); max-height: calc(100vh - 80px); overflow: auto; background: var(--card); color: var(--ink); border-radius: 14px; padding: 12px; display: grid; gap: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
+  .bell-item { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; text-align: left; width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--soft); color: var(--ink); font-size: 14px; min-height: 44px; }
+  .bell-item.hot { border-color: var(--bad); background: var(--bad-soft); }
 </style>
 </head>
 <body>
@@ -351,6 +361,7 @@
       <nav id="nav"></nav>
       <span class="spacer"></span>
       <span id="saveState" role="status"></span>
+      <button id="btnBell" class="quiet bell" data-act="bell" aria-label="Thông báo">🔔</button>
       <button id="btnTheme" class="quiet" aria-label="Đổi nền sáng / tối">Nền tối</button>
       <button id="btnLang" class="quiet">English</button>
     </div>
