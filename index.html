@@ -590,6 +590,27 @@
     .sum-title { font-size: 20px; }
   }
   @media (max-width: 420px) { .rv-en { display: none; } .rv-tick, .rv-warn, .rv-off { font-size: 13px; } }
+  /* QR pairing, board fit and reminder undo (owner 08/11) */
+  .login-box.qr-on { padding: 14px 16px; }
+  .login-box.qr-on .logo, .login-box.qr-on h1, .login-box.qr-on #loginText, .login-box.qr-on #loginMsg, .login-box.qr-on [data-act="boardStart"], .login-box.qr-on #btnLangLogin { display: none; }
+  .board-qr { width: min(52vh, 62vmin, 340px); margin: 8px auto 4px; padding: 10px; background: #fff; border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+  .board-qr svg { display: block; width: 100%; height: auto; }
+  .login-box p.board-qr-t { color: var(--ink); font-size: 17px; margin: 6px 0 4px; }
+  .board-code.small-code { font-size: 26px; padding: 2px 0; }
+  .pair-veil { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 60; }
+  .pair-sheet { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 24px)); max-height: calc(100vh - 40px); overflow: auto; background: var(--card); color: var(--ink); border-radius: 16px; padding: 16px; z-index: 61; display: grid; gap: 10px; box-shadow: 0 12px 40px rgba(0,0,0,.3); }
+  .pair-list { display: grid; gap: 8px; }
+  .pair-cls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; text-align: left; padding: 12px 14px; min-height: 64px; border-radius: 12px; border: 2px solid var(--line); background: var(--soft); color: var(--ink); }
+  .pair-cls b { font-size: 20px; }
+  .pair-cls span { grid-column: 1; color: var(--muted); font-size: 14px; }
+  .pair-cls i { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-style: normal; font-weight: 700; color: var(--muted); }
+  .pair-cls i.on { color: var(--ok); }
+  .rv-list.rv-fit { transform-origin: 0 0; }
+  .rv-chip { position: relative; display: inline-flex; }
+  .rv-chip > button:first-child { flex: 1 1 auto; }
+  .rv-undo { position: absolute; top: -10px; left: -10px; width: 30px; height: 30px; padding: 0; border-radius: 15px; border: 2px solid var(--card); background: #64748b; color: #fff; font: 800 20px/24px system-ui, sans-serif; z-index: 2; }
+  .rv-undo:disabled { display: none; }
+  @media (max-width: 760px) { .rv-chip { flex: 1 1 calc(50% - 6px); } .rv-chip > .rv-tick, .rv-chip > .rv-warn { flex: 1 1 auto; width: 100%; } }
 </style>
 </head>
 <body>
@@ -599,7 +620,7 @@
     <h1>Quản lí lớp</h1>
     <p id="loginText">Vui lòng mở app bằng link riêng quản lí đã gửi cho bạn.</p>
     <p id="loginMsg"></p>
-    <button class="big" data-act="boardStart">📺 Đây là màn hình lớp</button>
+    <button class="big" data-act="boardStart">📺 Đây là màn hình lớp · hiện mã QR</button>
     <div id="boardCode"></div>
     <button id="btnLangLogin" class="quiet">English</button>
   </div>
@@ -619,9 +640,10 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108r"></script>
-<script src="logic.js?v=20261108r"></script>
-<script src="app.js?v=20261108r"></script>
-<script src="extra.js?v=20261108r"></script>
+<script src="config.js?v=20261108s"></script>
+<script src="logic.js?v=20261108s"></script>
+<script src="app.js?v=20261108s"></script>
+<script src="qrcode.js?v=20261108s"></script>
+<script src="extra.js?v=20261108s"></script>
 </body>
 </html>
