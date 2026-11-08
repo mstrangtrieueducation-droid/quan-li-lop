@@ -522,9 +522,11 @@ function kindOf(s) {
   return /^KIDS/.test(n) ? 'kids' : /^IELTS/.test(n) ? 'ielts' : /^FIGHTER/.test(n) ? 'fighter' : /^TUTOR/.test(n) ? 'tutor' : /^TA\s*\d/.test(n) ? 'ta' : 'other';
 }
 const kindName = k => k === 'other' ? T('KHÁC', 'OTHER') : (KINDS.find(x => x[0] === k) || ['', k])[1];
+// Owner 08/11: G = homeroom (Chủ nhiệm); F = Quay only for VIDEOTAPER NEEDED, Trông kiểm tra for TA NEEDED, else TA.
+function helperRole(s) { const n = Q.key([s.note, s.detail].join(' ')); return /VIDEO ?TAPER/.test(n) ? T('Quay', 'Video') : /\bTA NEEDED\b/.test(n) ? T('Trông kiểm tra', 'Invigilator') : 'TA'; }
 function sessionCard(s) {
   const c = classOf(s), k = kindOf(s), name = k === 'tutor' ? Q.clean(s.cls).replace(/^TUTOR\s*/i, '') : s.cls;
-  const people = [[T('GV', 'Teacher'), s.teacher], ['TA', s.ta], [T('Quay', 'Video'), s.video]].filter(x => x[1]).map(x => '<span>' + x[0] + ' <b>' + esc(Q.key(x[1])) + '</b></span>').join('');
+  const people = [[T('GV', 'Teacher'), s.teacher], [helperRole(s), s.video], [T('Chủ nhiệm', 'Homeroom'), s.ta]].filter(x => x[1]).map(x => '<span>' + x[0] + ' <b>' + esc(Q.key(x[1])) + '</b></span>').join('');
   const inner = '<div class="s-time"><b>' + Q.clock(s.start) + '</b><span>' + Q.clock(s.end) + '</span></div><div class="s-body">' +
     '<div class="s-head">' + (k === 'tutor' ? '<span class="kind k-tutor">TUTOR</span>' : '') + '<strong>' + esc(name) + '</strong>' + (s.off ? '<span class="tag bad">' + T('Nghỉ', 'Off') + '</span>' : '') + '<span class="spacer"></span><span class="room small">' + esc(s.site || T('Chưa ghi phòng', 'No room listed')) + '</span></div>' +
     (s.book ? '<div class="s-book">' + esc(s.book) + (s.lesson ? T(' · Tiết ', ' · Lesson ') + esc(s.lesson) : '') + '</div>' : '') +
@@ -841,7 +843,7 @@ function viewClass() {
   let h = '<div><button class="quiet" data-act="back">‹ ' + T('Lịch', 'Schedule') + '</button></div><div class="card class-head"><h1>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</h1>' +
     '<div>' + esc(dayLabel(s.day)) + ' · <b>' + sessionTime(s) + '</b> · <span class="room">' + esc(s.site || T('Chưa ghi phòng', 'No room listed')) + '</span></div>' +
     '<div class="detail">' + esc(s.book) + (s.detail ? '\n' + esc(s.detail) : '') + '</div>' +
-    '<div class="small muted">' + esc([T('GV ', 'Teacher ') + s.teacher, s.ta && 'TA ' + s.ta, s.video && T('Quay ', 'Video ') + s.video].filter(Boolean).join(' · ')) + '</div>' +
+    '<div class="small muted">' + esc([T('GV ', 'Teacher ') + s.teacher, s.video && helperRole(s) + ' ' + s.video, s.ta && T('Chủ nhiệm ', 'Homeroom ') + s.ta].filter(Boolean).join(' · ')) + '</div>' +
     (s.note ? '<div><span class="tag warn">' + esc(s.note.replace(/\n/g, ' · ')) + '</span></div>' : '') + '</div>';
   if (!tracker) return h + '<div class="card empty">' + T('Đang đọc sheet lớp…', 'Reading the class sheet…') + '</div>';
   const warning = columnWarning(ctx);

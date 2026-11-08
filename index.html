@@ -438,6 +438,16 @@
   /* Điều hành overview (owner 08/11) */
   .ov-line .ico { font-size: 20px; }
   .ov-line .row-top { gap: 8px; flex-wrap: wrap; }
+  /* Class screen flags (owner 08/11) */
+  .rv-grade.ro { opacity: .45; pointer-events: none; }
+  .rv-flags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: middle; }
+  .rv-flag { font-size: 13px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .rv-flag.late { background: var(--warn-soft); color: var(--warn); }
+  .rv-flag.owe { background: #fde2e2; color: #b91c1c; }
+  .rv-flag.redo { background: #ffedd5; color: #c2410c; }
+  :root[data-theme="dark"] .rv-flag.owe { background: #4c1d1d; color: #fca5a5; } :root[data-theme="dark"] .rv-flag.redo { background: #4a2a12; color: #fdba74; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .rv-flag.owe { background: #4c1d1d; color: #fca5a5; } :root:not([data-theme="light"]) .rv-flag.redo { background: #4a2a12; color: #fdba74; } }
+  .rv-en { display: block; font-size: 11px; font-weight: 500; opacity: .7; line-height: 1.1; }
 </style>
 </head>
 <body>

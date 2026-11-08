@@ -923,11 +923,11 @@ viewLenLop = function () {
     return '<div class="ll-tile rv-row' + (r.off ? ' off' : rank === 1 ? ' top' : '') + (r.here ? ' here' : '') + (over ? ' over' : '') + '" role="listitem" data-i="' + r.i + '">' +
       '<button class="rv-hist' + (histOpen ? ' on' : '') + '" data-act="llHist" data-i="' + r.i + '" aria-expanded="' + histOpen + '" aria-label="' + T('3 buổi trước của ', 'Last 3 lessons of ') + esc(name) + '">' + (histOpen ? '▾' : '▸') + '</button>' +
       '<button class="rv-name" data-act="llMenu" data-i="' + r.i + '" aria-label="' + T('Mở mục của ', 'Open ') + esc(name) + '">' + (rank ? '<span class="rv-rank">' + (medal[rank - 1] || '#' + rank) + '</span>' : '') +
-        '<span class="ll-name">' + esc(name) + '</span>' + (over ? '<span class="rv-alert" title="' + T('Nhắc ', 'Reminded ') + n + T(' lần', ' times') + '" aria-label="' + T('Nhắc quá ' + WARN_LIMIT + ' lần', 'Over ' + WARN_LIMIT + ' reminders') + '">!</span>' : '') + '</button>' + gradeSeg(ctx, r, live) +
+        '<span class="ll-name">' + esc(name) + '</span>' + pupilFlags(ctx, r) + (over ? '<span class="rv-alert" title="' + T('Nhắc ', 'Reminded ') + n + T(' lần', ' times') + '" aria-label="' + T('Nhắc quá ' + WARN_LIMIT + ' lần', 'Over ' + WARN_LIMIT + ' reminders') + '">!</span>' : '') + '</button>' + gradeSeg(ctx, r, live) +
       (noStars ? '' : '<div class="rv-stars"><button class="rv-minus" data-act="llDown" data-i="' + r.i + '"' + (starOk && r.stars ? live : ' disabled') + ' aria-label="' + T('Bớt 1 sao của ', 'One star off ') + esc(name) + '">−</button>' +
         '<span class="ll-num rv-num" aria-label="' + r.stars + T(' sao', ' stars') + '">⭐ <b>' + r.stars + '</b></span>' +
         '<button class="ll-plus rv-plus" data-act="llStar" data-i="' + r.i + '"' + (starOk ? live : ' disabled') + ' aria-label="' + T('Thêm 1 sao cho ', 'Add a star for ') + esc(name) + '">+</button></div>') +
-      TICKS.map((t, k) => '<button class="rv-tick' + (counts[t] ? ' on' : '') + '" data-act="llTick" data-i="' + r.i + '" data-k="' + k + '" data-v="' + k + '"' + live + '>' + esc(tagText(t)) + badge(counts[t]) + '</button>').join('') +
+      TICKS.map((t, k) => '<button class="rv-tick' + (counts[t] ? ' on' : '') + '" data-act="llTick" data-i="' + r.i + '" data-k="' + k + '" data-v="' + k + '"' + live + '>' + biText(t) + badge(counts[t]) + '</button>').join('') +
       '<button class="rv-warn' + (over ? ' hot' : '') + (warned ? ' on' : '') + '" data-act="llReason" data-i="' + r.i + '"' + live + '>⚠️ ' + T('Cảnh cáo', 'Warning') + badge(warned) + '</button>' +
       (group && !r.off ? '<button class="rv-here' + (r.here ? ' on' : '') + '" data-act="llHere" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.here + '">✓</button>' : '') +
       '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? T('Nghỉ ✓', 'Absent ✓') : T('Nghỉ', 'Absent')) + '</button>' +
@@ -947,7 +947,7 @@ function reasonBox(r, edit) {
   return '<div class="ll-veil" data-act="llClose"></div><div class="ll-sheet rv-box" role="dialog" aria-label="' + T('Cảnh cáo ', 'Warn ') + esc(name) + '">' +
     '<div class="row-top"><b class="ll-sheet-name">⚠️ ' + T('Cảnh cáo', 'Warning') + ' · ' + esc(name) + '</b><span class="spacer"></span><button class="quiet" data-act="llClose">' + T('Đóng', 'Close') + '</button></div>' +
     (n ? '<div class="small' + (n > WARN_LIMIT ? ' rv-over-note' : ' muted') + '">' + T('Đã nhắc ', 'Reminded ') + n + T(' lần trong buổi', ' times this lesson') + (n > WARN_LIMIT ? T(' (quá ' + WARN_LIMIT + ' lần)', ' (over ' + WARN_LIMIT + ')') : '') + '</div>' : '') +
-    '<div class="ll-chips">' + REASONS.map(t => '<button class="' + (draft === t ? 'on' : '') + '" data-act="llReasonPick" data-i="' + r.i + '" data-v="' + esc(t) + '"' + dis + '>' + esc(tagText(t)) + '</button>').join('') + '</div>' +
+    '<div class="ll-chips">' + REASONS.map(t => '<button class="' + (draft === t ? 'on' : '') + '" data-act="llReasonPick" data-i="' + r.i + '" data-v="' + esc(t) + '"' + dis + '>' + biText(t) + '</button>').join('') + '</div>' +
     '<textarea data-act="llReasonText" data-name="' + esc(r.p.name) + '" rows="2" maxlength="200" placeholder="' + T('Lý do (không bắt buộc)…', 'Reason (optional)…') + '"' + dis + '>' + esc(draft) + '</textarea>' +
     '<div class="ll-sheet-row"><button class="rv-give" data-act="llWarnGive" data-i="' + r.i + '"' + dis + '>⚠️ ' + T('Ghi cảnh cáo', 'Give warning') + '</button></div></div>';
 }
@@ -1288,7 +1288,7 @@ const gradeParts = v => { const lines = String(v || '').split('\n'), g = Q.grade
 function gradeSeg(ctx, r, live) {
   if (!ctx.block || ctx.block.grade < 0) return '';
   const { g, why } = gradeParts(ctx.tracker.cell(r.p.row, ctx.block.grade)), pick = g === 'A' ? 'A+' : g;
-  return '<div class="rv-grade" role="group" aria-label="' + T('Bài tập về nhà', 'Homework') + '">' + ['A+', 'B', 'F'].map(x => '<button class="g' + x[0] + (pick === x ? ' on' : '') + '" data-act="llGrade" data-i="' + r.i + '" data-v="' + x + '"' + live + ' aria-pressed="' + (pick === x) + '">' + x + '</button>').join('') +
+  return '<div class="rv-grade ro" role="group" aria-label="' + T('Bài tập về nhà (chấm ở trang lớp)', 'Homework (graded on the class page)') + '" title="' + T('Chấm A+/B/F ở trang lớp, màn hình lớp chỉ xem', 'Grade A+/B/F on the class page; the class screen only shows it') + '">' + ['A+', 'B', 'F'].map(x => '<button class="g' + x[0] + (pick === x ? ' on' : '') + '" disabled tabindex="-1" aria-pressed="' + (pick === x) + '">' + x + '</button>').join('') +
     (why ? '<span class="rv-why" title="' + esc(why) + '">✎</span>' : '') + '</div>';
 }
 function gradeWrite(ctx, pupil, grade, why) {
@@ -1303,7 +1303,7 @@ function gradeBox(ctx, r, edit) {
   return '<div class="ll-veil" data-act="llClose"></div><div class="ll-sheet rv-box" role="dialog" aria-label="BTVN ' + esc(name) + '">' +
     '<div class="row-top"><b class="ll-sheet-name">BTVN <span class="rv-gtag g' + cur.g[0] + '">' + esc(cur.g) + '</span> · ' + esc(name) + '</b><span class="spacer"></span><button class="quiet" data-act="llClose">' + T('Đóng', 'Close') + '</button></div>' +
     '<div class="small muted">' + T('Lý do (không bắt buộc). Ghi vào ô BTVN của tiết này trong sheet lớp.', 'Reason (optional), written to the homework cell.') + '</div>' +
-    '<div class="ll-chips">' + GRADE_REASONS.map(t => '<button class="' + (draft === t ? 'on' : '') + '" data-act="llGradePick" data-i="' + r.i + '" data-v="' + esc(t) + '"' + dis + '>' + esc(t) + '</button>').join('') + '</div>' +
+    '<div class="ll-chips">' + GRADE_REASONS.map(t => '<button class="' + (draft === t ? 'on' : '') + '" data-act="llGradePick" data-i="' + r.i + '" data-v="' + esc(t) + '"' + dis + '>' + biText(t) + '</button>').join('') + '</div>' +
     '<textarea data-act="llGradeText" data-name="' + esc(r.p.name) + '" rows="2" maxlength="200" placeholder="' + T('Lý do cụ thể…', 'Reason…') + '"' + dis + '>' + esc(draft) + '</textarea>' +
     '<div class="ll-sheet-row"><button class="primary" data-act="llGradeSave" data-i="' + r.i + '"' + dis + '>' + T('Lưu lý do', 'Save reason') + '</button><button data-act="llGradeClear" data-i="' + r.i + '"' + dis + '>' + T('Xoá điểm', 'Clear grade') + '</button></div></div>';
 }
@@ -1507,3 +1507,23 @@ llAction = function (act, i, v) {
   if (moves) { llFreezeUntil = Date.now() + RANK_WAIT; clearTimeout(llRankTimer); llRankTimer = setTimeout(rerankNow, RANK_WAIT); }
   return llActionBeforeRank(act, i, v);
 };
+
+/* ---------- Class screen flags and bilingual chips (owner 08/11) ----------
+ * "thông tin hs đi muộn hiển thị nhỏ nhỏ", "hs vẫn thiếu video hiển thị như ABF để hs luôn thấy mình còn thiếu", "lý do... dịch ra, vào sheet bằng Tiếng Việt". */
+const GRADE_EN = { 'Chưa làm bài': 'Not done', 'Làm thiếu': 'Incomplete', 'Làm ẩu, sai nhiều': 'Careless, many mistakes', 'Quên sách vở': 'Forgot books', 'Chưa chữa bài': 'No corrections' };
+const biText = t => { const en = BEHAVIOUR_EN[t] || GRADE_EN[t] || ''; return esc(t) + (en && en !== t ? '<small class="rv-en">' + esc(en) + '</small>' : ''); };
+const owedMemo = { key: '', list: [] };
+function owedOf(ctx) {
+  const t = ctx.tracker, key = Q.sessionKey(ctx.session) + '|' + t.at;
+  if (owedMemo.key !== key) { owedMemo.key = key; try { owedMemo.list = Q.owedVideos(t.pupils, t.blocks, t.practices, t.cell, ctx.session); } catch (e) { owedMemo.list = []; } }
+  return owedMemo.list;
+}
+function pupilFlags(ctx, r) {
+  const m = ctx.marks.get(r.p.name), out = [];
+  if (m && m.status === 'Đến muộn') out.push('<span class="rv-flag late">⏰ ' + T('Muộn', 'Late') + '</span>');
+  const owed = owedOf(ctx)[r.i] || [], miss = owed.filter(x => !x.wrong), redo = owed.filter(x => x.wrong);
+  const list = xs => xs.map(x => (x.practice ? T('Tự luyện ', 'Practice ') : 'Video ') + x.day.slice(8, 10) + '/' + x.day.slice(5, 7)).join(', ');
+  if (miss.length) out.push('<span class="rv-flag owe" title="' + esc(list(miss)) + '">🎥 ' + T('Thiếu ', 'Owes ') + miss.length + '</span>');
+  if (redo.length) out.push('<span class="rv-flag redo" title="' + esc(list(redo)) + '">↻ ' + T('Quay lại ', 'Redo ') + redo.length + '</span>');
+  return out.length ? '<span class="rv-flags">' + out.join('') + '</span>' : '';
+}
