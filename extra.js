@@ -2852,7 +2852,7 @@ function ring(label, done, total, tone) {
 // "KIDS 20" -> "KIDS " (hidden on phones) + "20", so a narrow bar still says which class it is.
 function barLabel(s) {
   const name = Q.clean(s.cls).replace(/^TUTOR\s*/i, ''), m = name.match(/^(.*?\s)(\d[\d.]*)$/);
-  return m ? '<span class="tl-pre">' + esc(m[1]) + '</span>' + esc(m[2]) : esc(name);
+  return m ? '<span class="tl-pre">' + esc(m[1].trim()) + '&nbsp;</span>' + esc(m[2]) : esc(name);
 }
 function dayVisual(week) {
   if (!me || isBoard() || !week) return '';

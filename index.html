@@ -6,7 +6,7 @@
 <meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#0b5394">
+<meta name="theme-color" content="#ffffff">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src https://script.google.com https://script.googleusercontent.com; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src 'self'">
 <title>Quản lí lớp</title>
 <link rel="icon" href="logo.png">
@@ -759,6 +759,55 @@
   .dv-badge.ok { border-color: #16a34a; cursor: default; }
   .rings { align-items: center; }
   .dash-body .todo > .row-top { display: none; }
+  /* ===== Modern skin (owner 08/11: "hơi quê mùa") ===== */
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --head: #ffffff; --head-ink: #111827; --head-muted: #6b7280; --head-on: #111827; --head-on-ink: #ffffff;
+    --ink: #111827; --muted: #6b7280; --line: #e6e8ec; --soft: #f2f4f7; --brand: #2563eb; --brand-soft: #eaf1fe; --on-brand: #ffffff;
+    --ok: #15803d; --ok-soft: #e9f7ef; --warn: #a16207; --warn-soft: #fdf6e3; --bad: #c62828; --bad-soft: #fdecea;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 1px 3px rgba(16, 24, 40, .06);
+    --morning: #b7791f; --morning-soft: #fdf6e3; --afternoon: #2563eb; --afternoon-soft: #eaf1fe; --evening: #6d4fd8; --evening-soft: #f1edfd;
+    --k-kids: #3b82f6; --k-ielts: #8b5cf6; --k-fighter: #f59e0b; --k-tutor: #94a3b8; --k-ta: #10b981;
+  }
+  @media (prefers-color-scheme: dark) { :root[data-theme="auto"] { --bg: #0d0f12; --card: #16191e; --head: #16191e; --head-ink: #e7e9ec; --head-muted: #9aa1ab; --head-on: #e7e9ec; --head-on-ink: #111317;
+      --ink: #e7e9ec; --muted: #9aa1ab; --line: #272b32; --soft: #1d2127; --brand: #6ea8fe; --brand-soft: #1a2638; --on-brand: #0d1420;
+      --ok: #5fd08e; --ok-soft: #14291d; --warn: #f2b45a; --warn-soft: #2e2413; --bad: #f28b82; --bad-soft: #341b19; --shadow: none;
+      --morning: #f2b45a; --morning-soft: #2e2413; --afternoon: #6ea8fe; --afternoon-soft: #1a2638; --evening: #b8a4f8; --evening-soft: #251f3d;
+      --k-kids: #6ea8fe; --k-ielts: #b8a4f8; --k-fighter: #f2b45a; --k-tutor: #9aa1ab; --k-ta: #5fd08e; } }
+  :root[data-theme="dark"] { --bg: #0d0f12; --card: #16191e; --head: #16191e; --head-ink: #e7e9ec; --head-muted: #9aa1ab; --head-on: #e7e9ec; --head-on-ink: #111317;
+      --ink: #e7e9ec; --muted: #9aa1ab; --line: #272b32; --soft: #1d2127; --brand: #6ea8fe; --brand-soft: #1a2638; --on-brand: #0d1420;
+      --ok: #5fd08e; --ok-soft: #14291d; --warn: #f2b45a; --warn-soft: #2e2413; --bad: #f28b82; --bad-soft: #341b19; --shadow: none;
+      --morning: #f2b45a; --morning-soft: #2e2413; --afternoon: #6ea8fe; --afternoon-soft: #1a2638; --evening: #b8a4f8; --evening-soft: #251f3d;
+      --k-kids: #6ea8fe; --k-ielts: #b8a4f8; --k-fighter: #f2b45a; --k-tutor: #9aa1ab; --k-ta: #5fd08e; }
+  header { background: var(--head); box-shadow: none; border-bottom: 1px solid var(--line); }
+  header .quiet:hover, nav button:hover { background: var(--soft); color: var(--head-ink); }
+  nav button { font-weight: 500; }
+  nav button.on { background: var(--head-on); color: var(--head-on-ink); font-weight: 600; border-radius: 99px; }
+  .card { border-radius: 12px; }
+  .tabs button { border-radius: 99px; }
+  .tabs button.on { background: var(--ink); border-color: var(--ink); color: var(--card); }
+  .stat, .stat.k-kids, .stat.k-ielts, .stat.k-fighter, .stat.k-tutor, .stat.k-ta { border: 1px solid var(--line); border-top: 1px solid var(--line); background: var(--card); }
+  .stat b, .stat.k-kids b, .stat.k-ielts b, .stat.k-fighter b, .stat.k-tutor b, .stat.k-ta b { color: var(--ink); font-weight: 700; }
+  .stat span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--brand); vertical-align: 1px; }
+  .stat.k-kids span::before { background: var(--k-kids); } .stat.k-ielts span::before { background: var(--k-ielts); } .stat.k-fighter span::before { background: var(--k-fighter); }
+  .stat.k-tutor span::before { background: var(--k-tutor); } .stat.k-ta span::before { background: var(--k-ta); } .stat.off span::before { background: var(--bad); }
+  .stat.off { border-color: var(--line); background: var(--card); } .stat.off b { color: var(--bad); }
+  .part::after { height: 1px; }
+  .part h2, .part.p-0 h2, .part.p-1 h2, .part.p-2 h2 { background: none; color: var(--muted); padding: 0; font-size: 12px; letter-spacing: .08em; font-weight: 700; }
+  .part.p-alert h2 { background: none; color: var(--bad); }
+  .part.p-live h2 { background: none; color: var(--ok); }
+  .dash-tile, .dash-tile.bad, .dash-tile.warn, .dash-tile.ok { position: relative; border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+  .dash-tile:hover { box-shadow: 0 4px 14px rgba(16, 24, 40, .10); border-color: color-mix(in srgb, var(--ink) 18%, var(--line)); }
+  .dash-tile::after { content: ""; position: absolute; top: 12px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: transparent; }
+  .dash-tile.bad::after { background: var(--bad); } .dash-tile.warn::after { background: var(--k-fighter); } .dash-tile.ok::after { background: var(--ok); }
+  .dash-tile.bad .dash-num { color: var(--bad); } .dash-tile.warn .dash-num { color: var(--warn); } .dash-tile.ok .dash-num { color: var(--ink); }
+  .tl-bar.k-kids { background: var(--k-kids); } .tl-bar.k-ielts { background: var(--k-ielts); } .tl-bar.k-fighter { background: var(--k-fighter); }
+  .tl-bar.k-ta { background: var(--k-ta); } .tl-bar.k-tutor { background: var(--k-tutor); }
+  .dv-badge { border-width: 2px; box-shadow: var(--shadow); }
+  .dv-badge, .dv-badge.hot, .dv-badge.ok { border-color: var(--line); }
+  .dv-badge.hot { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+  .notice { border: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
+  :root[data-theme="dark"] .tl-bar { color: #0d1420; }
+  @media (prefers-color-scheme: dark) { :root[data-theme="auto"] .tl-bar { color: #0d1420; } }
 </style>
 </head>
 <body class="notranslate">
@@ -788,10 +837,10 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108R"></script>
-<script src="logic.js?v=20261108R"></script>
-<script src="app.js?v=20261108R"></script>
-<script src="qrcode.js?v=20261108R"></script>
-<script src="extra.js?v=20261108R"></script>
+<script src="config.js?v=20261108S"></script>
+<script src="logic.js?v=20261108S"></script>
+<script src="app.js?v=20261108S"></script>
+<script src="qrcode.js?v=20261108S"></script>
+<script src="extra.js?v=20261108S"></script>
 </body>
 </html>
