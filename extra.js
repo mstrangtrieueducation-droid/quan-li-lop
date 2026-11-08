@@ -1581,3 +1581,68 @@ document.addEventListener('click', e => {
   }
   if (act === 'cgClear') { gradeWrite(ctx, p, ''); delete drafts[key]; cgOpen = null; render(); }
 });
+
+/* ---------- Lesson summary for parents (owner 08/11: "sau khi lớp học kết thúc hãy hiện ra màn hình chốt... màn hình tôi chụp ảnh gửi PH
+ * khi report lớp... phần thiếu video note là tính đến thời điểm nào") ----------
+ * When the lesson has ended the class screen turns into a clean, light sheet made for a photo: each pupil's attendance, stars,
+ * homework grade with its reason, reminders, and the videos still owed, stamped with the time the class sheet was read. */
+let llSummary = { key: '', mode: null };
+const lessonEnded = s => s.day < today() || (s.day === today() && minutesNow() >= s.end);
+const sumStamp = at => { const d = new Date(at || Date.now()), p = n => String(n).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()) + ' ngày ' + p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear(); };
+function summaryOn(s) {
+  const key = Q.sessionKey(s);
+  if (llSummary.key !== key) llSummary = { key, mode: null };
+  return llSummary.mode === null ? lessonEnded(s) : llSummary.mode;
+}
+function attendText(m) {
+  const st = m ? m.status : '';
+  if (st === 'Có mặt') return '<span class="sum-ok">Có mặt</span>';
+  if (st === 'Đến muộn') return '<span class="sum-late">Đến muộn</span>';
+  if (st === NGHI || st === 'Đã báo nghỉ' || st === 'Có phép') return '<span class="sum-off">Nghỉ có phép</span>';
+  if (st === 'Chưa báo nghỉ' || st === 'Không phép') return '<span class="sum-off">Nghỉ</span>';
+  return '<span class="sum-muted">—</span>';
+}
+function summaryView(ctx) {
+  const s = ctx.session, t = ctx.tracker, behave = behaveFor(s), owed = owedOf(ctx), medal = ['🥇', '🥈', '🥉'];
+  const rows = t.pupils.map((p, i) => { const m = ctx.marks.get(p.name); return { p, i, m, stars: starsOf(ctx, p), off: !!m && (m.status === NGHI || Q.ABSENT.includes(m.status)), b: behave.get(p.name) }; })
+    .sort((a, b) => a.off - b.off || b.stars - a.stars || a.i - b.i);
+  const scores = [...new Set(rows.filter(r => !r.off && r.stars).map(r => r.stars))].sort((a, b) => b - a);
+  const here = rows.filter(r => r.m && Q.PRESENT.includes(r.m.status)).length, noStars = !(ctx.block && ctx.block.stars >= 0), noGrade = !(ctx.block && ctx.block.grade >= 0);
+  const owedText = x => (x.practice ? (x.label || 'Tự luyện').replace(/^Tự luyện video/i, 'Tự luyện') : (x.lesson ? 'Tiết ' + Number(x.lesson) : viDate(x.day).slice(0, 5)) + (x.label ? ' ' + x.label.toLowerCase() : '')) + (x.wrong ? ' (quay sai)' : '');
+  const body = rows.map(r => {
+    const rank = r.off || !r.stars ? 0 : scores.indexOf(r.stars) + 1, gp = noGrade ? { g: '' } : gradeParts(t.cell(r.p.row, ctx.block.grade)), g = gp.g === 'A' ? 'A+' : gp.g;
+    const counts = tagCounts(r.b ? r.b.tags : []), remind = Object.entries(counts).filter(([k]) => k !== CANH_CAO).map(([k, n]) => esc(k) + (n > 1 ? ' ×' + n : '')).join(', ');
+    const warned = counts[CANH_CAO] || 0, debt = (owed[r.i] || []).map(owedText);
+    return '<tr' + (r.off ? ' class="sum-offrow"' : '') + '><td class="sum-rank">' + (rank && rank <= 3 ? medal[rank - 1] : rank ? '#' + rank : '') + '</td>' +
+      '<td class="sum-name"><b>' + esc(r.p.eng || r.p.name) + '</b></td><td>' + attendText(r.m) + '</td>' +
+      (noStars ? '' : '<td class="sum-stars">' + (r.off ? '' : '⭐ ' + r.stars) + '</td>') +
+      (noGrade ? '' : '<td>' + (g && g !== '/' ? '<span class="sum-g g' + g[0] + '">' + esc(g) + '</span>' + (gp.why && g !== 'A+' ? '<div class="sum-why">' + esc(gp.why) + '</div>' : '') : '') + '</td>') +
+      '<td class="sum-remind">' + (warned ? '<span class="sum-warn">⚠️ Cảnh cáo' + (warned > 1 ? ' ×' + warned : '') + '</span>' + (remind ? '<br>' : '') : '') + remind + '</td>' +
+      '<td class="sum-debt">' + (debt.length ? esc(debt.join(', ')) : '<span class="sum-ok">Đủ</span>') + '</td></tr>';
+  }).join('');
+  const head = '<tr><th></th><th>Học sinh</th><th>Điểm danh</th>' + (noStars ? '' : '<th>Sao</th>') + (noGrade ? '' : '<th>BTVN</th>') + '<th>Nhắc nhở</th><th>Video còn nợ</th></tr>';
+  return '<div class="sum-bar"><button class="quiet" data-act="llSumClose">‹ ' + T('Quay lại màn hình lớp', 'Back to the class screen') + '</button><span class="spacer"></span>' +
+    '<button class="quiet" data-act="llSumRefresh">↻ ' + T('Đọc lại sheet', 'Re-read the sheet') + '</button><span class="small muted">' + T('Chụp phần khung trắng bên dưới để gửi phụ huynh.', 'Take a photo of the white sheet below for parents.') + '</span></div>' +
+    '<div class="sum-sheet"><div class="sum-top"><img src="logo.png" alt="" width="44" height="44"><div><div class="sum-title">' + esc(s.cls) + ' · Tiết ' + esc(s.lesson) + '</div>' +
+    '<div class="sum-sub">' + esc(Q.dayText(s.day, 'vi')) + ' · ' + sessionTime(s) + (s.teacher ? ' · GV ' + esc(s.teacher) : '') + '</div>' +
+    (s.book || s.detail ? '<div class="sum-sub">' + esc([s.book, Q.clean(s.detail).split('\n')[0]].filter(Boolean).join(' · ')) + '</div>' : '') + '</div>' +
+    '<div class="sum-count"><b>' + here + '/' + t.pupils.length + '</b><span>có mặt</span></div></div>' +
+    '<table class="sum-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
+    '<div class="sum-note">Video còn nợ tính đến <b>' + sumStamp(t.at) + '</b>. Bài con nộp sau thời điểm này chưa có trong bảng, bố mẹ xem trên trang học tập của con nhé.</div></div>';
+}
+const viewLenLopBeforeSummary = viewLenLop;
+viewLenLop = function () {
+  const ctx = current ? classContext(current) : null;
+  if (ctx && ctx.tracker && summaryOn(ctx.session)) return summaryView(ctx);
+  return viewLenLopBeforeSummary();
+};
+const lockBarBeforeSummary = lockBar;
+lockBar = function (can, edit) { return '<button class="quiet rv-sumbtn" data-act="llSumOpen">📸 ' + T('Chốt buổi', 'Lesson summary') + '</button>' + lockBarBeforeSummary(can, edit); };
+const llActionBeforeSummary = llAction;
+llAction = function (act, i, v) {
+  if (act === 'llSumOpen' || act === 'llSumClose') { if (current) { summaryOn(current); llSummary.mode = act === 'llSumOpen'; } render(); window.scrollTo(0, 0); return; }
+  if (act === 'llSumRefresh') { const c = current && classOf(current); if (c) guarded(() => Promise.all([loadTracker(c, true), loadMarks(true), loadBehave(true).catch(() => {})])); return; }
+  return llActionBeforeSummary(act, i, v);
+};
+// The class screen does not redraw by itself every 30 s; at the end of the lesson it switches to the summary once.
+setInterval(() => { if (view === 'lenlop' && current && llSummary.mode === null && lessonEnded(current) && !document.querySelector('.sum-sheet')) render(); }, 20000);
