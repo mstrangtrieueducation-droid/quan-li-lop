@@ -1622,9 +1622,9 @@ function summaryView(ctx) {
       (noStars ? '' : '<td class="sum-stars">' + (r.off ? '' : '⭐ ' + r.stars) + '</td>') +
       (noGrade ? '' : '<td class="sum-gcell">' + (g && g !== '/' ? '<span class="sum-g g' + g[0] + '">' + esc(g) + '</span>' + (gp.why && g !== 'A+' ? '<div class="sum-why">' + esc(gp.why) + '</div>' : '') : '') + '</td>') +
       '<td class="sum-remind">' + (warned ? '<span class="sum-warn">⚠️ Cảnh cáo' + (warned > 1 ? ' ×' + warned : '') + '</span>' + (remind ? '<br>' : '') : '') + remind + (!warned && !remind && !r.off ? '<span class="sum-ok">Tốt ✓</span>' : '') + '</td>' +
-      '<td class="sum-debt">' + (debt.length ? '<b>Nợ ' + debt.length + ' video:</b> ' + esc(debt.join(', ')) : '<span class="sum-ok">Không nợ ✓</span>') + '</td></tr>';
+      '<td class="sum-debt">' + (debt.length ? '<b>Thiếu ' + debt.length + ' video:</b> ' + esc(debt.join(', ')) : '<span class="sum-ok">Không thiếu ✓</span>') + '</td></tr>';
   }).join('');
-  const head = '<tr><th></th><th>Học sinh</th><th>Điểm danh</th>' + (noStars ? '' : '<th>Sao</th>') + (noGrade ? '' : '<th class="sum-c">Bài tập sách giấy</th>') + '<th>Nhắc nhở</th><th>Video còn nợ</th></tr>';
+  const head = '<tr><th></th><th>Học sinh</th><th>Điểm danh</th>' + (noStars ? '' : '<th>Sao</th>') + (noGrade ? '' : '<th class="sum-c">Bài tập sách giấy</th>') + '<th>Nhắc nhở</th><th>Video còn thiếu</th></tr>';
   return chotBar(s) + '<div class="sum-bar"><button class="quiet" data-act="llSumClose">‹ ' + T('Quay lại màn hình lớp', 'Back to the class screen') + '</button><span class="spacer"></span>' +
     '<button class="quiet" data-act="llSumRefresh">↻ ' + T('Đọc lại sheet', 'Re-read the sheet') + '</button><span class="small muted">' + T('Chụp phần khung trắng bên dưới để gửi phụ huynh.', 'Take a photo of the white sheet below for parents.') + '</span></div>' +
     '<div class="sum-sheet"><div class="sum-top"><img src="logo.png" alt="" width="44" height="44"><div><div class="sum-title">' + esc(s.cls) + ' · Tiết ' + esc(s.lesson) + '</div>' +
@@ -1632,7 +1632,7 @@ function summaryView(ctx) {
     (s.book || s.detail ? '<div class="sum-sub">' + esc([s.book, Q.clean(s.detail).split('\n')[0]].filter(Boolean).join(' · ')) + '</div>' : '') + '</div>' +
     '<div class="sum-count"><b>' + here + '/' + t.pupils.length + '</b><span>có mặt</span></div></div>' +
     '<table class="sum-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
-    '<div class="sum-note">Video còn nợ là <b>tổng các bài con chưa nộp hoặc phải quay lại, tính đến lúc chốt buổi: ' + sumStamp(t.at) + '</b>. Bài nộp sau thời điểm này chưa có trong bảng, bố mẹ xem trên trang học tập của con nhé.</div></div>';
+    '<div class="sum-note">Video còn thiếu là <b>tổng các bài con chưa nộp hoặc phải quay lại, tính đến lúc chốt buổi: ' + sumStamp(t.at) + '</b>. Bài nộp sau thời điểm này chưa có trong bảng, bố mẹ xem trên trang học tập của con nhé.</div></div>';
 }
 const viewLenLopBeforeSummary = viewLenLop;
 viewLenLop = function () {
@@ -1739,11 +1739,11 @@ pupilFlags = function (ctx, r) {
   if (st === HOME_NO_HW) out.push('<span class="rv-flag sent">🏠 Ở nhà · chưa làm bài <i class="rv-en-i">Stayed home</i></span>');
   if (isSecondary(ctx.session)) {
     const owed = secOwedOf(ctx, r.p);
-    if (owed && owed.length) out.push('<span class="rv-flag debt" title="' + esc(owed.map(o => Q.clean(o.label) + (o.due ? ' · hạn ' + viDate(o.due).slice(0, 5) : '')).join('\n')) + '">📚 Nợ ' + owed.length + ' bài: ' + esc(owed.slice(0, 2).map(shortTask).join(', ') + (owed.length > 2 ? ' +' + (owed.length - 2) : '')) + ' <i class="rv-en-i">Homework owed</i></span>');
+    if (owed && owed.length) out.push('<span class="rv-flag debt" title="' + esc(owed.map(o => Q.clean(o.label) + (o.due ? ' · hạn ' + viDate(o.due).slice(0, 5) : '')).join('\n')) + '">📚 Thiếu ' + owed.length + ' bài: ' + esc(owed.slice(0, 2).map(shortTask).join(', ') + (owed.length > 2 ? ' +' + (owed.length - 2) : '')) + ' <i class="rv-en-i">Homework owed</i></span>');
   } else {
     const owed = totalOwed(ctx)[r.i] || [], dm = d => d.slice(8, 10) + '/' + d.slice(5, 7);
     const what = x => (x.practice ? (x.label || 'Tự luyện').replace(/^Tự luyện video/i, 'Tự luyện') : (x.lesson ? 'Tiết ' + Number(x.lesson) : dm(x.day)) + (x.label ? ' ' + x.label.toLowerCase() : '')) + (x.wrong ? ' (quay sai)' : '');
-    if (owed.length) out.push('<span class="rv-flag debt" title="' + esc(owed.map(x => what(x) + ' · ' + dm(x.day)).join('\n')) + '">🎥 Nợ ' + owed.length + ' video: ' + esc(owed.slice(0, 2).map(what).join(', ') + (owed.length > 2 ? ' +' + (owed.length - 2) : '')) + ' <i class="rv-en-i">Missing video</i></span>');
+    if (owed.length) out.push('<span class="rv-flag debt" title="' + esc(owed.map(x => what(x) + ' · ' + dm(x.day)).join('\n')) + '">🎥 Thiếu ' + owed.length + ' video: ' + esc(owed.slice(0, 2).map(what).join(', ') + (owed.length > 2 ? ' +' + (owed.length - 2) : '')) + ' <i class="rv-en-i">Missing video</i></span>');
   }
   return out.length ? '<span class="rv-flags">' + out.join('') + '</span>' : '';
 };
@@ -1784,15 +1784,15 @@ summaryView = function (ctx) {
   let h = summaryViewBeforeSec(ctx);
   // Replace the video column with the homework still owed, stamped with the time the class sheet was read for it.
   const rows = ctx.tracker.pupils, stamp = hit ? sumStamp(hit.at) : '';
-  h = h.replace(/<th>Video còn nợ[^<]*<\/th>/, '<th>Bài còn nợ</th>');
+  h = h.replace(/<th>Video còn thiếu[^<]*<\/th>/, '<th>Bài còn thiếu</th>');
   let n = 0;
   const order = [...h.matchAll(/<td class="sum-name"><b>([^<]*)<\/b>/g)].map(mm => mm[1]);
   h = h.replace(/<td class="sum-debt">[\s\S]*?<\/td><\/tr>/g, () => {
     const name = order[n++], p = rows.find(q => esc(q.eng || q.name) === name), owed = p ? secOwedOf(ctx, p) : null;
-    const cell = owed == null ? '<span class="sum-muted">Đang đọc…</span>' : owed.length ? '<b>Nợ ' + owed.length + ' bài:</b> ' + esc(owed.map(o => Q.clean(o.label)).join('; ')) : '<span class="sum-ok">Đủ bài ✓</span>';
+    const cell = owed == null ? '<span class="sum-muted">Đang đọc…</span>' : owed.length ? '<b>Thiếu ' + owed.length + ' bài:</b> ' + esc(owed.map(o => Q.clean(o.label)).join('; ')) : '<span class="sum-ok">Đủ bài ✓</span>';
     return '<td class="sum-debt">' + cell + '</td></tr>';
   });
-  return h.replace(/<div class="sum-note">[\s\S]*?<\/div><\/div>$/, '<div class="sum-note">Bài còn nợ là <b>các bài con chưa nộp tính đến lúc chốt buổi' + (stamp ? ': ' + stamp : '') + '</b>. Con thiếu bài thì chưa được vào học; bài nộp sau thời điểm này chưa có trong bảng.</div></div>');
+  return h.replace(/<div class="sum-note">[\s\S]*?<\/div><\/div>$/, '<div class="sum-note">Bài còn thiếu là <b>các bài con chưa nộp tính đến lúc chốt buổi' + (stamp ? ': ' + stamp : '') + '</b>. Con thiếu bài thì chưa được vào học; bài nộp sau thời điểm này chưa có trong bảng.</div></div>');
 };
 
 /* ---------- Review and close the lesson (owner 08/11) ---------- */
