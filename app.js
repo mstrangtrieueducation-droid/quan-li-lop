@@ -800,7 +800,7 @@ function viewSchedule(week) {
   let h = dayBar();
   // Attendance of today's classes is read in the background, at most once a minute when something is missing.
   if (day === today() && !alertLoading && Date.now() - alertTried > 60000 && alertSessions(week).some(s => !trackers[classOf(s).key])) { alertTried = Date.now(); setTimeout(() => loadAlerts().catch(() => {}), 0); }
-  if (isManager()) h += '<div class="tabs"><button class="' + (filters.showAll ? '' : 'on') + '" data-act="scope" data-v="">Lịch của tôi</button><button class="' + (filters.showAll ? 'on' : '') + '" data-act="scope" data-v="1">Cả trung tâm</button></div>';
+  if (isManager()) h += '<div class="tabs"><button class="' + (filters.showAll ? 'on' : '') + '" data-act="scope" data-v="1">' + T('Cả trung tâm', 'Whole centre') + '</button><button class="' + (filters.showAll ? '' : 'on') + '" data-act="scope" data-v="">' + T('Lịch của tôi', 'My schedule') + '</button></div>';
   h += payNoticeBlock();
   h += checkinBlock(week);
   let today_ = alertsBlock(week);
@@ -950,7 +950,7 @@ function extraNames() { const out = new Set(); Object.values(weeks).forEach(w =>
 
 function taskRow(t, week, canTick) {
   const st = Q.taskState(t, today()), tag = { quahan: 'bad', homnay: 'warn', xong: 'ok', sap: '' }[st.state];
-  const stText = lang === 'en' ? ({ 'Xong': 'Done', 'Quá hạn chấm': 'Grading overdue', 'Hạn chấm hôm nay': 'Grade today', 'Quá hạn trả': 'Return overdue', 'Chưa đến hạn': 'Not due yet' }[st.text]) : st.text;
+  const stText = lang === 'en' ? ({ 'Xong': 'Done', 'Quá hạn chấm': 'Grading overdue', 'Hạn chấm hôm nay': 'Grade today', 'Quá hạn trả': 'Return overdue', 'Hạn trả hôm nay': 'Return today', 'Chưa đến hạn trả': 'Return not due yet', 'Chưa đến hạn': 'Not due yet' }[st.text]) : st.text;
   const body = '<div><div class="row-top"><b>' + esc(t.cls) + '</b><span class="tag ' + tag + '">' + esc(stText) + '</span></div><div>' + esc(t.what) + '</div><div class="small muted">' + T('GV ', 'Teacher ') + esc(t.teacher) + T(' · Chấm trước ', ' · Grade by ') + esc(t.gradeDue ? dayLabel(t.gradeDue) : '?') + ' · TA ' + esc(t.ta) + T(' trả ', ' returns ') + esc(t.returnDue ? dayLabel(t.returnDue) : '?') + '</div></div>';
   return '<div class="card row"><div class="check">' + (canTick ? '<button class="' + (t.done ? 'on' : '') + '" data-act="task" data-row="' + t.row + '" aria-label="Đánh dấu xong" aria-pressed="' + t.done + '">✓</button>' : '') + body + '</div></div>';
 }
@@ -1102,7 +1102,7 @@ function render() {
   if (!me) return;
   const active = document.activeElement;
   if (active && $('main').contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName)) return;
-  const items = [['lich', T('Lịch', 'Schedule')]].concat(isManager() || myHomerooms().some(x => isMe(x.cm)) ? [['lopcn', T('Lớp chủ nhiệm', 'Homeroom')]] : []).concat([['cong', T('Công của tôi', 'My hours')], ['luong', T('Lương', 'Pay')]]).concat(isManager() ? [['dieuhanh', 'Điều hành']] : []).concat(isOwner() ? [['hopdong', T('Hợp đồng', 'Contracts')], ['nguoi', 'Người dùng']] : []);
+  const items = [['lich', T('Lịch', 'Schedule')]].concat(isManager() || myHomerooms().some(x => isMe(x.cm)) ? [['lopcn', T('Lớp chủ nhiệm', 'Homeroom')]] : []).concat(isOwner() ? [['luong', T('Lương', 'Pay')]] : [['cong', T('Công của tôi', 'My hours')], ['luong', T('Lương', 'Pay')]]).concat(isManager() ? [['dieuhanh', 'Điều hành'], ['hocphi', T('Học phí', 'Tuition')]] : []).concat(isOwner() ? [['hopdong', T('Hợp đồng', 'Contracts')], ['nguoi', 'Người dùng']] : []);
   $('btnLang').textContent = lang === 'en' ? 'Tiếng Việt' : 'English';
   paintTheme();
   $('nav').innerHTML = items.map(([k, t]) => '<button class="' + (view === k ? 'on' : '') + '" data-act="view" data-v="' + k + '">' + t + '</button>').join('');
@@ -1117,6 +1117,7 @@ function render() {
   else if (view === 'luong') h += viewLuong();
   else if (view === 'hopdong' && isOwner()) h += viewHopDong();
   else if (view === 'lopcn') h += viewHomerooms();
+  else if (view === 'hocphi' && isManager()) h += viewHocPhi();
   else h += viewSchedule(week);
   $('main').innerHTML = h;
   paintSave();

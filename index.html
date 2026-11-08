@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#0b5394">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src https://script.google.com https://script.googleusercontent.com; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src https://script.google.com https://script.googleusercontent.com; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src 'self'">
 <title>Quản lí lớp</title>
 <link rel="icon" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -518,6 +518,30 @@
   .rv-chot { background: #16a34a; color: #fff; border: 0; font-weight: 800; padding: 0 16px; border-radius: 14px; }
   .rv-tick.rv-praise { border-color: #16a34a; color: #15803d; }
   .rv-tick.rv-praise.on { background: #16a34a; color: #fff; }
+  /* Schedule now-first and tuition frame (owner 08/11) */
+  .part.p-live h2 { color: #fff; background: #16a34a; }
+  .done-part { margin: 14px 0; } .done-part > summary { cursor: pointer; font-weight: 700; color: var(--muted); padding: 8px 0; }
+  .done-part .grid { opacity: .7; }
+  .hp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; }
+  #hpFrame { display: block; width: calc(100% - 24px); max-width: 1400px; margin: 0 auto 12px; height: calc(100vh - 170px); min-height: 520px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+  #hpFrame[hidden] { display: none; }
+  /* Phone layout (owner 08/11: màn hình điện thoại hiển thị hơi lộn xộn) */
+  @media (max-width: 640px) {
+    header { position: static; }
+    header .bar { display: grid; grid-template-columns: auto 1fr auto auto auto; align-items: center; gap: 4px 6px; padding: 6px 10px; }
+    header .brand { font-size: 16px; white-space: nowrap; }
+    header #saveState { display: none; }
+    header #btnTheme, header #btnLang { min-height: 36px; padding: 4px 8px; font-size: 13px; white-space: nowrap; }
+    header .spacer { display: none; }
+    nav#nav { grid-column: 1 / -1; grid-row: 2; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; margin: 0 -10px; padding: 0 10px 2px; }
+    nav#nav::-webkit-scrollbar { display: none; }
+    nav#nav button { flex: none; min-height: 38px; padding: 6px 12px; }
+    .sectabs { scrollbar-width: none; } .sectabs::-webkit-scrollbar { display: none; }
+    .part { flex-wrap: wrap; }
+    .part h2 { white-space: nowrap; }
+    main { padding-left: 12px; padding-right: 12px; }
+    #hpFrame { width: calc(100% - 12px); height: calc(100vh - 150px); }
+  }
 </style>
 </head>
 <body>
@@ -547,9 +571,9 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108j"></script>
-<script src="logic.js?v=20261108j"></script>
-<script src="app.js?v=20261108j"></script>
-<script src="extra.js?v=20261108j"></script>
+<script src="config.js?v=20261108m"></script>
+<script src="logic.js?v=20261108m"></script>
+<script src="app.js?v=20261108m"></script>
+<script src="extra.js?v=20261108m"></script>
 </body>
 </html>
