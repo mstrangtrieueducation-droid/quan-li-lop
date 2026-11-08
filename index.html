@@ -613,6 +613,13 @@
   .rv-undo { position: absolute; top: -10px; left: -10px; width: 30px; height: 30px; padding: 0; border-radius: 15px; border: 2px solid var(--card); background: #64748b; color: #fff; font: 800 20px/24px system-ui, sans-serif; z-index: 2; }
   .rv-undo:disabled { display: none; }
   @media (max-width: 760px) { .rv-chip { flex: 1 1 calc(50% - 6px); } .rv-chip > .rv-tick, .rv-chip > .rv-warn { flex: 1 1 auto; width: 100%; } }
+  /* Close only after the lesson, with a pop-up (owner 08/11) */
+  .rv-chot-wait { opacity: .55; cursor: not-allowed; }
+  .chot-pop { gap: 12px; }
+  .chot-pop-t { font-size: 22px; display: grid; }
+  .chot-pop p { margin: 0; line-height: 1.45; }
+  .chot-pop .chot-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chot-pop .chot-row button { min-height: 52px; padding: 0 16px; font-size: 16px; display: grid; place-items: center; }
 </style>
 </head>
 <body class="notranslate">
@@ -642,10 +649,10 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108y"></script>
-<script src="logic.js?v=20261108y"></script>
-<script src="app.js?v=20261108y"></script>
-<script src="qrcode.js?v=20261108y"></script>
-<script src="extra.js?v=20261108y"></script>
+<script src="config.js?v=20261108z"></script>
+<script src="logic.js?v=20261108z"></script>
+<script src="app.js?v=20261108z"></script>
+<script src="qrcode.js?v=20261108z"></script>
+<script src="extra.js?v=20261108z"></script>
 </body>
 </html>

@@ -2424,3 +2424,39 @@ document.addEventListener('click', async e => {
   try { const r = await call('them', { name: me.name, role: 'GV' }); nguoiMoi = { name: r.name + ' (GV)', link: location.origin + location.pathname + '#k=' + r.key }; await loadNguoi(); render(); window.scrollTo(0, 0); }
   catch (err) { say(err.message, 'bad'); render(); }
 });
+
+/* ---------- "Rà soát & chốt" only once the lesson is over, with a pop-up asking for it (owner 08/11) ----------
+ * Before the end time the header button is grey ("Chốt buổi lúc 18:30") and the close cannot be confirmed. From the end time, a
+ * pop-up over the class screen asks the teacher to check roll call, stars, A+/B/F and reminders and close the lesson;
+ * "5 phút nữa" hides it for five minutes. It never shows once the lesson is closed, or to someone who may not close it. */
+const CHOT_SNOOZE_MS = 5 * 60000;
+let chotSnooze = { key: '', until: 0 };
+const lockBarBeforeEnd = lockBar;
+lockBar = function (can, edit) {
+  const h = lockBarBeforeEnd(can, edit);
+  if (!current || isChot(current) || lessonEnded(current)) return h;
+  return h.replace(/<button class="rv-sumbtn rv-chot" data-act="llSumOpen">[^<]*<\/button>/, '<button class="rv-sumbtn rv-chot-wait" disabled title="' + T('Chỉ chốt được khi buổi học kết thúc', 'Only after the lesson ends') + '">✅ ' + T('Chốt buổi lúc ', 'Close at ') + Q.clock(current.end) + '</button>');
+};
+const llActionBeforeEnd = llAction;
+llAction = function (act, i, v) {
+  if ((act === 'llSumOpen' || act === 'llChot') && current && !isChot(current) && !lessonEnded(current)) return;
+  if (act === 'llChotPopGo') { chotSnooze = { key: Q.sessionKey(current), until: Date.now() + CHOT_SNOOZE_MS }; summaryOn(current); llSummary.mode = true; render(); setTimeout(() => { const w = document.querySelector('.chot-warn'); if (w) w.scrollIntoView({ block: 'center' }); }, 50); return; }
+  if (act === 'llChotPopLater') { chotSnooze = { key: Q.sessionKey(current), until: Date.now() + CHOT_SNOOZE_MS }; paintChotPop(); return; }
+  return llActionBeforeEnd(act, i, v);
+};
+function paintChotPop() {
+  let box = document.getElementById('chotPop');
+  const s = current, key = s ? Q.sessionKey(s) : '';
+  const show = s && view === 'lenlop' && !isChot(s) && lessonEnded(s) && canConfirm(s) && !(chotSnooze.key === key && Date.now() < chotSnooze.until) && !document.querySelector('.ll-sheet');
+  if (!show) { if (box) box.remove(); return; }
+  if (!box) { box = document.createElement('div'); box.id = 'chotPop'; document.body.appendChild(box); }
+  // In the app's language (owner 08/11: foreign teachers use English; only the class screen pupils look at stays bilingual).
+  box.innerHTML = '<div class="pair-veil"></div><div class="pair-sheet chot-pop" role="alertdialog" aria-label="' + T('Buổi học đã kết thúc', 'The lesson has ended') + '">' +
+    '<b class="chot-pop-t">⏰ ' + T('Buổi học đã kết thúc', 'The lesson has ended') + '</b>' +
+    '<p>' + T('Thầy/cô rà soát lại một lượt: <b>điểm danh, số sao, A+/B/F (và lý do), nhắc nhở</b>, rồi bấm <b>Chốt buổi</b>. Chốt xong sẽ không sửa được nữa.', 'Please check <b>roll call, stars, A+/B/F (with reasons) and reminders</b>, then <b>close the lesson</b>. After closing nothing can be changed.') + '</p>' +
+    '<div class="chot-row"><button class="primary chot-go" data-act="llChotPopGo">✅ ' + T('Rà soát & chốt ngay', 'Review & close now') + '</button>' +
+    '<button class="quiet" data-act="llChotPopLater">' + T('5 phút nữa', 'In 5 minutes') + '</button></div></div>';
+}
+const renderBeforeChotPop = render;
+render = function () { renderBeforeChotPop(); paintChotPop(); };
+setInterval(() => { if (view === 'lenlop' && current) paintChotPop(); }, 20000);
