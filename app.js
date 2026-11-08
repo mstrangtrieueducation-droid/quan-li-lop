@@ -279,7 +279,10 @@ const CLOSE_AFTER = 30;
 const lessonClosed = s => s.day < today() || (s.day === today() && minutesNow() > s.end + CLOSE_AFTER);
 // A lesson running now, or starting within 15 minutes.
 function liveTag(s) { if (s.off || s.day !== today()) return ''; const n = minutesNow(); if (n >= s.start && n < s.end) return '<span class="tag live">● ' + T('Đang diễn ra', 'In progress') + '</span>'; if (n >= s.start - 15 && n < s.start) return '<span class="tag soon">' + T('Sắp bắt đầu', 'Starting soon') + '</span>'; if (n >= s.end && n <= s.end + CLOSE_AFTER) return '<span class="tag">' + T('Vừa xong', 'Just ended') + '</span>'; return ''; }
-function canTeach(s) { return isManager() || ([s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)) && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s)); }
+const CHOT_NAME = '— CHỐT BUỔI —';
+const chotOf = s => { try { const m = marksOf(s).get(CHOT_NAME); return m && m.status === 'Đã chốt' ? m : null; } catch (e) { return null; } };
+const isChot = s => !!chotOf(s);
+function canTeach(s) { return !isChot(s) && (isManager() || ([s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)) && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s))); }
 // Everyone moves to their new place smoothly, so the class sees who overtook whom.
 function withMoves(work) {
   const before = new Map([...document.querySelectorAll('.ll-row')].map(el => [el.dataset.name, el.getBoundingClientRect().top]));
@@ -844,7 +847,7 @@ const stateText = st => lang === 'en' ? ({ 'Vắng chờ xác minh': 'Absent, aw
 function viewClass() {
   const ctx = classContext(current), s = ctx.session, tracker = ctx.tracker;
   const assigned = [s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name));
-  const roll = Q.rollCall(s, ctx.marks, today(), minutesNow()), canEdit = isManager() || (assigned && roll.open && !lessonClosed(s));
+  const roll = Q.rollCall(s, ctx.marks, today(), minutesNow()), canEdit = !isChot(s) && (isManager() || (assigned && roll.open && !lessonClosed(s)));
   let h = '<div><button class="quiet" data-act="back">‹ ' + T('Lịch', 'Schedule') + '</button></div><div class="card class-head"><h1>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</h1>' +
     '<div>' + esc(dayLabel(s.day)) + ' · <b>' + sessionTime(s) + '</b> · <span class="room">' + esc(s.site || T('Chưa ghi phòng', 'No room listed')) + '</span></div>' +
     '<div class="detail">' + esc(s.book) + (s.detail ? '\n' + esc(s.detail) : '') + '</div>' +
@@ -860,7 +863,8 @@ function viewClass() {
   h += '<div class="count"><span>' + present + '/' + tracker.pupils.length + T(' có mặt', ' present') + '</span>' +
     (roll.noRollCall ? '<span class="tag bad">' + T('Chưa điểm danh', 'Attendance not taken') + '</span>' : roll.past ? (waiting ? '<span class="tag bad">' + waiting + T(' vắng chờ xác minh', ' absent, awaiting check') + '</span>' : '<span class="tag ok">' + T('Đủ', 'All here') + '</span>') : '<span class="tag">' + T('Chốt lúc ', 'Closes at ') + Q.clock(roll.closeAt) + '</span>') + '</div>';
   if (group) h += '<div class="notice">' + T('Đây là buổi nhóm nên danh sách là cả lớp, chỉ tick các em học nhóm này.', 'This is a group session showing the whole class, so tick only the pupils in this group.') + '</div>';
-  if (!canEdit) h += '<div class="notice">' + (assigned && lessonClosed(s) ? T('Buổi học đã kết thúc quá ' + CLOSE_AFTER + ' phút nên đã khoá, không sửa được nữa. Cần sửa thì báo quản lí.', 'This lesson ended more than ' + CLOSE_AFTER + ' minutes ago and is locked. Ask a manager to change anything.') : assigned ? T('Điểm danh mở trước giờ học ' + Q.OPEN_BEFORE + ' phút.', 'Attendance opens ' + Q.OPEN_BEFORE + ' minutes before class.') : T('Chỉ xem được, buổi này không phân công cho Gmail này.', 'View only: this session is not assigned to this Gmail.')) + '</div>';
+  if (isChot(s)) h += '<div class="notice ok">✅ ' + T('Buổi đã chốt lúc ', 'Lesson closed at ') + esc(String(chotOf(s).at || '').slice(11, 16) || '') + (chotOf(s).by ? T(' bởi ', ' by ') + esc(chotOf(s).by) : '') + T('. Không sửa được nữa.', '. It can no longer be changed.') + (isManager() ? ' <button class="quiet" data-act="chotUndo">' + T('Mở lại để sửa', 'Reopen') + '</button>' : T(' Cần sửa thì báo quản lí.', ' Ask a manager to change anything.')) + '</div>';
+  else if (!canEdit) h += '<div class="notice">' + (assigned && lessonClosed(s) ? T('Buổi học đã kết thúc quá ' + CLOSE_AFTER + ' phút nên đã khoá, không sửa được nữa. Cần sửa thì báo quản lí.', 'This lesson ended more than ' + CLOSE_AFTER + ' minutes ago and is locked. Ask a manager to change anything.') : assigned ? T('Điểm danh mở trước giờ học ' + Q.OPEN_BEFORE + ' phút.', 'Attendance opens ' + Q.OPEN_BEFORE + ' minutes before class.') : T('Chỉ xem được, buổi này không phân công cho Gmail này.', 'View only: this session is not assigned to this Gmail.')) + '</div>';
   const owed = Q.owedVideos(tracker.pupils, tracker.blocks, tracker.practices, tracker.cell, s);
   h += '<div class="card">' + tracker.pupils.map((p, i) => {
     const m = ctx.marks.get(p.name), on = m && Q.PRESENT.includes(m.status), state = stateOf(p), value = ctx.block && ctx.block.grade >= 0 ? tracker.cell(p.row, ctx.block.grade) : '', g = Q.gradeOf(value);

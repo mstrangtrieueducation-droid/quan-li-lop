@@ -824,7 +824,7 @@ const renderBeforeBoard = render;
 render = function () { if (isBoard()) renderBoard(); else renderBeforeBoard(); };
 // The board takes the roll of today's classes only, in the same window as the teacher.
 const canTeachBeforeBoard = canTeach;
-canTeach = s => isBoard() ? s.day === today() && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s) : canTeachBeforeBoard(s);
+canTeach = s => isBoard() ? !isChot(s) && s.day === today() && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s) : canTeachBeforeBoard(s);
 setInterval(() => {
   if (!isBoard()) return;
   if (day !== today()) { day = today(); weekOf(day).then(render).catch(() => {}); }
@@ -896,7 +896,11 @@ BEHAVIOUR_EN[CANH_CAO] = 'Warning';
 if (!BEHAVIOURS.includes(CANH_CAO)) BEHAVIOURS.push(CANH_CAO);
 const REASONS = ['Nói chuyện riêng', 'Không làm theo yêu cầu', 'Quên sách vở', 'Nói tiếng Việt nhiều', 'Đi lại tự do'];
 let llReason = null;
-const tickTotal = counts => TICKS.reduce((n, t) => n + (counts[t] || 0), 0);
+// IELTS / FIGHTER: reminders that fit teenagers, and one praise button that never counts towards a warning.
+const PRAISE = 'Phát biểu tốt', TEEN_TICKS = ['Dùng điện thoại', 'Làm việc riêng', PRAISE];
+Object.assign(BEHAVIOUR_EN, { 'Dùng điện thoại': 'Using phone', 'Làm việc riêng': 'Off task', [PRAISE]: 'Great answer' });
+const ticksFor = s => s && isSecondary(s) ? TEEN_TICKS : TICKS;
+const tickTotal = counts => TICKS.concat(TEEN_TICKS).filter(t => t !== PRAISE).reduce((n, t) => n + (counts[t] || 0), 0);
 
 viewLenLop = function () {
   const ctx = classContext(current), s = ctx.session;
@@ -927,7 +931,7 @@ viewLenLop = function () {
       (noStars ? '' : '<div class="rv-stars"><button class="rv-minus" data-act="llDown" data-i="' + r.i + '"' + (starOk && r.stars ? live : ' disabled') + ' aria-label="' + T('Bớt 1 sao của ', 'One star off ') + esc(name) + '">−</button>' +
         '<span class="ll-num rv-num" aria-label="' + r.stars + T(' sao', ' stars') + '">⭐ <b>' + r.stars + '</b></span>' +
         '<button class="ll-plus rv-plus" data-act="llStar" data-i="' + r.i + '"' + (starOk ? live : ' disabled') + ' aria-label="' + T('Thêm 1 sao cho ', 'Add a star for ') + esc(name) + '">+</button></div>') +
-      TICKS.map((t, k) => '<button class="rv-tick' + (counts[t] ? ' on' : '') + '" data-act="llTick" data-i="' + r.i + '" data-k="' + k + '" data-v="' + k + '"' + live + '>' + biText(t) + badge(counts[t]) + '</button>').join('') +
+      ticksFor(s).map((t, k) => '<button class="rv-tick' + (t === PRAISE ? ' rv-praise' : '') + (counts[t] ? ' on' : '') + '" data-act="llTick" data-i="' + r.i + '" data-k="' + k + '" data-v="' + k + '"' + live + '>' + biText(t) + badge(counts[t]) + '</button>').join('') +
       '<button class="rv-warn' + (over ? ' hot' : '') + (warned ? ' on' : '') + '" data-act="llReason" data-i="' + r.i + '"' + live + '>⚠️ Cảnh cáo<small class="rv-en">Warning</small>' + badge(warned) + '</button>' +
       (group && !r.off ? '<button class="rv-here' + (r.here ? ' on' : '') + '" data-act="llHere" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.here + '">✓</button>' : '') +
       secButtons(ctx, r, live) + ((r.here && !r.off) || secStatus(r) ? '' : '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? 'Nghỉ ✓<small class="rv-en">Absent</small>' : 'Nghỉ<small class="rv-en">Absent</small>') + '</button>') +
@@ -1037,7 +1041,7 @@ llAction = function (act, i, v) {
   const old = behaveFor(ctx.session).get(pupil.name), tags = old ? old.tags.slice() : [], note = old ? old.note : '';
   const hereNow = () => { const m = ctx.marks.get(pupil.name); if (!(m && (Q.PRESENT.includes(m.status) || m.status === NGHI || Q.ABSENT.includes(m.status)))) appendMark(ctx.session, pupil, Q.tickStatus(ctx.session, today(), minutesNow()), m && m.contact, '', STAR_WAIT); };
   if (act === 'llTick') {
-    const t = TICKS[Number(v)];
+    const t = ticksFor(ctx.session)[Number(v)];
     if (!t) return;
     const before = tickTotal(tagCounts(tags));
     tags.push(t); setBehave(ctx, pupil, tags, note); hereNow();
@@ -1536,7 +1540,7 @@ let cgOpen = null, cgGrade = '';
 const gradeReason = v => gradeParts(v).why;
 function classCanEdit(s) {
   const mine = [s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name));
-  return isManager() || (mine && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s));
+  return !isChot(s) && (isManager() || (mine && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s)));
 }
 function classGrade(ctx, pupil, grade, i) {
   if (!ctx.block || ctx.block.grade < 0 || !classCanEdit(ctx.session)) return;
@@ -1611,7 +1615,7 @@ function summaryView(ctx) {
   const owedText = x => (x.practice ? (x.label || 'Tự luyện').replace(/^Tự luyện video/i, 'Tự luyện') : (x.lesson ? 'Tiết ' + Number(x.lesson) : viDate(x.day).slice(0, 5)) + (x.label ? ' ' + x.label.toLowerCase() : '')) + (x.wrong ? ' (quay sai)' : '');
   const body = rows.map(r => {
     const rank = r.off || !r.stars ? 0 : scores.indexOf(r.stars) + 1, gp = noGrade ? { g: '' } : gradeParts(t.cell(r.p.row, ctx.block.grade)), g = gp.g === 'A' ? 'A+' : gp.g;
-    const counts = tagCounts(r.b ? r.b.tags : []), remind = Object.entries(counts).filter(([k]) => k !== CANH_CAO).map(([k, n]) => esc(k) + (n > 1 ? ' ×' + n : '')).join(', ');
+    const counts = tagCounts(r.b ? r.b.tags : []), remind = Object.entries(counts).filter(([k]) => k !== CANH_CAO && k !== PRAISE).map(([k, n]) => esc(k) + (n > 1 ? ' ×' + n : '')).join(', ') + (counts[PRAISE] ? (Object.keys(counts).some(k => k !== CANH_CAO && k !== PRAISE) ? '<br>' : '') + '<span class="sum-ok">👍 ' + PRAISE + (counts[PRAISE] > 1 ? ' ×' + counts[PRAISE] : '') + '</span>' : '');
     const warned = counts[CANH_CAO] || 0, debt = (owed[r.i] || []).map(owedText);
     return '<tr' + (r.off ? ' class="sum-offrow"' : '') + '><td class="sum-rank">' + (rank && rank <= 3 ? medal[rank - 1] : rank ? '#' + rank : '') + '</td>' +
       '<td class="sum-name"><b>' + esc(r.p.eng || r.p.name) + '</b></td><td>' + attendText(r.m) + '</td>' +
@@ -1621,7 +1625,7 @@ function summaryView(ctx) {
       '<td class="sum-debt">' + (debt.length ? '<b>Nợ ' + debt.length + ' video:</b> ' + esc(debt.join(', ')) : '<span class="sum-ok">Không nợ ✓</span>') + '</td></tr>';
   }).join('');
   const head = '<tr><th></th><th>Học sinh</th><th>Điểm danh</th>' + (noStars ? '' : '<th>Sao</th>') + (noGrade ? '' : '<th class="sum-c">Bài tập sách giấy</th>') + '<th>Nhắc nhở</th><th>Video còn nợ</th></tr>';
-  return '<div class="sum-bar"><button class="quiet" data-act="llSumClose">‹ ' + T('Quay lại màn hình lớp', 'Back to the class screen') + '</button><span class="spacer"></span>' +
+  return chotBar(s) + '<div class="sum-bar"><button class="quiet" data-act="llSumClose">‹ ' + T('Quay lại màn hình lớp', 'Back to the class screen') + '</button><span class="spacer"></span>' +
     '<button class="quiet" data-act="llSumRefresh">↻ ' + T('Đọc lại sheet', 'Re-read the sheet') + '</button><span class="small muted">' + T('Chụp phần khung trắng bên dưới để gửi phụ huynh.', 'Take a photo of the white sheet below for parents.') + '</span></div>' +
     '<div class="sum-sheet"><div class="sum-top"><img src="logo.png" alt="" width="44" height="44"><div><div class="sum-title">' + esc(s.cls) + ' · Tiết ' + esc(s.lesson) + '</div>' +
     '<div class="sum-sub">' + esc(Q.dayText(s.day, 'vi')) + ' · ' + sessionTime(s) + '</div>' +
@@ -1637,7 +1641,7 @@ viewLenLop = function () {
   return viewLenLopBeforeSummary();
 };
 const lockBarBeforeSummary = lockBar;
-lockBar = function (can, edit) { return '<button class="quiet rv-sumbtn" data-act="llSumOpen">📸 ' + T('Chốt buổi', 'Lesson summary') + '</button>' + lockBarBeforeSummary(can, edit); };
+lockBar = function (can, edit) { const done = current && isChot(current); return '<button class="' + (done ? 'quiet ' : '') + 'rv-sumbtn' + (done ? '' : ' rv-chot') + '" data-act="llSumOpen">' + (done ? '📸 ' + T('Xem bảng chốt', 'Summary') : '✅ ' + T('Rà soát & chốt buổi', 'Review & close')) + '</button>' + lockBarBeforeSummary(can, edit); };
 const llActionBeforeSummary = llAction;
 llAction = function (act, i, v) {
   if (act === 'llSumOpen' || act === 'llSumClose') { if (current) { summaryOn(current); llSummary.mode = act === 'llSumOpen'; } render(); window.scrollTo(0, 0); return; }
@@ -1790,3 +1794,34 @@ summaryView = function (ctx) {
   });
   return h.replace(/<div class="sum-note">[\s\S]*?<\/div><\/div>$/, '<div class="sum-note">Bài còn nợ là <b>các bài con chưa nộp tính đến lúc chốt buổi' + (stamp ? ': ' + stamp : '') + '</b>. Con thiếu bài thì chưa được vào học; bài nộp sau thời điểm này chưa có trong bảng.</div></div>');
 };
+
+/* ---------- Review and close the lesson (owner 08/11) ---------- */
+const canConfirm = s => !isChot(s) && (isManager() || isBoard() || [s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)));
+function chotBar(s) {
+  const c = chotOf(s);
+  if (c) return '<div class="chot-done">✅ ' + T('Đã chốt lúc ', 'Closed at ') + esc(String(c.at || '').slice(11, 16)) + (c.by ? ' · ' + esc(c.by) : '') + T(' · không sửa được nữa', ' · locked') +
+    '<span class="spacer"></span>' + (isManager() ? '<button class="quiet" data-act="llChotUndo">' + T('Mở lại để sửa', 'Reopen') + '</button>' : '') + '<button class="primary" data-act="llExit">' + T('Thoát lớp', 'Leave class') + '</button></div>';
+  if (!canConfirm(s)) return '';
+  return '<div class="chot-warn"><b>⚠️ ' + T('Giáo viên rà soát lại một lượt trước khi chốt:', 'Teacher, check once more before closing:') + '</b> ' +
+    T('điểm danh (có mặt, muộn, nghỉ), số sao, A+/B/F và lý do, nhắc nhở. Sai chỗ nào thì "Quay lại màn hình lớp" để sửa. Chốt xong sẽ không sửa được nữa.', 'attendance, stars, A+/B/F with reasons, reminders. Go back to fix anything; after closing nothing can be changed.') +
+    '<div class="chot-row"><button class="primary chot-go" data-act="llChot">✅ ' + T('Xác nhận đúng, chốt buổi & thoát lớp', 'Confirm, close and leave') + '</button></div></div>';
+}
+const llActionBeforeChot = llAction;
+llAction = function (act, i, v) {
+  if (act === 'llChot' || act === 'llChotUndo') {
+    const s = current;
+    if (!s || (act === 'llChot' ? !canConfirm(s) : !isManager())) return;
+    appendMark(s, { row: '', name: CHOT_NAME, eng: '' }, act === 'llChot' ? 'Đã chốt' : 'Bỏ chốt');
+    flush();
+    if (act === 'llChot') { llLock.open = false; llSummary.mode = true; say(T('Đã chốt buổi. Màn hình chốt bên dưới dùng để chụp gửi phụ huynh.', 'Lesson closed. Use the sheet below for parents.'), 'ok'); }
+    render(); window.scrollTo(0, 0);
+    return;
+  }
+  return llActionBeforeChot(act, i, v);
+};
+// Reopen from the class page too (managers only).
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="chotUndo"]');
+  if (!b || !current || !isManager()) return;
+  appendMark(current, { row: '', name: CHOT_NAME, eng: '' }, 'Bỏ chốt'); flush(); render();
+});
