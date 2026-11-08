@@ -154,7 +154,7 @@ async function loadTracker(cls, force, light) {
   // The first pupil's row differs by class; everything above it is header.
   const firstPupil = rowsTop.findIndex(isPupil), head = firstPupil < 0 ? rowsTop : rowsTop.slice(0, firstPupil);
   const blocks = Q.trackerBlocks(head, year), practices = Q.practiceColumns(head, year);
-  const from = Q.addDays(today(), -30);
+  const from = Q.addDays(today(), -60);
   const wanted = new Set();
   blocks.filter(b => !b.date || b.date >= from).forEach(b => { if (b.grade >= 0) wanted.add(b.grade); if (b.stars >= 0) wanted.add(b.stars); b.videos.forEach(v => wanted.add(v.col)); });
   practices.filter(p => p.due >= from).forEach(p => wanted.add(p.col));
@@ -1178,7 +1178,7 @@ document.addEventListener('click', e => {
   if (act === 'open') { const s = findSession(b.dataset.row, b.dataset.day); if (s && classOf(s)) openClass(s); }
   if (act === 'tick' || act === 'grade') {
     const ctx = classContext(current), pupil = ctx.tracker.pupils[Number(b.dataset.i)];
-    if (act === 'tick') tickPupil(ctx, pupil); else classGrade(ctx, pupil, v, Number(b.dataset.i));
+    if (act === 'tick') tickPupil(ctx, pupil); else if (typeof classGrade === 'function') classGrade(ctx, pupil, v, Number(b.dataset.i)); else setGrade(ctx, pupil, v);
   }
   if (act === 'cnLoad') guarded(() => loadHomerooms(b.dataset.k));
   if (act === 'present') {
