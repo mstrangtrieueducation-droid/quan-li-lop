@@ -781,8 +781,8 @@ async function boardStart() {
   paintBoardCode();
   const poll = async () => {
     if (!boardPair.code) return;
-    // An expired code is replaced by itself while the screen is shown, so the QR on the board always works.
-    if (Date.now() > boardPair.until) { boardPair.code = ''; if (document.visibilityState === 'visible') { boardStart(); return; } boardPair.err = T('Mã đã hết hạn, bấm lấy mã mới.', 'The code expired, get a new one.'); paintBoardCode(); return; }
+    // After one code (15 min) nobody scanned: stop asking the server and show the button again; one tap brings a new QR.
+    if (Date.now() > boardPair.until) { boardPair.code = ''; boardPair.err = T('Mã QR đã hết hạn. Chạm nút ở trên để hiện mã mới.', 'The QR expired. Tap the button above for a new one.'); paintBoardCode(); return; }
     try {
       const r = await rawCall('ghepxem', { code: boardPair.code, secret: boardPair.secret });
       if (r.ready) { boardPair.code = ''; paintBoardCode(); keep('key', r.key); accessKey = r.key; view = 'bang'; boardAutoOpen = r.open || null; enter(); return; }
