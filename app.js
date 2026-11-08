@@ -885,7 +885,8 @@ function viewClass() {
     return '<div class="pupil' + (state === 'Vắng chờ xác minh' || Q.ABSENT.includes(state) ? ' absent' : '') + '"><button class="tick' + (on ? (m.status === 'Đến muộn' ? ' late' : ' on') : '') + '" data-act="tick" data-i="' + i + '" aria-pressed="' + Boolean(on) + '" aria-label="Điểm danh ' + esc(p.eng) + '"' + (canEdit ? '' : ' disabled') + '>✓</button>' +
       '<div class="who"><b>' + esc(p.eng || p.name) + '</b><span class="small muted">' + esc(p.name) + (state && !on ? ' · ' + esc(stateText(state)) : m && m.status === 'Đến muộn' ? T(' · Đến muộn', ' · Late') : '') + (g === '/' ? T(' · Sheet ghi vắng', ' · Sheet says absent') : '') + (value && !g ? T(' · Có ghi chú', ' · Has a note') : '') + '</span></div>' + grades +
       (gradeReason(value) ? '<div class="small muted">✎ ' + T('Lý do: ', 'Reason: ') + esc(gradeReason(value)) + '</div>' : '') + (typeof kidsMakeup === 'function' ? kidsMakeup(ctx, p, i, canEdit) : '') +
-      (owedText ? '<div class="owed">' + T('Thiếu video: ', 'Missing video: ') + esc(owedText) + '</div>' : '') + '</div>';
+      // The owed line comes from extra.js (kidsMakeup wrapper): same count and rule as the class screen (owner 08/11).
+      (typeof kidsMakeup === 'function' ? '' : (owedText ? '<div class="owed">' + T('Thiếu video: ', 'Missing video: ') + esc(owedText) + '</div>' : '')) + '</div>';
   }).join('') + '</div>';
   // Owner 07/11: the lesson report lives in the class sheet's BÁO CÁO tab, not here.
   return h;
