@@ -265,10 +265,12 @@
   }
 
   // What each pupil still owes before this session. A column nobody submitted is a lesson without web homework.
+  // A lesson's video is due the day before the next lesson of that class (a week later when no later lesson is open yet).
+  function videoDue(blocks, b) { const next = blocks.map(o => o.date).filter(d => d && d > b.date).sort()[0]; return next ? addDays(next, -1) : addDays(b.date, 6); }
   function owedVideos(pupils, blocks, practices, cell, session) {
     const from = addDays(session.day, -RECENT_DAYS), found = pupils.map(() => []);
     const assigned = cols => pupils.length < 3 || pupils.some(p => cols.some(c => videoState(cell(p.row, c)) === 'done'));
-    blocks.filter(b => b.date && b.date < session.day && b.date >= from && b.videos.length).forEach(b => {
+    blocks.filter(b => b.date && b.date < session.day && b.date >= from && b.videos.length && videoDue(blocks, b) < session.day).forEach(b => {
       const cols = b.videos.map(v => v.col);
       if (!assigned(cols)) return;
       pupils.forEach((p, i) => {
@@ -411,6 +413,6 @@
   }
 
   return { parsePenalty, parseDuty, parseReturns, ARRIVE_BEFORE, ROLL_CALL_MINUTES, OPEN_BEFORE, PRESENT, ABSENT, clean, key, iso, fromIso, addDays, dayText, dateIn, colName, parseTime, clock, weekTab,
-    parseWeek, taskState, mine, staffOf, sessionKey, trackerBlocks, practiceColumns, findBlock, videoState, isAbsentMark, gradeOf, pupilOf, owedVideos,
+    parseWeek, taskState, mine, staffOf, sessionKey, trackerBlocks, practiceColumns, findBlock, videoState, isAbsentMark, gradeOf, pupilOf, owedVideos, videoDue,
     latest, rollCall, tickStatus, pupilState, lateMinutes, monthSummary, nameKey, parsePay, parseMarking, payTable, payOf, hoursText, tabsOfMonth };
 }));
