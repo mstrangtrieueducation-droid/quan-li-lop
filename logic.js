@@ -100,20 +100,24 @@
     for (let i = 0; i < Math.min(stop, 10) && top < 0; i++) (rows[i] || []).forEach((v, c) => { if (top < 0 && /^LỊCH LÀM VIỆC TA/i.test(clean(v))) { top = i; col0 = c; } });
     if (top < 0) return out;
     const dayRow = rows[top + 1] || [], cols = [];
-    for (let c = col0; c < col0 + 7; c++) { const d = dateIn(String(dayRow[c] || '').replace(/\n/g, ' '), yearOf(rows, head)); if (d) { cols.push([c, d]); out.days[d] = { work: [], off: [], lock: [], note: '' }; } }
+    for (let c = col0; c < col0 + 7; c++) { const d = dateIn(String(dayRow[c] || '').replace(/\n/g, ' '), yearOf(rows, head)); if (d) { cols.push([c, d]); out.days[d] = { work: [], off: [], lock: [], note: '', print: [] }; } }
     const names = text => String(text || '').split(/[,;\n]/).map(clean).filter(Boolean).map(x => { const m = x.match(/^(.*?)\s*\((.*)\)\s*$/); return m ? { name: clean(m[1]), note: clean(m[2]) } : { name: x, note: '' }; });
     for (let i = top + 2; i < Math.min(stop, top + 10); i++) {
       const r = rows[i] || [], first = clean(r[col0]);
       if (/^Lưu ý chung/i.test(first)) { out.general = clean(first.replace(/^Lưu ý chung\s*:?/i, '')); continue; }
-      const kind = /^Đi làm/i.test(first) ? 'work' : /^Nghỉ/i.test(first) ? 'off' : /^Khóa cửa/i.test(first) ? 'lock' : /^Ghi chú/i.test(first) ? 'note' : '';
+      const kind = /^Đi làm/i.test(first) ? 'work' : /^Nghỉ/i.test(first) ? 'off' : /^Khóa cửa/i.test(first) ? 'lock' : /^Ghi chú/i.test(first) ? 'note' : /^Phụ trách in/i.test(first) ? 'print' : '';
       if (!kind) break;
       cols.forEach(([c, d]) => {
         const body = String(r[c] || '').replace(/^[^:]*:/, '');
-        if (kind === 'note') out.days[d].note = clean(body); else out.days[d][kind] = names(body);
+        if (kind === 'note') out.days[d].note = clean(body);
+        else if (kind === 'print') { const m = body.match(/\(([^)]*)\)\s*([\s\S]*)/), who = clean(m ? m[2] : body); out.days[d].print = who ? who.split(/[,;\n]/).map(clean).filter(Boolean).map(n => ({ name: n, note: m ? clean(m[1]) : '' })) : []; }
+        else out.days[d][kind] = names(body);
       });
     }
     return out;
   }
+  // A part-time shift written beside a name: "17.00-21.30", "9.00 - 11.30", "15h-20h".
+  function shiftOf(note) { const m = String(note || '').match(/(\d{1,2})(?:[.:hH](\d{2})?)?\s*[-–]\s*(\d{1,2})(?:[.:hH](\d{2})?)?/); if (!m) return null; const s = Number(m[1]) * 60 + Number(m[2] || 0), e = Number(m[3]) * 60 + Number(m[4] || 0); return e > s ? { start: s, end: e } : null; }
   // Penalty ladder of the week: after the "KHI NÀO VÀO DANH SÁCH" guide, a row of days ("Thứ Hai 02.11\n16 HS cần TA bù"),
   // then one or two rows of text per day (KIDS classes, then IELTS). Each class block starts with its name.
   function parsePenalty(rows, head) {
@@ -304,7 +308,7 @@
   }
 
   /* ---------- Roll call ---------- */
-  const PRESENT = ['Có mặt', 'Đến muộn'], ABSENT = ['Đã báo nghỉ', 'Chưa báo nghỉ', 'Có phép', 'Không phép', 'Cho về (thiếu bài)', 'Nghỉ (chưa làm bài)'];
+  const PRESENT = ['Có mặt', 'Đến muộn', 'Bù bài (mức 3)'], ABSENT = ['Đã báo nghỉ', 'Chưa báo nghỉ', 'Có phép', 'Không phép', 'Cho về (thiếu bài)', 'Nghỉ (chưa làm bài)'];
   // minutesNow is minutes since midnight of "today".
   function rollCall(session, marks, today, minutesNow) {
     const closeAt = session.start + ROLL_CALL_MINUTES;
@@ -416,6 +420,6 @@
   }
 
   return { parsePenalty, parseDuty, parseReturns, ARRIVE_BEFORE, ROLL_CALL_MINUTES, OPEN_BEFORE, PRESENT, ABSENT, clean, key, iso, fromIso, addDays, dayText, dateIn, colName, parseTime, clock, weekTab,
-    parseWeek, taskState, mine, staffOf, sessionKey, trackerBlocks, practiceColumns, findBlock, videoState, isAbsentMark, gradeOf, pupilOf, owedVideos, videoDue, dueIn,
+    parseWeek, taskState, mine, staffOf, sessionKey, trackerBlocks, practiceColumns, findBlock, videoState, isAbsentMark, gradeOf, pupilOf, owedVideos, videoDue, dueIn, shiftOf,
     latest, rollCall, tickStatus, pupilState, lateMinutes, monthSummary, nameKey, parsePay, parseMarking, payTable, payOf, hoursText, tabsOfMonth };
 }));
