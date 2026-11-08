@@ -781,10 +781,11 @@ async function boardStart() {
   paintBoardCode();
   const poll = async () => {
     if (!boardPair.code) return;
-    if (Date.now() > boardPair.until) { boardPair.code = ''; boardPair.err = T('Mã đã hết hạn, bấm lấy mã mới.', 'The code expired, get a new one.'); paintBoardCode(); return; }
+    // An expired code is replaced by itself while the screen is shown, so the QR on the board always works.
+    if (Date.now() > boardPair.until) { boardPair.code = ''; if (document.visibilityState === 'visible') { boardStart(); return; } boardPair.err = T('Mã đã hết hạn, bấm lấy mã mới.', 'The code expired, get a new one.'); paintBoardCode(); return; }
     try {
       const r = await rawCall('ghepxem', { code: boardPair.code, secret: boardPair.secret });
-      if (r.ready) { boardPair.code = ''; paintBoardCode(); keep('key', r.key); accessKey = r.key; view = 'bang'; enter(); return; }
+      if (r.ready) { boardPair.code = ''; paintBoardCode(); keep('key', r.key); accessKey = r.key; view = 'bang'; boardAutoOpen = r.open || null; enter(); return; }
     } catch (e) { if (e.status === 410 || e.status === 403) { boardPair.code = ''; boardPair.err = e.message; paintBoardCode(); return; } }
     paintBoardCode();
     boardPair.timer = setTimeout(poll, 4000);
@@ -884,12 +885,15 @@ document.addEventListener('click', e => {
   if (act === 'boardSite') { keep('boardSite', b.dataset.v); render(); }
   if (act === 'boardOpen') {
     const s = findSession(b.dataset.row, b.dataset.day);
-    if (!s || !classOf(s)) return;
-    current = s; llMode = ''; llMenu = null; llWarn = null; view = 'lenlop';
-    document.body.classList.add('lenlop'); render(); window.scrollTo(0, 0);
-    guarded(() => Promise.all([loadMarks(true), loadTracker(classOf(s), true), loadBehave(true).catch(() => {})]));
+    if (s && classOf(s)) boardOpenSession(s);
   }
 });
+let boardAutoOpen = null;
+function boardOpenSession(s) {
+  current = s; llMode = ''; llMenu = null; llWarn = null; view = 'lenlop';
+  document.body.classList.add('lenlop'); render(); window.scrollTo(0, 0);
+  guarded(() => Promise.all([loadMarks(true), loadTracker(classOf(s), true), loadBehave(true).catch(() => {})]));
+}
 
 /* ---------- Class screen as rows (owner 07/11 spec) ----------
  * One row per pupil: name (red ! past the limit) · − ⭐ n + · Mất trật tự · Mất tập trung · Cảnh cáo (reason box) · Nghỉ.
@@ -922,7 +926,7 @@ viewLenLop = function () {
   else if (ctx.problem || !starOk) h += '<div class="notice">' + esc(columnWarning(ctx) || T('Tiết này chưa có cột Số sao trong sheet lớp, TA mở cột giúp.', 'This lesson has no star column yet, TA please open it.')) + '</div>';
   if (can && !edit) h += '<div class="small muted rv-hint">🔒 ' + T('Đang khoá để học sinh không bấm nhầm. Giáo viên giữ nút "Giữ để sửa" 1 giây để mở. Bấm mũi tên ▸ cạnh tên để xem 3 buổi trước.', 'Locked so pupils cannot change anything. Hold "Hold to edit" for a second. Tap ▸ to see the last 3 lessons.') + '</div>';
   else if (!edit) h += '<div class="notice">' + ([s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)) && lessonClosed(s) ? T('Buổi học đã kết thúc quá ' + CLOSE_AFTER + ' phút nên đã khoá, không sửa được nữa. Cần sửa thì báo quản lí.', 'This lesson ended more than ' + CLOSE_AFTER + ' minutes ago and is locked. Ask a manager to change anything.') : T('Buổi này chưa mở hoặc không phân công cho bạn, chỉ xem được.', 'This session is not open or not assigned to you, view only.')) + '</div>';
-  else h += '<div class="small muted rv-hint">' + T('Bấm Nghỉ cho bạn vắng, rồi "Còn lại có mặt". Nhắc quá ' + WARN_LIMIT + ' lần thì hiện dấu ! đỏ. Bấm nhầm: chạm tên để bớt.', 'Tap Absent for missing pupils, then "Rest are here". More than ' + WARN_LIMIT + ' reminders shows a red !. Mis-tap: tap the name to take one off.') + '</div>';
+  else h += '<div class="small muted rv-hint">' + T('Bấm Nghỉ cho bạn vắng, rồi "Còn lại có mặt". Nhắc quá ' + WARN_LIMIT + ' lần thì hiện dấu ! đỏ. Bấm nhầm: bấm dấu − ở góc nút để bớt.', 'Tap Absent for missing pupils, then "Rest are here". More than ' + WARN_LIMIT + ' reminders shows a red !. Mis-tap: tap the − in the corner of the button.') + '</div>';
   h += '<div class="rv-list" role="list">' + rows.map(r => {
     const rank = r.off || !r.stars ? 0 : scores.indexOf(r.stars) + 1, name = r.p.eng || r.p.name, counts = tagCounts(r.b ? r.b.tags : []), n = tickTotal(counts), over = n > WARN_LIMIT, warned = counts[CANH_CAO] || 0;
     const live = r.off ? ' disabled' : dis, badge = c => c ? '<span class="rv-badge">' + c + '</span>' : '';
@@ -934,8 +938,8 @@ viewLenLop = function () {
       (noStars ? '' : '<div class="rv-stars"><button class="rv-minus" data-act="llDown" data-i="' + r.i + '"' + (starOk && r.stars ? live : ' disabled') + ' aria-label="' + T('Bớt 1 sao của ', 'One star off ') + esc(name) + '">−</button>' +
         '<span class="ll-num rv-num" aria-label="' + r.stars + T(' sao', ' stars') + '">⭐ <b>' + r.stars + '</b></span>' +
         '<button class="ll-plus rv-plus" data-act="llStar" data-i="' + r.i + '"' + (starOk ? live : ' disabled') + ' aria-label="' + T('Thêm 1 sao cho ', 'Add a star for ') + esc(name) + '">+</button></div>') +
-      ticksFor(s).map((t, k) => '<button class="rv-tick' + (t === PRAISE ? ' rv-praise' : '') + (counts[t] ? ' on' : '') + '" data-act="llTick" data-i="' + r.i + '" data-k="' + k + '" data-v="' + k + '"' + live + '>' + biText(t) + badge(counts[t]) + '</button>').join('') +
-      '<button class="rv-warn' + (over ? ' hot' : '') + (warned ? ' on' : '') + '" data-act="llReason" data-i="' + r.i + '"' + live + '>⚠️ Cảnh cáo<small class="rv-en">Warning</small>' + badge(warned) + '</button>' +
+      ticksFor(s).map((t, k) => '<span class="rv-chip"><button class="rv-tick' + (t === PRAISE ? ' rv-praise' : '') + (counts[t] ? ' on' : '') + '" data-act="llTick" data-i="' + r.i + '" data-k="' + k + '" data-v="' + k + '"' + live + '>' + biText(t) + badge(counts[t]) + '</button>' + undoBtn(r, t, counts[t], live, name) + '</span>').join('') +
+      '<span class="rv-chip"><button class="rv-warn' + (over ? ' hot' : '') + (warned ? ' on' : '') + '" data-act="llReason" data-i="' + r.i + '"' + live + '>⚠️ Cảnh cáo<small class="rv-en">Warning</small>' + badge(warned) + '</button>' + undoBtn(r, CANH_CAO, warned, live, name) + '</span>' +
       (group && !r.off ? '<button class="rv-here' + (r.here ? ' on' : '') + '" data-act="llHere" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.here + '">✓</button>' : '') +
       secButtons(ctx, r, live) + ((r.here && !r.off) || secStatus(r) ? '' : '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? 'Nghỉ ✓<small class="rv-en">Absent</small>' : 'Nghỉ<small class="rv-en">Absent</small>') + '</button>') +
       (histOpen ? histBox(ctx, r) : '') + '</div>';
@@ -2212,4 +2216,151 @@ const llActionBeforeComments = llAction;
 llAction = function (act, i, v) {
   if (act === 'llChot' && current && canConfirm(current)) { try { writeLessonComments(classContext(current)); } catch (e) { console.warn('comments', e); } }
   return llActionBeforeComments(act, i, v);
+};
+
+/* ---------- Scan, pick the class, the board opens it (owner 08/11: "giáo viên cũng ghép... quét QR xong chọn lớp xong vào luôn") ----------
+ * The class screen (opened at .../quan-li-lop/#bang, or with "Đây là màn hình lớp") shows a QR of its pairing code.
+ * A teacher scans it with the phone camera: the app opens on the phone with today's lessons of that person (all lessons for
+ * a manager); one tap and the board signs in as "MÀN HÌNH <class>" and goes straight into that lesson's class screen. */
+const PAIR_FROM_LINK = (location.hash.match(/(?:^#|&)ghep=(\d{6})/) || [])[1] || '';
+const BOARD_LINK_WANTED = /^#bang$/.test(location.hash);
+if (PAIR_FROM_LINK) history.replaceState(null, '', location.pathname + location.search);
+let pairWant = PAIR_FROM_LINK, pairBusy = false;
+const APP_BASE = location.origin + location.pathname;
+function qrSvg(text) {
+  try { const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true, alt: 'QR' }); } catch (e) { return ''; }
+}
+paintBoardCode = function () {
+  const box = document.getElementById('boardCode');
+  if (!box) return;
+  if (!boardPair.code) { const c0 = box.closest('.login-box'); if (c0) c0.classList.remove('qr-on'); box.innerHTML = boardPair.err ? '<p class="bad">' + esc(boardPair.err) + '</p>' : ''; return; }
+  const left = Math.max(1, Math.round((boardPair.until - Date.now()) / 60000)), qr = qrSvg(APP_BASE + '#ghep=' + boardPair.code);
+  const card = box.closest('.login-box'); if (card) card.classList.toggle('qr-on', !!qr);
+  box.innerHTML = (qr ? '<div class="board-qr">' + qr + '</div>' : '') +
+    '<p class="board-qr-t"><b>' + T('Giáo viên mở camera điện thoại, quét mã', 'Teacher: scan with your phone camera') + '</b><br>' + T('rồi chọn lớp. Màn hình tự vào lớp.', 'then pick the class. The screen opens it.') + '</p>' +
+    '<div class="board-code small-code">' + boardPair.code.slice(0, 3) + ' ' + boardPair.code.slice(3) + '</div>' +
+    '<p class="small muted">' + T('Hoặc quản lí gõ mã này ở Điều hành › Màn hình lớp. Mã tự đổi sau ' + left + ' phút.', 'Or a manager types this code in Điều hành › Class screens. Renews in ' + left + ' min.') + '</p>';
+};
+// The board link ".../quan-li-lop/#bang" shows the QR at once, no button to press.
+if (BOARD_LINK_WANTED) setTimeout(() => { if (!$('login').hidden && !boardPair.code) boardStart(); }, 400);
+
+// Phone side: the lessons this person may open on the board, the running one first.
+function pairChoices() {
+  const t = today(), w = weeks[Q.weekTab(tabs, t)];
+  if (!w) return null;
+  const now = minutesNow(), rank = s => now >= s.start - 30 && now <= s.end ? 0 : now < s.start ? 1 : 2;
+  return w.data.sessions.filter(s => s.day === t && !s.off && classOf(s) && (isManager() || isMe(s.teacher) || isMe(s.video) || isMe(s.ta)))
+    .sort((a, b) => rank(a) - rank(b) || a.start - b.start);
+}
+function paintPairBox() {
+  let box = document.getElementById('pairBox');
+  if (!pairWant || !me || isBoard()) { if (box) box.remove(); return; }
+  if (!box) { box = document.createElement('div'); box.id = 'pairBox'; document.body.appendChild(box); }
+  const list = pairChoices(), now = minutesNow();
+  const tag = s => now >= s.start && now <= s.end ? '<i class="on">● ' + T('Đang diễn ra', 'Now') + '</i>' : now < s.start ? '<i>' + T('Lúc ', 'At ') + Q.clock(s.start) + '</i>' : '<i class="done">' + T('Đã xong', 'Done') + '</i>';
+  box.innerHTML = '<div class="pair-veil" data-act="pairCancel"></div><div class="pair-sheet" role="dialog" aria-label="' + T('Mở lớp trên màn hình', 'Open a class on the screen') + '">' +
+    '<div class="row-top"><b>📺 ' + T('Mở lớp trên màn hình lớp', 'Open a class on the class screen') + '</b><span class="spacer"></span><button class="quiet" data-act="pairCancel">' + T('Huỷ', 'Cancel') + '</button></div>' +
+    '<p class="small muted">' + T('Chạm lớp bạn đang dạy. Màn hình trong lớp sẽ tự mở lớp đó sau vài giây.', 'Tap your class. The class screen opens it in a few seconds.') + '</p>' +
+    (list == null ? '<div class="card empty">' + T('Đang đọc lịch hôm nay…', 'Reading today\'s schedule…') + '</div>'
+      : !list.length ? '<div class="card empty">' + T('Hôm nay bạn không có lớp nào trong lịch.', 'No class of yours today.') + '</div>'
+      : '<div class="pair-list">' + list.map(s => '<button class="pair-cls" data-act="pairPick" data-row="' + s.row + '" data-day="' + s.day + '"' + (pairBusy ? ' disabled' : '') + '><b>' + esc(s.cls) + '</b><span>' + sessionTime(s) + (s.lesson ? T(' · Tiết ', ' · Lesson ') + esc(s.lesson) : '') + (s.site ? ' · ' + esc(s.site) : '') + '</span>' + tag(s) + '</button>').join('') + '</div>') +
+    '</div>';
+}
+document.addEventListener('click', async e => {
+  const b = e.target.closest && e.target.closest('[data-act="pairPick"], [data-act="pairCancel"]');
+  if (!b) return;
+  if (b.dataset.act === 'pairCancel') { pairWant = ''; paintPairBox(); return; }
+  const s = findSession(b.dataset.row, b.dataset.day);
+  if (!s || pairBusy) return;
+  pairBusy = true; paintPairBox();
+  try {
+    await call('ghepvao', { code: pairWant, cls: s.cls, day: s.day, row: s.row }, 1);
+    pairWant = '';
+    say('📺 ' + T('Màn hình lớp đang mở ' + s.cls + '. Nhìn lên màn hình nhé.', 'The class screen is opening ' + s.cls + '.'), 'ok');
+  } catch (err) {
+    say(T('Chưa mở được: ', 'Not opened: ') + err.message, 'bad');
+    if (err.status === 400) pairWant = '';
+  } finally { pairBusy = false; paintPairBox(); render(); }
+});
+// No private link on this phone yet: say what to do instead of a bare sign-in page.
+setTimeout(() => { if (PAIR_FROM_LINK && !$('login').hidden) $('loginMsg').textContent = T('Điện thoại này chưa mở app. Mở link riêng của bạn một lần trên trình duyệt này, rồi quét lại mã trên màn hình lớp.', 'This phone has not opened the app yet. Open your private link once in this browser, then scan again.'); }, 400);
+
+// The board opens the lesson it was paired for as soon as today's schedule is in.
+const renderBeforePair = render;
+render = function () {
+  if (isBoard() && boardAutoOpen && view !== 'lenlop') {
+    const s = findSession(boardAutoOpen.row, boardAutoOpen.day);
+    if (s && classOf(s)) { boardAutoOpen = null; boardOpenSession(s); return; }
+  }
+  renderBeforePair();
+  paintPairBox();
+  if (view === 'lenlop') requestAnimationFrame(fitClassScreen);
+};
+
+/* ---------- The whole class in one window (owner 08/11: "đủ tên trong một màn hình thu nhỏ ấy, màn hình tại lớp... bây giờ cứ phải kéo,
+ * bất tiện thao tác khi đang dạy") ----------
+ * On anything wider than a phone, the pupil rows are laid out in 1–3 columns and scaled down just enough that every pupil
+ * fits the window (ClassIn's browser box, a half screen, a board) without scrolling; never below 45 %. Phones keep scrolling. */
+const FIT_MIN = 0.45;
+let fitLast = { key: '', c: 1, s: 1 };
+function fitClassScreen() {
+  const list = document.querySelector('.rv-list');
+  if (!list) return;
+  const set = (c, s) => {
+    list.style.gridTemplateColumns = c > 1 ? 'repeat(' + c + ', minmax(0, 1fr))' : '';
+    list.style.width = s < 0.999 ? (100 / s) + '%' : '';
+    list.style.transform = ''; list.style.marginBottom = '';
+  };
+  const apply = (c, s) => {
+    set(c, s);
+    list.classList.toggle('rv-fit', s < 0.999);
+    if (s < 0.999) { list.style.transform = 'scale(' + s + ')'; list.style.marginBottom = -(list.offsetHeight * (1 - s)) + 'px'; }
+  };
+  set(1, 1); list.classList.remove('rv-fit');
+  if (window.innerWidth < 640 || document.querySelector('.ll-sheet')) return;
+  const top = list.getBoundingClientRect().top + window.scrollY, avail = window.innerHeight - top - 10;
+  if (avail < 150) return;
+  const n = list.children.length, wide = list.parentElement.clientWidth;
+  // Same window, same pupils, same words: reuse the last answer instead of measuring again (taps re-render often).
+  const key = window.innerWidth + 'x' + window.innerHeight + '|' + Math.round(top) + '|' + n + '|' + list.textContent.length;
+  if (fitLast.key === key) return apply(fitLast.c, fitLast.s);
+  // On screen the list is s × its height when laid out at width 100/s %; that only grows with s, so search for the largest s that fits.
+  const visual = (c, s) => { set(c, s); return list.offsetHeight * s; };
+  const best = c => {
+    if (visual(c, 1) <= avail) return 1;
+    if (visual(c, FIT_MIN) > avail) return 0;
+    let lo = FIT_MIN, hi = 1;
+    for (let k = 0; k < 7; k++) { const mid = (lo + hi) / 2; if (visual(c, mid) <= avail) lo = mid; else hi = mid; }
+    return lo;
+  };
+  // One row per pupil is the owner's layout; columns only when that would make everything too small.
+  let pick = { c: 1, s: best(1) };
+  if (pick.s < 0.8 && n >= 6) for (let c = 2; c <= 3; c++) {
+    if (wide / c < 340) break;
+    const s = best(c);
+    if (s > pick.s + 0.08) pick = { c, s };
+  }
+  if (!pick.s) pick = { c: 1, s: FIT_MIN };
+  fitLast = { key, c: pick.c, s: pick.s };
+  apply(pick.c, pick.s);
+}
+let fitTimer = null;
+window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(() => { if (view === 'lenlop') fitClassScreen(); }, 150); });
+
+/* ---------- Take one reminder off right on its button (owner 08/11: "các nút mất trật tự... cũng phải có trừ, chẳng may ấn nhầm... gọn") ----------
+ * A reminder with a count gets a small "−" in its top-left corner (the count sits top-right): one tap takes the last one off. */
+function undoBtn(r, tag, n, live, name) {
+  if (!n || r.off) return '';
+  return '<button class="rv-undo" data-act="llUntick" data-i="' + r.i + '" data-v="' + esc(tag) + '"' + live + ' aria-label="' + T('Bớt 1 lần ', 'Take one off: ') + esc(tag) + ' · ' + esc(name) + '">−</button>';
+}
+const llActionBeforeUndo = llAction;
+llAction = function (act, i, v) {
+  if (act !== 'llUntick') return llActionBeforeUndo(act, i, v);
+  const ctx = classContext(current), pupil = i != null && ctx.tracker ? ctx.tracker.pupils[Number(i)] : null;
+  if (!pupil || !canTeach(ctx.session) || !llUnlocked(ctx.session)) return;
+  const old = behaveFor(ctx.session).get(pupil.name), tags = old ? old.tags.slice() : [], at = tags.lastIndexOf(v);
+  if (at < 0) return;
+  tags.splice(at, 1);
+  setBehave(ctx, pupil, tags, old ? old.note : '');
+  render();
 };
