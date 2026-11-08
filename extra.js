@@ -2592,3 +2592,15 @@ paintStrip = function () {
   });
   fitClassScreen();
 };
+
+/* ---------- Class page: IELTS / FIGHTER pupils show what they still owe (owner 08/11: "màn hình điểm danh ngoài lại không có thiếu bài
+ * gì... để hs vào biết mình còn thiếu") ----------
+ * Under each name, the same short overdue list as on the class screen: "📚 Thiếu 3 bài: Viết ×2, Nói". KIDS keep "Thiếu video". */
+const kidsMakeupBeforeSecOwed = kidsMakeup;
+kidsMakeup = function (ctx, p, i, canEdit) {
+  const base = kidsMakeupBeforeSecOwed(ctx, p, i, canEdit);
+  if (!ctx || !ctx.session || !isSecondary(ctx.session)) return base;
+  const owed = secOwedOf(ctx, p);
+  if (!owed || !owed.length) return base;
+  return base + '<div class="owed">📚 ' + T('Thiếu ', 'Missing ') + owed.length + T(' bài: ', ' tasks: ') + esc(skillSummary(owed)) + '</div>';
+};
