@@ -654,7 +654,6 @@
   .rv-q:disabled { opacity: .5; }
   .rv-strip .rv-row.open .rv-quick { display: none; }
   .rv-strip main { overflow-x: hidden; }
-  .rv-strip .rv-list, .rv-strip .rv-row { max-width: 100%; }
   .rv-strip .ll-head { gap: 6px; }
   .rv-strip .ll-head .rv-sumbtn, .rv-strip .ll-head .rv-lock, .rv-strip .ll-head .rv-save, .rv-strip .ll-head [data-act="llAll"] { min-height: 40px; padding: 0 10px; font-size: 14px; }
   .rv-strip .ll-head .rv-saved, .rv-strip .ll-head .rv-editing { display: none; }
@@ -662,14 +661,20 @@
   .rv-strip .rv-legend .rv-en { font-size: 11px; }
   .rv-strip .rv-q { width: 33px; height: 33px; font-size: 17px; border-radius: 9px; }
   .rv-strip .rv-quick { gap: 3px; }
-  .rv-strip .rv-row:not(.open) .rv-name .ll-name { font-size: 17px; overflow-wrap: normal; word-break: keep-all; hyphens: none; overflow: hidden; text-overflow: ellipsis; }
-  .rv-strip .rv-row:not(.open) .rv-name { min-width: 64px; }
+  .rv-strip .rv-row:not(.open) .rv-name .ll-name { font-size: 26px; font-weight: 800; white-space: nowrap; }
+  .rv-strip .rv-row:not(.open) .rv-name { flex: 1 1 auto; min-width: max-content; padding: 2px 4px; }
+  .rv-strip .rv-list { gap: 3px; }
+  .rv-strip .rv-row:not(.open) { padding: 2px 6px; gap: 4px; }
+  .rv-strip .rv-row:not(.open) .rv-stars button { width: 36px; height: 36px; font-size: 22px; }
+  .rv-strip .rv-row:not(.open) .rv-num.ll-num { min-width: 46px; font-size: 20px; }
   .rv-strip .ll-head { display: flex; flex-wrap: wrap; align-items: center; }
   .rv-strip .ll-head .ll-title { flex: 1 1 calc(100% - 56px); }
   .rv-strip .ll-head > button, .rv-strip .ll-head .rv-sumbtn, .rv-strip .ll-head .rv-lock { flex: 1 1 auto; min-height: 36px; padding: 0 8px; font-size: 13px; border-radius: 10px; }
-  .rv-strip .rv-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 8px; font-size: 12px; margin: 0 0 4px; }
-  .rv-strip .rv-legend span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .rv-strip .rv-legend .rv-en { display: block; font-size: 10px; margin-left: 20px; }
+  .rv-strip .rv-legend { display: flex; flex-wrap: wrap; gap: 0 10px; font-size: 12px; margin: 0 0 3px; }
+  .rv-strip .rv-legend span { white-space: nowrap; }
+  .rv-strip .rv-legend .rv-en { display: inline; font-size: 10px; }
+  .rv-strip .ll-head > button, .rv-strip .ll-head .rv-sumbtn, .rv-strip .ll-head .rv-lock { white-space: normal; line-height: 1.1; }
+  .rv-strip .ll-head .ll-title b { font-size: 16px; }
 </style>
 </head>
 <body class="notranslate">
@@ -699,10 +704,10 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108C"></script>
-<script src="logic.js?v=20261108C"></script>
-<script src="app.js?v=20261108C"></script>
-<script src="qrcode.js?v=20261108C"></script>
-<script src="extra.js?v=20261108C"></script>
+<script src="config.js?v=20261108E"></script>
+<script src="logic.js?v=20261108E"></script>
+<script src="app.js?v=20261108E"></script>
+<script src="qrcode.js?v=20261108E"></script>
+<script src="extra.js?v=20261108E"></script>
 </body>
 </html>

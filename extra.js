@@ -2492,7 +2492,8 @@ Object.assign(COMMENT_LINES, {
  * (reminders with their −, warning, absent, −1 star); touching it again, or another name, closes it. The column is scaled to fit. */
 let llOpenRow = null;
 // IELTS and FIGHTER first (owner 08/11: "phần khung hẹp áp dụng cho ielts và fighter trước"); KIDS keep their usual rows.
-const stripOn = () => view === 'lenlop' && window.innerWidth < 640 && !!current && isSecondary(current);
+// All classes (IELTS/FIGHTER first on 08/11, KIDS the same evening: "kids cũng cần sửa theo các nút tương ứng").
+const stripOn = () => view === 'lenlop' && window.innerWidth < 640 && !!current;
 document.addEventListener('click', e => {
   const n = stripOn() && e.target.closest && e.target.closest('.rv-row .rv-name');
   if (!n) return;
@@ -2525,10 +2526,26 @@ fitClassScreen = function () {
   if (!list) return;
   const open = list.querySelector('.rv-row.open');
   if (open) open.classList.remove('open');
-  list.style.transform = ''; list.style.width = ''; list.style.marginBottom = ''; list.style.gridTemplateColumns = '';
-  const top = list.getBoundingClientRect().top + window.scrollY, avail = window.innerHeight - top - 8, hgt = list.offsetHeight;
-  const s = Math.max(0.5, Math.min(1, avail / hgt));
-  if (s < 0.999) { list.style.transformOrigin = '0 0'; list.style.width = (100 / s) + '%'; list.style.transform = 'scale(' + s + ')'; list.style.marginBottom = -(list.offsetHeight * (1 - s)) + 'px'; }
+  list.style.transform = ''; list.style.width = ''; list.style.marginBottom = ''; list.style.gridTemplateColumns = ''; list.style.transformOrigin = '0 0';
+  const top = list.getBoundingClientRect().top + window.scrollY, avail = window.innerHeight - top - 18;
+  // A line fits when its last button ends inside it (the small count badges sticking out of a button's corner do not count).
+  const lineFits = r => {
+    const kids = [...r.children].filter(e => e.offsetWidth && getComputedStyle(e).position !== 'absolute');
+    const last = kids[kids.length - 1];
+    return !last || last.getBoundingClientRect().right <= r.getBoundingClientRect().right - parseFloat(getComputedStyle(r).paddingRight || 0) + 1;
+  };
+  const fits = (s, c) => {
+    list.style.gridTemplateColumns = c > 1 ? 'repeat(' + c + ', minmax(0, 1fr))' : '';
+    list.style.width = (100 / s) + '%';
+    return [...list.children].every(lineFits) && list.offsetHeight * s <= avail;
+  };
+  const best = c => { if (fits(1, c)) return 1; if (!fits(0.3, c)) return 0.3; let lo = 0.3, hi = 1; for (let k = 0; k < 8; k++) { const mid = (lo + hi) / 2; if (fits(mid, c)) lo = mid; else hi = mid; } return lo; };
+  // One column unless two (or three) make the names clearly bigger.
+  let s = best(1), cols = 1;
+  for (let c = 2; c <= 3 && s < 0.8; c++) { const sc = best(c); if (sc > s * 1.12) { s = sc; cols = c; } }
+  list.style.gridTemplateColumns = cols > 1 ? 'repeat(' + cols + ', minmax(0, 1fr))' : '';
+  list.style.width = s < 0.999 ? (100 / s) + '%' : '';
+  if (s < 0.999) { list.style.transform = 'scale(' + s + ')'; list.style.marginBottom = -(list.offsetHeight * (1 - s)) + 'px'; }
   if (open) open.classList.add('open');
 };
 
