@@ -1288,8 +1288,9 @@ const gradeParts = v => { const lines = String(v || '').split('\n'), g = Q.grade
 function gradeSeg(ctx, r, live) {
   if (!ctx.block || ctx.block.grade < 0) return '';
   const { g, why } = gradeParts(ctx.tracker.cell(r.p.row, ctx.block.grade)), pick = g === 'A' ? 'A+' : g;
-  return '<div class="rv-grade ro" role="group" aria-label="' + T('Bài tập về nhà (chấm ở trang lớp)', 'Homework (graded on the class page)') + '" title="' + T('Chấm A+/B/F ở trang lớp, màn hình lớp chỉ xem', 'Grade A+/B/F on the class page; the class screen only shows it') + '">' + ['A+', 'B', 'F'].map(x => '<button class="g' + x[0] + (pick === x ? ' on' : '') + '" disabled tabindex="-1" aria-pressed="' + (pick === x) + '">' + x + '</button>').join('') +
-    (why ? '<span class="rv-why" title="' + esc(why) + '">✎</span>' : '') + '</div>';
+  // Owner 08/11: the class screen shows only the grade already given (A+, B or F, with the reason for B/F), nothing to tap.
+  if (!pick || pick === '/') return '<div class="rv-grade-show" aria-hidden="true"></div>';
+  return '<div class="rv-grade-show" title="' + T('Bài tập về nhà (chấm ở trang lớp)', 'Homework (graded on the class page)') + '"><span class="rv-gbig g' + pick[0] + '">' + esc(pick) + '</span>' + (why && pick !== 'A+' ? '<span class="rv-gwhy">' + esc(why) + '</span>' : '') + '</div>';
 }
 function gradeWrite(ctx, pupil, grade, why) {
   const { block, tracker, cls, session } = ctx, cur = tracker.cell(pupil.row, block.grade), p = gradeParts(cur);
