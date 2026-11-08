@@ -1,6 +1,6 @@
 /* Class operations app: static page, private link per person, an Apps Script server decides who can read or write what. */
 const CONFIG = window.QL_CONFIG, Q = window.QL;
-const TRACKER_TAB = 'THEO DÕI TOÀN DIỆN', OTHER_TRACKER_TAB = 'THEO DÕI', ROSTER_LAST = 60, FRESH_MS = 300000, LIGHT_MS = 900000, STAR_WAIT = 30000, MARKS_TAIL = 4000;
+const TRACKER_TAB = 'THEO DÕI TOÀN DIỆN', OTHER_TRACKER_TAB = 'THEO DÕI', ROSTER_LAST = 60, FRESH_MS = 300000, LIGHT_MS = 900000, STAR_WAIT = 10000, MARKS_TAIL = 4000;
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => Q.iso(new Date());
