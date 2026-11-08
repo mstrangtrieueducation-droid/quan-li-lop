@@ -531,6 +531,8 @@ function kindOf(s) {
 }
 const kindName = k => k === 'other' ? T('KHÁC', 'OTHER') : (KINDS.find(x => x[0] === k) || ['', k])[1];
 // Owner 08/11: G = homeroom (Chủ nhiệm); F = Quay only for VIDEOTAPER NEEDED, Trông kiểm tra for TA NEEDED, else TA.
+const invigilated = s => /\bTA NEEDED\b/.test(Q.key([s.note, s.detail].join(' '))) && !!s.video;
+const rollTaker = s => invigilated(s) ? s.video : s.teacher;
 function helperRole(s) { const n = Q.key([s.note, s.detail].join(' ')); return /VIDEO ?TAPER/.test(n) ? T('Quay', 'Video') : /\bTA NEEDED\b/.test(n) ? T('Trông kiểm tra', 'Invigilator') : 'TA'; }
 function sessionCard(s) {
   const c = classOf(s), k = kindOf(s), name = k === 'tutor' ? Q.clean(s.cls).replace(/^TUTOR\s*/i, '') : s.cls;
@@ -633,7 +635,7 @@ function alertsBlock(week) {
     if (!ctx.tracker) return;
     const roll = Q.rollCall(s, ctx.marks, today(), minutesNow()), people = 'GV ' + esc(s.teacher) + (cmOf(s) ? ' · CN ' + esc(cmOf(s)) : '');
     const head = '<div class="row-top"><b>' + esc(s.cls) + '</b><span class="muted small">' + sessionTime(s) + ' · ' + people + '</span><span class="spacer"></span><button class="quiet" data-act="open" data-row="' + s.row + '" data-day="' + s.day + '">' + T('Mở lớp', 'Open') + '</button></div>';
-    if (roll.noRollCall) { count++; cards.push('<div class="card row alert">' + head + '<div class="notice bad">' + T('Chưa ai điểm danh lớp này. GV/TA vào điểm danh ngay.', 'Nobody has taken attendance yet.') + '</div></div>'); return; }
+    if (roll.noRollCall) { count++; cards.push('<div class="card row alert">' + head + '<div class="notice bad">' + (invigilated(s) ? T('Chưa ai điểm danh lớp này. TA trông kiểm tra ' + s.video + ' vào điểm danh ngay.', 'Nobody has taken attendance yet. Invigilator ' + s.video + ', please take it.') : T('Chưa ai điểm danh lớp này. GV/TA vào điểm danh ngay.', 'Nobody has taken attendance yet.')) + '</div></div>'); return; }
     if (isGroup(s)) return;
     const waiting = ctx.tracker.pupils.filter(p => { const m = ctx.marks.get(p.name), st = Q.pupilState(m, roll); return st === 'Vắng chờ xác minh' || (m && m.status === 'Chưa báo nghỉ' && !m.contact); });
     if (!waiting.length) return;
@@ -868,7 +870,7 @@ function viewClass() {
   const owed = Q.owedVideos(tracker.pupils, tracker.blocks, tracker.practices, tracker.cell, s);
   h += '<div class="card">' + tracker.pupils.map((p, i) => {
     const m = ctx.marks.get(p.name), on = m && Q.PRESENT.includes(m.status), state = stateOf(p), value = ctx.block && ctx.block.grade >= 0 ? tracker.cell(p.row, ctx.block.grade) : '', g = Q.gradeOf(value);
-    const grades = ctx.block && ctx.block.grade >= 0 ? '<div class="grades">' + ['A+', 'B', 'F'].map(x => '<button class="' + (g === x ? 'on ' : '') + x[0] + '" data-act="grade" data-i="' + i + '" data-v="' + x + '"' + (canEdit ? '' : ' disabled') + '>' + x + '</button>').join('') + '</div>' : '<div></div>';
+    const grades = ctx.block && ctx.block.grade >= 0 ? '<div class="grades">' + ['A+', 'B', 'F'].map(x => '<button class="' + (g === x ? 'on ' : '') + x[0] + '" data-act="grade" data-i="' + i + '" data-v="' + x + '"' + (canEdit ? '' : ' disabled') + '>' + x + '</button>').join('') + '</div>' : (typeof secClassButtons === 'function' ? secClassButtons(ctx, p, i, canEdit) : '<div></div>');
     const owedText = owed[i].map(o => (o.practice ? T(o.label, o.label.replace('Tự luyện video', 'Self-study video').replace('Tự luyện', 'Self-study')) : T('Tiết ', 'Lesson ') + o.lesson + (o.label ? ' ' + videoLabel(o.label) : '')) + (o.wrong ? T(' (quay sai)', ' (filmed wrong)') : '')).join(', ');
     return '<div class="pupil' + (state === 'Vắng chờ xác minh' || Q.ABSENT.includes(state) ? ' absent' : '') + '"><button class="tick' + (on ? (m.status === 'Đến muộn' ? ' late' : ' on') : '') + '" data-act="tick" data-i="' + i + '" aria-pressed="' + Boolean(on) + '" aria-label="Điểm danh ' + esc(p.eng) + '"' + (canEdit ? '' : ' disabled') + '>✓</button>' +
       '<div class="who"><b>' + esc(p.eng || p.name) + '</b><span class="small muted">' + esc(p.name) + (state && !on ? ' · ' + esc(stateText(state)) : m && m.status === 'Đến muộn' ? T(' · Đến muộn', ' · Late') : '') + (g === '/' ? T(' · Sheet ghi vắng', ' · Sheet says absent') : '') + (value && !g ? T(' · Có ghi chú', ' · Has a note') : '') + '</span></div>' + grades +
