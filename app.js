@@ -1048,7 +1048,7 @@ function viewNguoi() {
   h += '<div class="card"><h3>Đang có link</h3>';
   if (!nguoi) h += '<p>Đang đọc…</p>';
   else if (!nguoi.people.length) h += '<p>Chưa cấp link cho ai.</p>';
-  else h += '<div class="table"><table><tbody>' + nguoi.people.map(p => '<tr><td>' + esc(p.name) + '</td><td>' + esc(p.role) + '</td><td>Cấp ngày ' + esc(p.at) + '</td><td>' + (p.name === me.name ? '' : '<button class="quiet" data-act="nguoiXoa" data-id="' + esc(p.id) + '">Xoá</button>') + '</td></tr>').join('') + '</tbody></table></div>';
+  else h += '<div class="table"><table><tbody>' + nguoi.people.map(p => '<tr><td>' + esc(p.name) + '</td><td>' + esc(p.role) + '</td><td>Cấp ngày ' + esc(p.at) + '</td><td>' + (p.name === me.name && p.role === me.role ? '' : '<button class="quiet" data-act="nguoiXoa" data-id="' + esc(p.id) + '">Xoá</button>') + '</td></tr>').join('') + '</tbody></table></div>';
   return h + '</div>';
 }
 async function nguoiThem() {
