@@ -264,6 +264,7 @@
   .count { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-weight: 600; }
   .pupil { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; padding: 10px 12px; }
   .pupil + .pupil { border-top: 1px solid var(--line); }
+  .pupil > .mk-btn { grid-column: 2 / -1; justify-self: start; }
   .pupil.absent { background: var(--bad-soft); }
   .tick { width: 48px; height: 48px; padding: 0; border-radius: 12px; font-size: 22px; font-weight: 700; color: transparent; }
   .tick.on { background: var(--ok); border-color: var(--ok); color: #fff; }
@@ -552,6 +553,43 @@
   .mk-btn.on { background: #7c3aed; color: #fff; }
   .rv-flag.mk { background: #ede9fe; color: #6d28d9; }
   :root[data-theme="dark"] .rv-flag.mk { background: #3b2a63; color: #c4b5fd; }
+  /* Narrow screens: phones and a half-width window beside ClassIn (owner 08/11: "bố cục điện thoại chưa ổn... khi thu nhỏ tab") */
+  .s-owed { margin-top: 6px; font-size: 13px; font-weight: 600; color: #b91c1c; }
+  .s-owed.ok { color: var(--ok); }
+  .abs-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .abs-who { min-width: 0; }
+  .abs-done > summary { cursor: pointer; font-weight: 700; color: var(--muted); }
+  .abs-group { padding: 8px 0; border-top: 1px solid var(--line); }
+  @media (max-width: 760px) {
+    .ll-head { flex-wrap: wrap; row-gap: 6px; }
+    .ll-head > button[data-act="llExit"] { min-width: 44px; min-height: 44px; }
+    .ll-title { flex: 1 1 calc(100% - 60px); }
+    .ll-title b { font-size: 18px; }
+    .ll-podium { order: 9; flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
+    .ll-podium span { font-size: 13px; padding: 3px 8px; }
+    .rv-sumbtn, .rv-lock, .rv-save { min-height: 44px; font-size: 14px; padding: 0 12px; }
+    .rv-saved, .rv-editing { font-size: 12px; }
+    .rv-hint { font-size: 13px; }
+    .rv-row { gap: 6px; padding: 8px; min-height: 0; }
+    .rv-hist { width: 36px; min-height: 40px; font-size: 18px; border-radius: 10px; }
+    .rv-name { flex: 1 1 calc(100% - 120px); padding: 2px; }
+    .rv-name .ll-name { font-size: 20px; }
+    .rv-grade-show { min-width: 0; }
+    .rv-gbig { min-width: 42px; padding: 4px 6px; font-size: 17px; border-radius: 10px; }
+    .rv-gwhy { max-width: 80px; font-size: 11px; }
+    .rv-stars { flex: 1 1 100%; justify-content: center; }
+    .rv-stars button { width: 52px; height: 52px; font-size: 28px; }
+    .rv-num.ll-num { min-width: 64px; font-size: 22px; }
+    .rv-tick, .rv-warn, .rv-off, .rv-send { flex: 1 1 calc(50% - 6px); min-height: 46px; padding: 2px 6px; font-size: 14px; white-space: normal; line-height: 1.15; }
+    .rv-flag { font-size: 12px; white-space: normal; }
+    .pupil { grid-template-columns: 44px minmax(0, 1fr); }
+    .pupil > .grades, .pupil > .sec-marks { grid-column: 2; justify-content: flex-start; }
+    .sec-mark { min-height: 38px; padding: 0 10px; font-size: 13px; white-space: nowrap; }
+    .sum-sheet { padding: 12px 10px; font-size: 14px; }
+    .sum-table th, .sum-table td { padding: 6px 4px; }
+    .sum-title { font-size: 20px; }
+  }
+  @media (max-width: 420px) { .rv-en { display: none; } .rv-tick, .rv-warn, .rv-off { font-size: 13px; } }
 </style>
 </head>
 <body>
@@ -581,9 +619,9 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108p"></script>
-<script src="logic.js?v=20261108p"></script>
-<script src="app.js?v=20261108p"></script>
-<script src="extra.js?v=20261108p"></script>
+<script src="config.js?v=20261108q"></script>
+<script src="logic.js?v=20261108q"></script>
+<script src="app.js?v=20261108q"></script>
+<script src="extra.js?v=20261108q"></script>
 </body>
 </html>

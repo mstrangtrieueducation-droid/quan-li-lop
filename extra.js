@@ -1542,7 +1542,7 @@ function pupilFlags(ctx, r) {
 let cgOpen = null, cgGrade = '';
 const gradeReason = v => gradeParts(v).why;
 function classCanEdit(s) {
-  const mine = [s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name));
+  const mine = takesRoll(s);
   return !isChot(s) && (isManager() || (mine && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s)));
 }
 function classGrade(ctx, pupil, grade, i) {
@@ -1802,7 +1802,7 @@ summaryView = function (ctx) {
 };
 
 /* ---------- Review and close the lesson (owner 08/11) ---------- */
-const canConfirm = s => !isChot(s) && (isManager() || isBoard() || [s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)));
+const canConfirm = s => !isChot(s) && (isManager() || isBoard() || takesRoll(s));
 function chotBar(s) {
   const c = chotOf(s);
   if (c) return '<div class="chot-done">✅ ' + T('Đã chốt lúc ', 'Closed at ') + esc(String(c.at || '').slice(11, 16)) + (c.by ? ' · ' + esc(c.by) : '') + T(' · không sửa được nữa', ' · locked') +
@@ -2080,3 +2080,85 @@ summaryView = function (ctx) {
     return '<tr' + a1 + '><td class="sum-rank">' + a2 + '<td class="sum-name"><b>' + name + '</b>' + mid + '<td class="sum-debt"><b>Thiếu ' + n + ' bài:</b> ' + esc(skillSummary(owed)) + '</td></tr>';
   });
 };
+
+/* ---------- Printing counts as a task in the KPI (owner 08/11: "việc in bài cũng tính KPI... nó là 1 loại nhiệm vụ") ---------- */
+const kpiOfBeforePrint = kpiOf;
+kpiOf = function (person, month, src) {
+  const k = kpiOfBeforePrint(person, month, src), now = today();
+  const task = k.parts.find(p => p.k === 'task');
+  if (!task) return k;
+  Object.values(weeks).forEach(w => Object.entries((w.data.duty && w.data.duty.days) || {}).forEach(([d, x]) => {
+    if (!d.startsWith(month) || d > now) return;
+    (x.print || []).filter(p => sameName(canonStaff(p.name), person)).forEach(p => { task.total++; if (printDone(d, p.name)) task.done++; else k.detail.task.push(T('In bài ', 'Printing ') + viDate(d).slice(0, 5)); });
+  }));
+  task.rate = task.total ? task.done / task.total : null;
+  let sum = 0, weight = 0;
+  k.parts.forEach(p => { if (p.total) { sum += p.w * p.done / p.total; weight += p.w; } });
+  k.score = weight ? Math.round(sum / weight * 100) : null;
+  return k;
+};
+
+/* ---------- Homework status on today's lesson cards (owner 08/11: "nay đến lớp nào dạy hoặc TA hoặc quay thì cũng hiện tình trạng làm bài tập") ---------- */
+function owedLine(s) {
+  if (s.off || s.day !== today() || !classOf(s)) return '';
+  if (!(isManager() || isMe(s.teacher) || isMe(s.ta) || isMe(s.video))) return '';
+  let names = [];
+  if (isSecondary(s)) {
+    const hit = secOwedFor(s);
+    if (!hit) return '';
+    const started = minutesNow() >= s.start;
+    names = hit.data.pupils.map(p => ({ n: p.eng || p.name, c: p.owed.filter(o => o.due && (o.due < s.day || (o.due === s.day && started))).length })).filter(x => x.c);
+  } else {
+    const t = trackers[classOf(s).key];
+    if (!t || !t.blocks.length) return '';
+    const owed = totalOwed(classContext(s));
+    names = t.pupils.map((p, i) => ({ n: p.eng || p.name, c: (owed[i] || []).length })).filter(x => x.c);
+  }
+  if (!names.length) return '<div class="s-owed ok">📚 ' + T('Cả lớp không thiếu bài', 'No missing work') + '</div>';
+  names.sort((a, b) => b.c - a.c);
+  return '<div class="s-owed">📚 ' + names.length + T(' bạn thiếu bài: ', ' pupils owe work: ') + esc(names.slice(0, 4).map(x => x.n + (x.c > 1 ? ' (' + x.c + ')' : '')).join(', ') + (names.length > 4 ? ' +' + (names.length - 4) : '')) + '</div>';
+}
+const sessionCardBeforeOwed = sessionCard;
+sessionCard = function (s) {
+  const h = sessionCardBeforeOwed(s), line = owedLine(s);
+  if (!line) return h;
+  const i = h.lastIndexOf('</div></button>') >= 0 ? h.lastIndexOf('</div></button>') : h.lastIndexOf('</div></div>');
+  return i >= 0 ? h.slice(0, i) + line + h.slice(i) : h + line;
+};
+
+/* ---------- HS vắng, tidy and live (owner 08/11: "đang hiển thị lung tung... TK VAN SON vẫn không có thông tin, cần truyền thông tin live") ----------
+ * Pupils still to check come first, one card per lesson; checked ones are folded below with what was decided and by whom.
+ * The roll-call log is re-read every 30 s while the tab is open, so a decision on one device shows on every other. */
+absencePanel = function () {
+  const from = Q.addDays(today(), -7), now = today(), todo = [], done = [];
+  Object.values(weeks).forEach(w => w.data.sessions.filter(s => classOf(s) && !isGroup(s) && !s.off && s.day >= from && s.day <= now && s.day >= (classOf(s).since || '')).forEach(s => {
+    const ctx = classContext(s);
+    if (!ctx.tracker) return;
+    const roll = Q.rollCall(s, ctx.marks, now, minutesNow());
+    if (!roll.past) return;
+    if (roll.noRollCall) { todo.push({ s, none: true, list: [] }); return; }
+    const list = ctx.tracker.pupils.map(p => ({ p, m: ctx.marks.get(p.name), st: Q.pupilState(ctx.marks.get(p.name), roll) })).filter(x => x.st === 'Vắng chờ xác minh' || Q.ABSENT.includes(x.st));
+    const open = list.filter(x => x.st === 'Vắng chờ xác minh'), shut = list.filter(x => x.st !== 'Vắng chờ xác minh');
+    if (open.length) todo.push({ s, list: open });
+    if (shut.length) done.push({ s, list: shut });
+  }));
+  const byTime = (a, b) => (b.s.day + Q.clock(b.s.start)).localeCompare(a.s.day + Q.clock(a.s.start));
+  todo.sort(byTime); done.sort(byTime);
+  const head = s => '<div class="row-top"><b>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</b><span class="muted small">' + esc(Q.dayText(s.day, lang)) + ' · ' + sessionTime(s) + '</span><span class="spacer"></span><button class="quiet" data-act="open" data-row="' + s.row + '" data-day="' + s.day + '">' + T('Mở lớp', 'Open') + '</button></div>';
+  const phoneOf = p => { const ph = (String(p.phone || '').match(/[\d ]{9,}/) || [''])[0].trim(); return ph ? '<a class="small" href="tel:' + esc(ph.replace(/\s/g, '')) + '">📞 ' + esc(ph) + '</a>' : ''; };
+  const choice = (s, x, v, cls) => '<button class="' + (x.st === v ? 'on ' : '') + cls + '" data-act="absence" data-v="' + v + '" data-row="' + s.row + '" data-day="' + s.day + '" data-name="' + esc(x.p.name) + '">' + esc(stateText(v)) + '</button>';
+  const pupilLine = (s, x) => '<div class="abs-line"><div class="abs-who"><b>' + esc(x.p.eng || x.p.name) + '</b> <span class="small muted">' + esc(x.p.name) + '</span> ' + phoneOf(x.p) + '</div>' +
+    '<div class="choices">' + choice(s, x, 'Có phép', 'mid') + choice(s, x, 'Không phép', 'low') + '<button class="' + (x.m && x.m.contact ? 'on good' : 'good') + '" data-act="contact" data-row="' + s.row + '" data-day="' + s.day + '" data-name="' + esc(x.p.name) + '">' + T('Đã liên hệ PH', 'Parent contacted') + '</button></div></div>';
+  let h = '<div class="count"><span>' + (todo.length ? todo.reduce((n, c) => n + (c.none ? 1 : c.list.length), 0) + T(' mục chờ xác minh', ' to check') : T('Không còn mục chờ xác minh', 'Nothing left to check')) + '</span><span class="small muted">' + T('Tự cập nhật mỗi 30 giây', 'Updates every 30 s') + '</span></div>';
+  h += todo.length ? '<div class="list">' + todo.map(c => '<div class="card row">' + head(c.s) + (c.none ? '<div class="notice bad">' + T('GV chưa điểm danh buổi này', 'Roll call not taken') + ' (' + esc(rollTaker(c.s)) + ').</div>' : c.list.map(x => pupilLine(c.s, x)).join('')) + '</div>').join('') + '</div>' : '';
+  if (done.length) h += '<details class="card row abs-done"><summary>' + T('Đã xác minh trong 7 ngày', 'Checked in the last 7 days') + ' · ' + done.reduce((n, c) => n + c.list.length, 0) + '</summary>' +
+    done.map(c => '<div class="abs-group">' + head(c.s) + c.list.map(x => '<div class="small">' + esc(x.p.eng || x.p.name) + ' · <b>' + esc(stateText(x.st)) + '</b>' + (x.m && x.m.by ? ' · ' + esc(x.m.by) + ' ' + esc(String(x.m.at || '').slice(0, 16)) : '') + '</div>').join('') + '</div>').join('') + '</details>';
+  return h;
+};
+// Live: the absence tab, the overview and the check-in tab re-read the roll-call log (and check-ins) every 30 s while open.
+let panelLiveBusy = false, panelLiveAt = 0;
+setInterval(async () => {
+  if (panelLiveBusy || document.visibilityState !== 'visible' || !me || view !== 'dieuhanh' || !['vang', 'tong', 'ca'].includes(panel) || Date.now() - panelLiveAt < 30000) return;
+  panelLiveBusy = true; panelLiveAt = Date.now();
+  try { await Promise.all([liveMarks(), panel === 'vang' ? Promise.resolve() : loadCaAll(true)]); const a = document.activeElement; if (!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) render(); } catch (e) {} finally { panelLiveBusy = false; }
+}, 10000);

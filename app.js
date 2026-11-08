@@ -282,7 +282,7 @@ function liveTag(s) { if (s.off || s.day !== today()) return ''; const n = minut
 const CHOT_NAME = '— CHỐT BUỔI —';
 const chotOf = s => { try { const m = marksOf(s).get(CHOT_NAME); return m && m.status === 'Đã chốt' ? m : null; } catch (e) { return null; } };
 const isChot = s => !!chotOf(s);
-function canTeach(s) { return !isChot(s) && (isManager() || ([s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)) && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s))); }
+function canTeach(s) { return !isChot(s) && (isManager() || (takesRoll(s) && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s))); }
 // Everyone moves to their new place smoothly, so the class sees who overtook whom.
 function withMoves(work) {
   const before = new Map([...document.querySelectorAll('.ll-row')].map(el => [el.dataset.name, el.getBoundingClientRect().top]));
@@ -533,6 +533,8 @@ const kindName = k => k === 'other' ? T('KHÁC', 'OTHER') : (KINDS.find(x => x[0
 // Owner 08/11: G = homeroom (Chủ nhiệm); F = Quay only for VIDEOTAPER NEEDED, Trông kiểm tra for TA NEEDED, else TA.
 const invigilated = s => /\bTA NEEDED\b/.test(Q.key([s.note, s.detail].join(' '))) && !!s.video;
 const rollTaker = s => invigilated(s) ? s.video : s.teacher;
+// Who may take the roll and mark the class: the teacher, or the invigilator on a TA NEEDED session (homeroom and video TAs only look).
+const takesRoll = s => !!me && (Q.nameKey(s.teacher) === Q.nameKey(me.name) || (invigilated(s) && Q.nameKey(s.video) === Q.nameKey(me.name)));
 function helperRole(s) { const n = Q.key([s.note, s.detail].join(' ')); return /VIDEO ?TAPER/.test(n) ? T('Quay', 'Video') : /\bTA NEEDED\b/.test(n) ? T('Trông kiểm tra', 'Invigilator') : 'TA'; }
 function sessionCard(s) {
   const c = classOf(s), k = kindOf(s), name = k === 'tutor' ? Q.clean(s.cls).replace(/^TUTOR\s*/i, '') : s.cls;
@@ -813,7 +815,12 @@ function viewSchedule(week) {
     if (kinds.length > 1) h += '<div class="chips">' + [['', T('Tất cả', 'All')]].concat(kinds.map(([k]) => [k, kindName(k)])).map(([k, label]) => '<button class="' + ((filters.kind || '') === k ? 'on' : '') + '" data-act="kind" data-v="' + k + '">' + esc(label) + '</button>').join('') + '</div>';
   }
   const shown = isManager() && filters.showAll && filters.kind ? list.filter(s => kindOf(s) === filters.kind) : list;
-  if (shown.length) today_ += (isManager() && filters.showAll ? '' : '<div class="part p-1"><h2>' + T('Lớp tôi dạy', 'My classes') + '</h2><span>' + shown.length + T(' buổi', ' sessions') + '</span></div>') + dayParts(shown);
+  if (shown.length && isManager() && filters.showAll) today_ += dayParts(shown);
+  else if (shown.length) {
+    const teach = shown.filter(s => isMe(s.teacher)), help = shown.filter(s => !isMe(s.teacher));
+    if (teach.length) today_ += '<div class="part p-1"><h2>' + T('Lớp tôi dạy', 'My classes') + '</h2><span>' + teach.length + T(' buổi', ' sessions') + '</span></div>' + dayParts(teach);
+    if (help.length) today_ += '<div class="part p-1"><h2>' + T('Lớp tôi hỗ trợ', 'Classes I help in') + '</h2><span>' + help.length + T(' buổi · quay / trông kiểm tra', ' sessions · video / invigilation') + '</span></div>' + dayParts(help);
+  }
   else if (isManager() && filters.showAll) today_ += '<div class="card empty">' + T('Không có buổi nào trong ngày này.', 'No sessions on this day.') + '</div>';
   // Each tab carries its own count; a tab with nothing in it is not shown.
   const ladderHtml = ladderBlock(week), owedHtml = '', workHtml = dutyBlock(week) + returnsBlock(week), taskHtml = myTaskBlock(week);
@@ -849,7 +856,7 @@ const videoLabel = label => lang === 'en' ? ({ 'NGU PHAP': 'grammar', 'TU VUNG':
 const stateText = st => lang === 'en' ? ({ 'Vắng chờ xác minh': 'Absent, awaiting check', 'Có phép': 'Excused', 'Không phép': 'Unexcused' }[st] || st) : st;
 function viewClass() {
   const ctx = classContext(current), s = ctx.session, tracker = ctx.tracker;
-  const assigned = [s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name));
+  const assigned = takesRoll(s);
   const roll = Q.rollCall(s, ctx.marks, today(), minutesNow()), canEdit = !isChot(s) && (isManager() || (assigned && roll.open && !lessonClosed(s)));
   let h = '<div><button class="quiet" data-act="back">‹ ' + T('Lịch', 'Schedule') + '</button></div><div class="card class-head"><h1>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</h1>' +
     '<div>' + esc(dayLabel(s.day)) + ' · <b>' + sessionTime(s) + '</b> · <span class="room">' + esc(s.site || T('Chưa ghi phòng', 'No room listed')) + '</span></div>' +
