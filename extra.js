@@ -2531,3 +2531,47 @@ fitClassScreen = function () {
   if (s < 0.999) { list.style.transformOrigin = '0 0'; list.style.width = (100 / s) + '%'; list.style.transform = 'scale(' + s + ')'; list.style.marginBottom = -(list.offsetHeight * (1 - s)) + 'px'; }
   if (open) open.classList.add('open');
 };
+
+/* ---------- A group lesson lists only its group (owner 08/11: "ielts chia 2 nhóm speaking thì buổi nào hiện danh sách ấy thôi") ----------
+ * The class sheet marks each speaking group with a row "IELTS 52.1" / "IELTS 52.2"; in a lesson of IELTS 52.2 the class page, the class
+ * screen and the summary show those pupils only. A sheet without such rows keeps the whole class, as before. */
+const classContextBeforeGroup = classContext;
+classContext = function (session) {
+  const ctx = classContextBeforeGroup(session);
+  if (ctx.tracker && session && isGroup(session)) {
+    const g = Q.key(session.cls), mine = ctx.tracker.pupils.filter(p => p.group === g);
+    if (mine.length) ctx.tracker = Object.assign({}, ctx.tracker, { pupils: mine, grouped: true });
+  }
+  return ctx;
+};
+
+/* ---------- Board strip: icon buttons beside each name (owner 08/11: "có nút tắt cho ngủ gật hay mất trật tự nằm cạnh để ấn luôn, chứ không
+ * hiện màn hình phụ... vẫn còn chỗ mà") ----------
+ * Each closed line is: short name (the last two words; the full name shows when the line is opened) and one small icon button per
+ * reminder of this class plus ⚠️ for a warning, each with its count. A legend above the list says what the icons mean, in Vietnamese
+ * with English under it. Touching the name still opens the full line (with "−", absent). */
+const TICK_ICON = { 'Mất trật tự': '🔊', 'Mất tập trung': '👀', 'Ngủ gật': '😴', 'Viết không kịp': '⏳', 'Viết linh tinh tùy ý': '✏️', 'Làm việc riêng': '📱', 'Trả lời sai': '❌', 'Phát biểu tốt': '👍', 'Dùng điện thoại': '📵' };
+const shortName = full => { const w = String(full || '').trim().split(/\s+/); return w.length > 2 ? w.slice(-2).join(' ') : full; };
+const paintStripBeforeQuick = paintStrip;
+paintStrip = function () {
+  paintStripBeforeQuick();
+  if (!stripOn()) return;
+  const set = tickSetOf(current), list = document.querySelector('.rv-list');
+  if (list && !document.querySelector('.rv-legend')) list.insertAdjacentHTML('beforebegin', '<div class="rv-legend">' + set.concat([CANH_CAO]).map(t => '<span>' + (t === CANH_CAO ? '⚠️' : TICK_ICON[t] || '•') + ' ' + esc(t) + '<small class="rv-en">' + esc(BEHAVIOUR_EN[t] || '') + '</small></span>').join('') + '</div>');
+  document.querySelectorAll('.rv-row').forEach(r => {
+    const open = r.classList.contains('open'), nm = r.querySelector('.ll-name'), old = r.querySelector('.rv-quick'), mini = r.querySelector('.rv-mini');
+    if (mini) mini.remove();
+    if (old) old.remove();
+    if (nm) { if (!nm.dataset.full) nm.dataset.full = nm.textContent; nm.textContent = open ? nm.dataset.full : shortName(nm.dataset.full); }
+    if (open || r.classList.contains('off')) return;
+    const chips = r.querySelectorAll('.rv-chip'), i = r.dataset.i;
+    const btn = (k, act, icon, cls, title) => {
+      const chip = chips[k], b = chip && chip.querySelector('button'), badge = chip && chip.querySelector('.rv-badge'), dis = !b || b.disabled;
+      return '<button class="rv-q' + cls + (badge ? ' on' : '') + '" data-act="' + act + '" data-i="' + i + '"' + (act === 'llTick' ? ' data-k="' + k + '" data-v="' + k + '"' : '') + (dis ? ' disabled' : '') + ' title="' + esc(title) + '">' + icon + (badge ? '<b>' + esc(badge.textContent) + '</b>' : '') + '</button>';
+    };
+    const html = '<span class="rv-quick">' + set.map((t, k) => btn(k, 'llTick', TICK_ICON[t] || '•', t === PRAISE ? ' good' : '', t)).join('') + btn(set.length, 'llReason', '⚠️', ' warn', CANH_CAO) + '</span>';
+    const name = r.querySelector('.rv-name');
+    if (name) name.insertAdjacentHTML('afterend', html);
+  });
+  fitClassScreen();
+};
