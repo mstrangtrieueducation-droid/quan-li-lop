@@ -906,8 +906,8 @@ let llReason = null;
 // IELTS / FIGHTER: reminders that fit teenagers, and one praise button that never counts towards a warning.
 const PRAISE = 'Phát biểu tốt', TEEN_TICKS = ['Dùng điện thoại', 'Làm việc riêng', PRAISE];
 Object.assign(BEHAVIOUR_EN, { 'Dùng điện thoại': 'Using phone', 'Làm việc riêng': 'Off task', [PRAISE]: 'Great answer' });
-const ticksFor = s => s && isSecondary(s) ? TEEN_TICKS : TICKS;
-const tickTotal = counts => TICKS.concat(TEEN_TICKS).filter(t => t !== PRAISE).reduce((n, t) => n + (counts[t] || 0), 0);
+const ticksFor = s => tickSetOf(s);
+const tickTotal = counts => Object.keys(counts).filter(t => t !== CANH_CAO && !NOT_COUNTED.includes(t)).reduce((n, t) => n + (counts[t] || 0), 0);
 
 viewLenLop = function () {
   const ctx = classContext(current), s = ctx.session;
@@ -916,13 +916,14 @@ viewLenLop = function () {
   const rows = ctx.tracker.pupils.map((p, i) => { const m = ctx.marks.get(p.name); return { p, i, stars: starsOf(ctx, p), off: !!m && (m.status === NGHI || Q.ABSENT.includes(m.status)), here: !!m && Q.PRESENT.includes(m.status), b: behave.get(p.name) }; });
   orderRows(rows, s);
   const scores = [...new Set(rows.filter(r => !r.off && r.stars).map(r => r.stars))].sort((a, b) => b - a), medal = ['🥇', '🥈', '🥉'];
-  const unmarked = rows.filter(r => !r.off && !r.here).length, noStars = !ctx.tracker.blocks.length, group = isGroup(s);
+  const unmarked = rows.filter(r => !r.off && !r.here).length, noStars = !ctx.tracker.blocks.length || (!!ctx.block && !(ctx.block.stars >= 0)), group = isGroup(s);
   const starOk = !noStars && ctx.block && ctx.block.stars >= 0;
   const podium = rows.filter(r => !r.off && r.stars && scores.indexOf(r.stars) < 3).sort((a, b) => b.stars - a.stars).slice(0, 5);
   let h = '<div class="ll-head"><button class="quiet" data-act="llExit" aria-label="' + T('Thoát', 'Exit') + '">‹</button><div class="ll-title"><b>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</b><span>' + sessionTime(s) + ' · ' + rows.filter(r => r.here).length + '/' + rows.length + T(' có mặt', ' here') + '</span></div>' +
     (podium.length ? '<div class="ll-podium" aria-label="' + T('Dẫn đầu', 'Leaders') + '">' + podium.map(r => '<span>' + (medal[scores.indexOf(r.stars)] || '') + ' ' + esc(r.p.eng || r.p.name) + ' <b>' + r.stars + '</b></span>').join('') + '</div>' : '') +
     (edit && unmarked && !group ? '<button class="primary" data-act="llAll">' + T('Còn lại có mặt', 'Rest are here') + '</button>' : '') + lockBar(can, edit) + '</div>';
-  if (noStars) h += '<div class="notice">' + (isSecondary(s) ? T('IELTS / FIGHTER: không chấm sao. Điểm danh, nhắc nhở; bạn thiếu bài thì bấm "Cho về", bạn ở nhà vì chưa làm bài thì bấm "Ở nhà · chưa làm bài".', 'IELTS / FIGHTER: no stars. Roll call and reminders; "Sent home" for missing homework.') : T('Sheet lớp này không có cột Số sao, nên chỉ điểm danh và nhắc nhở.', 'This class sheet has no star column.')) + '</div>';
+  // Owner 08/11: "buổi debate bỏ cái sao đi, hiển thị làm gì... logic chung nên là thế": a lesson without a star column shows no stars.
+  if (noStars && !(ctx.problem && ctx.tracker.blocks.length)) h += '';
   else if (ctx.problem || !starOk) h += '<div class="notice">' + esc(columnWarning(ctx) || T('Tiết này chưa có cột Số sao trong sheet lớp, TA mở cột giúp.', 'This lesson has no star column yet, TA please open it.')) + '</div>';
   if (can && !edit) h += '<div class="small muted rv-hint">🔒 ' + T('Đang khoá để học sinh không bấm nhầm. Giáo viên giữ nút "Giữ để sửa" 1 giây để mở. Bấm mũi tên ▸ cạnh tên để xem 3 buổi trước.', 'Locked so pupils cannot change anything. Hold "Hold to edit" for a second. Tap ▸ to see the last 3 lessons.') + '</div>';
   else if (!edit) h += '<div class="notice">' + ([s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)) && lessonClosed(s) ? T('Buổi học đã kết thúc quá ' + CLOSE_AFTER + ' phút nên đã khoá, không sửa được nữa. Cần sửa thì báo quản lí.', 'This lesson ended more than ' + CLOSE_AFTER + ' minutes ago and is locked. Ask a manager to change anything.') : T('Buổi này chưa mở hoặc không phân công cho bạn, chỉ xem được.', 'This session is not open or not assigned to you, view only.')) + '</div>';
@@ -2460,3 +2461,73 @@ function paintChotPop() {
 const renderBeforeChotPop = render;
 render = function () { renderBeforeChotPop(); paintChotPop(); };
 setInterval(() => { if (view === 'lenlop' && current) paintChotPop(); }, 20000);
+
+/* ---------- Reminder buttons by class (owner 08/11) ----------
+ * FIGHTER: Mất trật tự · Mất tập trung · Trả lời sai · Phát biểu tốt. IELTS writing (Schedule book "IELTS VIẾT"): Mất trật tự ·
+ * Mất tập trung · Ngủ gật · Viết không kịp · Viết linh tinh tùy ý. IELTS speaking ("IELTS SPEAKING"): Mất trật tự · Mất tập trung ·
+ * Ngủ gật · Làm việc riêng. KIDS keep Mất trật tự · Mất tập trung. Praise and wrong answers never count towards the warning limit. */
+const NOT_COUNTED = [PRAISE, 'Trả lời sai'];
+const FIGHTER_TICKS = ['Mất trật tự', 'Mất tập trung', 'Trả lời sai', PRAISE];
+const IELTS_WRITING_TICKS = ['Mất trật tự', 'Mất tập trung', 'Ngủ gật', 'Viết không kịp', 'Viết linh tinh tùy ý'];
+const IELTS_SPEAKING_TICKS = ['Mất trật tự', 'Mất tập trung', 'Ngủ gật', 'Làm việc riêng'];
+function tickSetOf(s) {
+  if (!s) return TICKS;
+  const c = Q.key(s.cls), b = Q.key(s.book || '');
+  if (/^FIGHTER/.test(c)) return FIGHTER_TICKS;
+  if (/^IELTS/.test(c)) return /SPEAKING|NOI\b/.test(b) ? IELTS_SPEAKING_TICKS : IELTS_WRITING_TICKS;
+  return isSecondary(s) ? TEEN_TICKS : TICKS;
+}
+Object.assign(BEHAVIOUR_EN, { 'Trả lời sai': 'Wrong answer', 'Ngủ gật': 'Dozing off', 'Viết không kịp': 'Writing too slowly', 'Viết linh tinh tùy ý': 'Off-task writing', 'Làm việc riêng': 'Off-task' });
+[...FIGHTER_TICKS, ...IELTS_WRITING_TICKS, ...IELTS_SPEAKING_TICKS].forEach(t => { if (!BEHAVIOURS.includes(t)) BEHAVIOURS.push(t); });
+Object.assign(COMMENT_LINES, {
+  'Trả lời sai': 'con còn trả lời sai, cần ôn lại bài.',
+  'Ngủ gật': 'con ngủ gật trong giờ học, cần nghỉ ngơi đủ trước buổi học.',
+  'Viết không kịp': 'con viết chưa kịp thời gian, cần luyện tốc độ viết.',
+  'Viết linh tinh tùy ý': 'con viết chưa theo yêu cầu của đề, cần bám sát đề bài.'
+});
+
+/* ---------- A narrow board strip: every name in one column (owner 08/11, ClassIn browser box on the board: "muốn thêm hoặc nhắc đứa nào
+ * phải kéo... làm sao hàng dọc đó hiện hết các tên") ----------
+ * Narrower than 640 px, each pupil is one short line: name, stars and +. Touching the name opens that pupil's line with every button
+ * (reminders with their −, warning, absent, −1 star); touching it again, or another name, closes it. The column is scaled to fit. */
+let llOpenRow = null;
+// IELTS and FIGHTER first (owner 08/11: "phần khung hẹp áp dụng cho ielts và fighter trước"); KIDS keep their usual rows.
+const stripOn = () => view === 'lenlop' && window.innerWidth < 640 && !!current && isSecondary(current);
+document.addEventListener('click', e => {
+  const n = stripOn() && e.target.closest && e.target.closest('.rv-row .rv-name');
+  if (!n) return;
+  e.preventDefault(); e.stopPropagation();
+  const row = n.closest('.rv-row'), i = row ? Number(row.dataset.i) : null;
+  llOpenRow = llOpenRow === i ? null : i;
+  paintStrip();
+}, true);
+function paintStrip() {
+  document.body.classList.toggle('rv-strip', stripOn());
+  if (!stripOn()) return;
+  document.querySelectorAll('.rv-row').forEach(r => {
+    r.classList.toggle('open', Number(r.dataset.i) === llOpenRow);
+    // A closed line still says how many reminders the pupil has (and praise), so nobody has to open it to know.
+    const name = r.querySelector('.rv-name'), old = r.querySelector('.rv-mini');
+    if (old) old.remove();
+    let warn = 0, good = 0;
+    r.querySelectorAll('.rv-chip').forEach(c => { const b = c.querySelector('.rv-badge'), n = b ? Number(b.textContent) || 0 : 0; if (c.querySelector('.rv-praise')) good += n; else warn += n; });
+    if (name && (warn || good)) name.insertAdjacentHTML('beforeend', '<span class="rv-mini">' + (warn ? '⚠ ' + warn : '') + (warn && good ? ' · ' : '') + (good ? '👍 ' + good : '') + '</span>');
+  });
+  fitClassScreen();
+}
+const renderBeforeStrip = render;
+render = function () { renderBeforeStrip(); paintStrip(); };
+window.addEventListener('resize', () => { if (view === 'lenlop') paintStrip(); });
+const fitBeforeStrip = fitClassScreen;
+fitClassScreen = function () {
+  if (!document.body.classList.contains('rv-strip')) return fitBeforeStrip();
+  const list = document.querySelector('.rv-list');
+  if (!list) return;
+  const open = list.querySelector('.rv-row.open');
+  if (open) open.classList.remove('open');
+  list.style.transform = ''; list.style.width = ''; list.style.marginBottom = ''; list.style.gridTemplateColumns = '';
+  const top = list.getBoundingClientRect().top + window.scrollY, avail = window.innerHeight - top - 8, hgt = list.offsetHeight;
+  const s = Math.max(0.5, Math.min(1, avail / hgt));
+  if (s < 0.999) { list.style.transformOrigin = '0 0'; list.style.width = (100 / s) + '%'; list.style.transform = 'scale(' + s + ')'; list.style.marginBottom = -(list.offsetHeight * (1 - s)) + 'px'; }
+  if (open) open.classList.add('open');
+};

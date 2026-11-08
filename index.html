@@ -620,6 +620,23 @@
   .chot-pop p { margin: 0; line-height: 1.45; }
   .chot-pop .chot-row { display: flex; flex-wrap: wrap; gap: 10px; }
   .chot-pop .chot-row button { min-height: 52px; padding: 0 16px; font-size: 16px; display: grid; place-items: center; }
+  /* Board strip: one short line per pupil, touch the name for the buttons (owner 08/11) */
+  .rv-strip .rv-hint { display: none; }
+  .rv-strip .rv-list { gap: 4px; }
+  .rv-strip .rv-row { gap: 4px 6px; padding: 4px 8px; min-height: 0; }
+  .rv-strip .rv-row:not(.open) .rv-chip, .rv-strip .rv-row:not(.open) .rv-off, .rv-strip .rv-row:not(.open) .rv-send,
+  .rv-strip .rv-row:not(.open) .rv-minus, .rv-strip .rv-row:not(.open) .rv-hist, .rv-strip .rv-row:not(.open) .rv-flags,
+  .rv-strip .rv-row:not(.open) .rv-here, .rv-strip .rv-row:not(.open) .mk-btn { display: none; }
+  .rv-strip .rv-row:not(.open) .rv-name { flex: 1 1 0; min-width: 0; padding: 6px 2px; }
+  .rv-strip .rv-row:not(.open) .rv-name .ll-name { font-size: 20px; }
+  .rv-strip .rv-row:not(.open) .rv-stars { flex: none; justify-content: flex-end; }
+  .rv-strip .rv-row:not(.open) .rv-stars button { width: 44px; height: 44px; font-size: 26px; }
+  .rv-strip .rv-row:not(.open) .rv-num.ll-num { min-width: 56px; font-size: 19px; }
+  .rv-strip .rv-row:not(.open) .rv-grade-show { display: none; }
+  .rv-strip .rv-row.open { box-shadow: 0 0 0 3px var(--brand); }
+  .rv-mini { flex: none; margin-left: 6px; padding: 1px 8px; border-radius: 10px; background: #fef3c7; color: #92400e; font-size: 14px; font-weight: 800; }
+  .rv-strip .rv-row.open .rv-mini { display: none; }
+  .rv-strip .rv-row:not(.open):has(.rv-flags) .ll-name::after { content: " •"; color: #dc2626; }
 </style>
 </head>
 <body class="notranslate">
@@ -649,10 +666,10 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108z"></script>
-<script src="logic.js?v=20261108z"></script>
-<script src="app.js?v=20261108z"></script>
-<script src="qrcode.js?v=20261108z"></script>
-<script src="extra.js?v=20261108z"></script>
+<script src="config.js?v=20261108A"></script>
+<script src="logic.js?v=20261108A"></script>
+<script src="app.js?v=20261108A"></script>
+<script src="qrcode.js?v=20261108A"></script>
+<script src="extra.js?v=20261108A"></script>
 </body>
 </html>
