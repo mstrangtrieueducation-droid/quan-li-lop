@@ -2527,7 +2527,7 @@ fitClassScreen = function () {
   const open = list.querySelector('.rv-row.open');
   if (open) open.classList.remove('open');
   list.style.transform = ''; list.style.width = ''; list.style.marginBottom = ''; list.style.gridTemplateColumns = ''; list.style.transformOrigin = '0 0';
-  const top = list.getBoundingClientRect().top + window.scrollY, avail = window.innerHeight - top - 18;
+  const top = list.getBoundingClientRect().top + window.scrollY, avail = window.innerHeight - top - 10;
   // A line fits when its last button ends inside it (the small count badges sticking out of a button's corner do not count).
   const lineFits = r => {
     const kids = [...r.children].filter(e => e.offsetWidth && getComputedStyle(e).position !== 'absolute');
