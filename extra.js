@@ -903,7 +903,7 @@ viewLenLop = function () {
   if (!ctx.tracker) return '<div class="card empty">' + T('Đang đọc sheet lớp…', 'Reading the class sheet…') + '</div>';
   const can = canTeach(s), edit = can && llUnlocked(s), behave = behaveFor(s), dis = edit ? '' : ' disabled';
   const rows = ctx.tracker.pupils.map((p, i) => { const m = ctx.marks.get(p.name); return { p, i, stars: starsOf(ctx, p), off: !!m && (m.status === NGHI || Q.ABSENT.includes(m.status)), here: !!m && Q.PRESENT.includes(m.status), b: behave.get(p.name) }; });
-  rows.sort((a, b) => a.off - b.off || a.i - b.i);
+  orderRows(rows, s);
   const scores = [...new Set(rows.filter(r => !r.off && r.stars).map(r => r.stars))].sort((a, b) => b - a), medal = ['🥇', '🥈', '🥉'];
   const unmarked = rows.filter(r => !r.off && !r.here).length, noStars = !ctx.tracker.blocks.length, group = isGroup(s);
   const starOk = !noStars && ctx.block && ctx.block.stars >= 0;
@@ -1278,7 +1278,7 @@ function lockBar(can, edit) {
   if (!can) return '';
   const left = outbox.length, state = '<span class="rv-saved" id="llSaveState">' + saveText() + '</span>';
   if (!edit) return state + '<button class="rv-lock" data-act="llUnlock" aria-label="' + T('Giữ 1 giây để mở khoá sửa', 'Hold a second to unlock') + '"><span class="fill"></span><span class="lbl">🔒 ' + T('Giữ để sửa', 'Hold to edit') + '</span></button>';
-  return state + '<span class="rv-editing">✏️ ' + T('Đang sửa', 'Editing') + '</span><button class="primary rv-save" data-act="llSave">💾 ' + T('Lưu & khoá', 'Save & lock') + (left ? ' (' + left + ')' : '') + '</button>';
+  return state + '<span class="rv-editing">✏️ ' + T('Đang sửa', 'Editing') + '</span><button class="primary rv-save" data-act="llSave">🔒 ' + T('Xong, khoá lại', 'Done, lock') + '</button>';
 }
 const saveText = () => flushFailed ? '⚠️ ' + T('Mất mạng: ' + outbox.length + ' mục giữ trên máy, sẽ tự gửi lại', outbox.length + ' kept on this device, will resend') : outbox.length ? T('Đã giữ trên máy · đang gửi ' + outbox.length + ' mục', 'Kept on device · sending ' + outbox.length) : '✓ ' + T('Đã lưu lên sheet', 'Saved to the sheets');
 const paintSaveBeforeLock = paintSave;
@@ -1464,3 +1464,46 @@ document.addEventListener('click', e => {
   render(); window.scrollTo(0, 0);
   guarded(() => view === 'dieuhanh' ? loadPanel() : view === 'lopcn' ? loadHomerooms() : weekOf(day));
 });
+
+/* ---------- Saving never waits for a button (owner 08/11: "các thứ cần phải tự động lưu") ----------
+ * Every tap is already kept on the device at once and sent within seconds (stars and behaviour within 10 s, to spare the shared Google limit).
+ * Also send at once when the screen is switched off, the tab is hidden or the page is closed, and retry anything left every 20 s. */
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && outbox.length) flush(); });
+window.addEventListener('pagehide', () => { if (outbox.length) flush(); });
+setInterval(() => { if (outbox.length && !flushing && !flushTimer) flush(); }, 20000);
+
+/* ---------- Live ranking on the class screen (owner 08/11: "tính điểm live nhảy lên nhảy xuống thứ tự") ----------
+ * Pupils stand in star order, most stars first, absent ones last, ties in register order. While the teacher is tapping, rows hold
+ * still so a second tap never lands on another child; 1.5 s after the last star tap everyone glides to their new place. */
+const RANK_WAIT = 1500;
+let llOrder = { key: '', list: [] }, llFreezeUntil = 0, llRankTimer = null;
+function orderRows(rows, s) {
+  const key = Q.sessionKey(s), want = rows.slice().sort((a, b) => a.off - b.off || b.stars - a.stars || a.i - b.i).map(r => r.i);
+  let list = want;
+  if (llOrder.key === key && Date.now() < llFreezeUntil) {
+    const kept = llOrder.list.filter(i => want.includes(i));
+    list = kept.concat(want.filter(i => !kept.includes(i)));
+  }
+  llOrder = { key, list };
+  const at = new Map(list.map((i, n) => [i, n]));
+  rows.sort((a, b) => at.get(a.i) - at.get(b.i));
+}
+function rerankNow() {
+  llRankTimer = null; llFreezeUntil = 0;
+  if (view !== 'lenlop') return;
+  const before = new Map([...document.querySelectorAll('.rv-row')].map(el => [el.dataset.i, el.getBoundingClientRect().top]));
+  render();
+  document.querySelectorAll('.rv-row').forEach(el => {
+    const was = before.get(el.dataset.i);
+    if (was == null) return;
+    const by = was - el.getBoundingClientRect().top;
+    if (by && el.animate) el.animate([{ transform: 'translateY(' + by + 'px)' }, { transform: 'none' }], { duration: 550, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    if (by > 4 && el.animate) el.animate([{ boxShadow: '0 0 0 3px gold' }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1200 });
+  });
+}
+const llActionBeforeRank = llAction;
+llAction = function (act, i, v) {
+  const moves = ['llStar', 'llDown', 'llOff'].includes(act);
+  if (moves) { llFreezeUntil = Date.now() + RANK_WAIT; clearTimeout(llRankTimer); llRankTimer = setTimeout(rerankNow, RANK_WAIT); }
+  return llActionBeforeRank(act, i, v);
+};
