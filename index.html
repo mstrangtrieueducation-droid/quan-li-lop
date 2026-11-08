@@ -724,6 +724,41 @@
   .book.late { border-left: 4px solid #dc2626; }
   .book.done { opacity: .55; }
   .small.bad { color: #dc2626; font-weight: 700; } .small.warn { color: #b45309; font-weight: 700; }
+  /* The day at a glance (owner 08/11) */
+  .dayvis { gap: 12px; }
+  .rings { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+  .ring { position: relative; width: 74px; display: grid; justify-items: center; gap: 2px; text-align: center; }
+  .ring svg { width: 56px; height: 56px; }
+  .ring-bg { fill: none; stroke: var(--line); stroke-width: 6; }
+  .ring-fg { fill: none; stroke-width: 6; stroke-linecap: round; }
+  .ring b { position: absolute; top: 18px; left: 0; right: 0; font-size: 13px; font-weight: 800; }
+  .ring span { font-size: 12px; color: var(--muted); font-weight: 700; line-height: 1.15; }
+  .ring.wait .ring-num { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 50%; border: 6px solid var(--line); font: 800 18px/1 system-ui, sans-serif; color: var(--muted); }
+  .ring.wait.on .ring-num { border-color: #f59e0b; color: #b45309; }
+  .tl { display: grid; gap: 4px; --lane: 92px; }
+  .tl-axis { position: relative; height: 16px; margin-left: var(--lane); }
+  .tl-tick { position: absolute; transform: translateX(-50%); font-size: 11px; color: var(--muted); }
+  .tl-body { position: relative; display: grid; gap: 6px; }
+  .tl-lane { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 6px; align-items: start; }
+  .tl-name { font-size: 12px; font-weight: 700; color: var(--muted); padding-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-track { position: relative; background: repeating-linear-gradient(90deg, var(--soft) 0 1px, transparent 1px calc(100% / 13.5)); border-radius: 8px; }
+  .tl-bar { position: absolute; height: 26px; padding: 0 6px; border-radius: 7px; border: 0; font-size: 11px; font-weight: 800; color: #fff; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; min-width: 0; }
+  .tl-bar.k-kids { background: #2563eb; } .tl-bar.k-ielts { background: #7c3aed; } .tl-bar.k-fighter { background: #d97706; }
+  .tl-bar.k-ta { background: #16a34a; } .tl-bar.k-tutor { background: #64748b; } .tl-bar.k-other { background: #0891b2; }
+  .tl-bar.past { opacity: .35; }
+  .tl-bar.nolink { display: flex; align-items: center; cursor: default; }
+  .tl-bar.now { box-shadow: 0 0 0 3px rgba(220,38,38,.55); }
+  .tl-now { position: absolute; top: -18px; bottom: 0; width: 2px; background: #dc2626; pointer-events: none; }
+  .tl-now i { position: absolute; top: -2px; left: 4px; font-size: 10px; font-style: normal; font-weight: 800; color: #dc2626; }
+  @media (max-width: 640px) { .tl-lane { grid-template-columns: 56px minmax(0, 1fr); } .tl { --lane: 62px; } .tl-tick.odd, .tl-pre { display: none; } .tl-bar { padding: 0 3px; text-align: center; } .tl-name { font-size: 10px; } .ring { width: 64px; } }
+  /* Waiting things as round badges; tap opens the list (owner 08/11) */
+  .dv-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-left: auto; }
+  .dv-badge { position: relative; width: 56px; height: 56px; border-radius: 50%; border: 3px solid #f59e0b; background: var(--card); display: grid; place-items: center; padding: 0; font-size: 24px; cursor: pointer; }
+  .dv-badge b { position: absolute; top: -6px; right: -6px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: #f59e0b; color: #fff; font: 800 12px/22px system-ui, sans-serif; }
+  .dv-badge.hot { border-color: #dc2626; } .dv-badge.hot b { background: #dc2626; }
+  .dv-badge.ok { border-color: #16a34a; cursor: default; }
+  .rings { align-items: center; }
+  .dash-body .todo > .row-top { display: none; }
 </style>
 </head>
 <body class="notranslate">
@@ -753,10 +788,10 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108Q"></script>
-<script src="logic.js?v=20261108Q"></script>
-<script src="app.js?v=20261108Q"></script>
-<script src="qrcode.js?v=20261108Q"></script>
-<script src="extra.js?v=20261108Q"></script>
+<script src="config.js?v=20261108R"></script>
+<script src="logic.js?v=20261108R"></script>
+<script src="app.js?v=20261108R"></script>
+<script src="qrcode.js?v=20261108R"></script>
+<script src="extra.js?v=20261108R"></script>
 </body>
 </html>
