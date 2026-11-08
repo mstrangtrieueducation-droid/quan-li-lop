@@ -1167,7 +1167,7 @@ function reportSection() {
   const how = '<div class="small muted">' + T('Mở tab BÁO CÁO của lớp, chọn "Nhận xét buổi học", điền ngày học, dán nhận xét GV, tick B8, gửi phụ huynh, rồi bấm "Đã report ✓" ở đây.', 'Open the class BÁO CÁO tab, make the lesson report, send it, then tap "Mark reported".') + '</div>';
   if (!reports.rows) return head + '<div class="card empty">' + T('Đang đọc…', 'Reading…') + '</div>';
   if (!all.length) return head + how + '<div class="card empty">' + T('Chưa có tiết nào cần report (tính từ ' + viDate(REPORT_START) + ').', 'No lesson to report yet.') + '</div>';
-  const recent = all.filter(x => x.state !== 'ok' || x.s.day >= Q.addDays(today(), -3));
+  const recent = all.filter(x => x.state !== 'ok' || x.s.day >= Q.addDays(today(), -3)), older = all.filter(x => !recent.includes(x));
   const count = st => all.filter(x => x.state === st).length;
   let h = head + how + '<div class="count">' + (count('over') ? '<span class="tag bad">' + count('over') + T(' quá hạn', ' overdue') + '</span>' : '') + (count('today') ? '<span class="tag warn">' + count('today') + T(' hạn hôm nay', ' due today') + '</span>' : '') + (count('soon') ? '<span class="tag">' + count('soon') + T(' hạn mai', ' due tomorrow') + '</span>' : '') + '<span class="tag ok">' + (count('ok') + count('late')) + T(' đã report', ' reported') + '</span></div>';
   if (isManager()) {
@@ -1178,6 +1178,7 @@ function reportSection() {
       return '<div class="card row"><div class="row-top"><b>' + esc(g.cm) + '</b>' + (over ? '<span class="tag bad">' + over + T(' quá hạn', ' overdue') + '</span>' : '<span class="tag ok">' + T('Đúng hạn', 'On time') + '</span>') + '</div>' + g.list.map(x => reportRow(x, false)).join('') + '</div>';
     }).join('');
   } else h += '<div class="card row">' + recent.map(x => reportRow(x, false)).join('') + '</div>';
+  if (older.length) h += '<details class="done-list"><summary>' + T('Đã report', 'Reported') + ' (' + older.length + ')</summary><div class="list"><div class="card row">' + older.map(x => reportRow(x, isManager())).join('') + '</div></div></details>';
   return h;
 }
 function reportTick(k, undo) {
@@ -2810,7 +2811,7 @@ function bookBlock() {
   const when = r => r ? ' · ' + esc(r.by || '?') + ' ' + esc(String(r.at || '').slice(11, 16) + ' ' + String(r.at || '').slice(0, 5)) : '';
   const cards = list.map(n => {
     const st = bookSteps(n), done = st.ordered && st.received, late = !st.ordered && t > n.due, soon = !st.ordered && Q.addDays(n.first, -BOOK_WARN) <= t;
-    const can = isManager() || isMe(n.cm), btn = (v, label, on) => can ? '<button class="' + (on ? 'quiet' : 'primary') + '" data-act="bookTick" data-n="' + esc(bookName(n)) + '" data-d="' + n.first + '" data-v="' + v + '">' + label + '</button>' : '';
+    const can = isMe(n.cm), btn = (v, label, on) => can ? '<button class="' + (on ? 'quiet' : 'primary') + '" data-act="bookTick" data-n="' + esc(bookName(n)) + '" data-d="' + n.first + '" data-v="' + v + '">' + label + '</button>' : '';
     return '<div class="card row book ' + (done ? 'done' : 'todo') + (late ? ' late' : '') + '">' +
       '<div class="row-top"><b>📚 ' + esc(n.cls) + '</b><span class="tag">' + esc(n.unsure ? T('Schedule chưa rõ sách mới', 'new book not set on the Schedule') : n.book) + '</span><span class="spacer"></span>' +
       '<span class="small ' + (late ? 'bad' : soon ? 'warn' : 'muted') + '">' + T('Học từ ', 'Starts ') + esc(viDate(n.first).slice(0, 5)) + T(' · đặt trước ', ' · order by ') + esc(viDate(n.due).slice(0, 5)) + (late ? T(' · QUÁ HẠN', ' · OVERDUE') : '') + '</span></div>' +
@@ -2832,7 +2833,7 @@ bellItems = function () {
   const out = bellItemsBeforeBooks();
   try {
     const t = today();
-    bookNeeds().filter(n => (isManager() || isMe(n.cm)) && !bookSteps(n).ordered && Q.addDays(n.due, -3) <= t).forEach(n => out.push({ k: 'sach', icon: '📚', text: T('Đặt in sách ', 'Order books ') + n.cls + (n.book ? ' (' + n.book + ')' : '') + T(' · hạn ', ' · by ') + viDate(n.due).slice(0, 5), n: 1, hot: t > n.due, go: { view: 'lich', sec: 'sach' } }));
+    bookNeeds().filter(n => isMe(n.cm) && !bookSteps(n).ordered && Q.addDays(n.due, -3) <= t).forEach(n => out.push({ k: 'sach', icon: '📚', text: T('Đặt in sách ', 'Order books ') + n.cls + (n.book ? ' (' + n.book + ')' : '') + T(' · hạn ', ' · by ') + viDate(n.due).slice(0, 5), n: 1, hot: t > n.due, go: { view: 'lich', sec: 'sach' } }));
   } catch (e) {}
   return out;
 };
@@ -3062,4 +3063,33 @@ dayStats = function (list) {
   const sub = '<em>' + people.size + T(' GV/TA', ' staff') + (off ? T(' · ' + off + ' nghỉ', ' · ' + off + ' off') : '') + '</em>';
   const cells = [[on.length, T('Buổi học', 'Sessions'), 'all', sub]].concat(TL_KINDS.filter(([k]) => by[k]).map(([k, n]) => [by[k], k === 'other' ? T('Khác', 'Other') : n, k, '']));
   return '<div class="kpis' + (cells.length > 6 ? ' many' : '') + '">' + cells.map(([n, name, k, extra]) => '<div class="kc k-' + k + '"><i></i><b>' + n + extra + '</b><span>' + esc(name) + '</span></div>').join('') + '</div>';
+};
+
+/* ---------- Important Task: a ticked task fades in place and says who ticked it (owner 09/11) ----------
+ * Each tick is also kept in DIEM_DANH (class "IMPORTANT TASK", name "<class> · <task>"), so the trail survives a reload. */
+const TASK_CLS = 'IMPORTANT TASK', taskTicked = new Set();
+const taskName = t => (Q.clean(t.cls) + ' · ' + Q.clean(t.what)).slice(0, 150);
+const tickTaskBeforeTrail = tickTask;
+tickTask = async function (week, task) {
+  if (!task) return;
+  const was = !!task.done;
+  taskTicked.add(week.tab + '|' + task.row);
+  await tickTaskBeforeTrail(week, task);
+  if (!!task.done === was) return;
+  try { if (!logs.marks) await loadMarks(); } catch (e) {}
+  if (logs.marks) appendMark({ day: today(), cls: TASK_CLS, lesson: '', start: 0 }, { row: '', name: taskName(task), eng: '' }, task.done ? 'Đã xong' : 'Bỏ Đã xong');
+  render();
+};
+function taskTrail(t) {
+  if (!logs.marks) return null;
+  const hit = logs.marks.rows.filter(r => r.cls === TASK_CLS && r.name === taskName(t) && /Đã xong$/.test(r.status)).pop();
+  return hit && hit.status === 'Đã xong' ? hit : null;
+}
+const taskRowBeforeTrail = taskRow;
+taskRow = function (t, week, canTick) {
+  let out = taskRowBeforeTrail(t, week, canTick);
+  if (!t.done) return out;
+  const tr = taskTrail(t), when = tr ? ' · ' + esc(tr.by || '?') + ' ' + esc(String(tr.at || '').slice(11, 16) + ' ' + String(tr.at || '').slice(0, 5)) : '';
+  out = out.replace('<div class="card row">', '<div class="card row task-done">');
+  return out.replace(/<\/div><\/div><\/div>$/, '<div class="small muted trail">✓ ' + T('Đã xong', 'Done') + when + '</div></div></div></div>');
 };
