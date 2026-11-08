@@ -454,6 +454,12 @@
   @keyframes livePulse { 50% { opacity: .65; } }
   @media (prefers-reduced-motion: reduce) { .tag.live { animation: none; } }
   .rv-en-i { font-style: normal; font-weight: 500; font-size: 11px; opacity: .75; }
+  .rv-flag.debt { background: #dc2626; color: #fff; font-size: 14px; }
+  .rv-name { flex-wrap: wrap; row-gap: 4px; }
+  .rv-name .ll-name { flex: 0 0 auto; max-width: 100%; }
+  .rv-flags { flex: 1 1 100%; margin-left: 0; }
+  .rv-flag.debt { white-space: normal; text-align: left; border-radius: 10px; }
+  .rv-flag.debt .rv-en-i { opacity: .85; }
 </style>
 </head>
 <body>

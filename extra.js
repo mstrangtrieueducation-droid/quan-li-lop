@@ -1521,13 +1521,10 @@ function owedOf(ctx) {
 function pupilFlags(ctx, r) {
   const m = ctx.marks.get(r.p.name), out = [];
   if (m && m.status === 'Đến muộn') out.push('<span class="rv-flag late">⏰ Muộn <i class="rv-en-i">Late</i></span>');
-  const owed = owedOf(ctx)[r.i] || [], miss = owed.filter(x => !x.wrong), redo = owed.filter(x => x.wrong);
-  const dm = d => d.slice(8, 10) + '/' + d.slice(5, 7), cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
-  const what = x => x.practice ? (x.label || 'Tự luyện') : (x.lesson ? 'Video tiết ' + Number(x.lesson) : 'Video ' + dm(x.day)) + (x.label ? ' ' + cap(x.label) : '');
-  const say = xs => xs.slice(0, 2).map(what).join(' · ') + (xs.length > 2 ? ' +' + (xs.length - 2) : '');
-  const full = xs => xs.map(x => what(x) + ' (' + dm(x.day) + ')').join('\n');
-  if (miss.length) out.push('<span class="rv-flag owe" title="' + esc(full(miss)) + '">🎥 Chưa nộp: ' + esc(say(miss)) + ' <i class="rv-en-i">Not handed in</i></span>');
-  if (redo.length) out.push('<span class="rv-flag redo" title="' + esc(full(redo)) + '">↻ Làm lại: ' + esc(say(redo)) + ' <i class="rv-en-i">Redo</i></span>');
+  // Owner 08/11: one short red chip that still stings: what is owed, by lesson, and whether it was filmed wrong.
+  const owed = owedOf(ctx)[r.i] || [], dm = d => d.slice(8, 10) + '/' + d.slice(5, 7);
+  const what = x => (x.practice ? (x.label || 'Tự luyện').replace(/^Tự luyện video/i, 'Tự luyện') : (x.lesson ? 'Tiết ' + Number(x.lesson) : dm(x.day)) + (x.label ? ' ' + x.label.toLowerCase() : '')) + (x.wrong ? ' (quay sai)' : '');
+  if (owed.length) out.push('<span class="rv-flag debt" title="' + esc(owed.map(x => what(x) + ' · ' + dm(x.day)).join('\n')) + '">⛔ Nợ video: ' + esc(owed.slice(0, 2).map(what).join(', ') + (owed.length > 2 ? ' +' + (owed.length - 2) : '')) + ' <i class="rv-en-i">Missing video</i></span>');
   return out.length ? '<span class="rv-flags">' + out.join('') + '</span>' : '';
 }
 
