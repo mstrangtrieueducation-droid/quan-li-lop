@@ -1603,7 +1603,7 @@ function attendText(m) {
   return '<span class="sum-muted">—</span>';
 }
 function summaryView(ctx) {
-  const s = ctx.session, t = ctx.tracker, behave = behaveFor(s), owed = owedOf(ctx), medal = ['🥇', '🥈', '🥉'];
+  const s = ctx.session, t = ctx.tracker, behave = behaveFor(s), owed = totalOwed(ctx), medal = ['🥇', '🥈', '🥉'];
   const rows = t.pupils.map((p, i) => { const m = ctx.marks.get(p.name); return { p, i, m, stars: starsOf(ctx, p), off: !!m && (m.status === NGHI || Q.ABSENT.includes(m.status)), b: behave.get(p.name) }; })
     .sort((a, b) => a.off - b.off || b.stars - a.stars || a.i - b.i);
   const scores = [...new Set(rows.filter(r => !r.off && r.stars).map(r => r.stars))].sort((a, b) => b - a);
@@ -1618,17 +1618,17 @@ function summaryView(ctx) {
       (noStars ? '' : '<td class="sum-stars">' + (r.off ? '' : '⭐ ' + r.stars) + '</td>') +
       (noGrade ? '' : '<td>' + (g && g !== '/' ? '<span class="sum-g g' + g[0] + '">' + esc(g) + '</span>' + (gp.why && g !== 'A+' ? '<div class="sum-why">' + esc(gp.why) + '</div>' : '') : '') + '</td>') +
       '<td class="sum-remind">' + (warned ? '<span class="sum-warn">⚠️ Cảnh cáo' + (warned > 1 ? ' ×' + warned : '') + '</span>' + (remind ? '<br>' : '') : '') + remind + '</td>' +
-      '<td class="sum-debt">' + (debt.length ? esc(debt.join(', ')) : '<span class="sum-ok">Đủ</span>') + '</td></tr>';
+      '<td class="sum-debt">' + (debt.length ? '<b>Nợ ' + debt.length + ' video:</b> ' + esc(debt.join(', ')) : '<span class="sum-ok">Không nợ ✓</span>') + '</td></tr>';
   }).join('');
-  const head = '<tr><th></th><th>Học sinh</th><th>Điểm danh</th>' + (noStars ? '' : '<th>Sao</th>') + (noGrade ? '' : '<th>BTVN</th>') + '<th>Nhắc nhở</th><th>Video còn nợ</th></tr>';
+  const head = '<tr><th></th><th>Học sinh</th><th>Điểm danh</th>' + (noStars ? '' : '<th>Sao</th>') + (noGrade ? '' : '<th>Bài tập sách giấy</th>') + '<th>Nhắc nhở</th><th>Video còn nợ đến lúc chốt (' + sumStamp(t.at).replace(' ngày ', ', ') + ')</th></tr>';
   return '<div class="sum-bar"><button class="quiet" data-act="llSumClose">‹ ' + T('Quay lại màn hình lớp', 'Back to the class screen') + '</button><span class="spacer"></span>' +
     '<button class="quiet" data-act="llSumRefresh">↻ ' + T('Đọc lại sheet', 'Re-read the sheet') + '</button><span class="small muted">' + T('Chụp phần khung trắng bên dưới để gửi phụ huynh.', 'Take a photo of the white sheet below for parents.') + '</span></div>' +
     '<div class="sum-sheet"><div class="sum-top"><img src="logo.png" alt="" width="44" height="44"><div><div class="sum-title">' + esc(s.cls) + ' · Tiết ' + esc(s.lesson) + '</div>' +
-    '<div class="sum-sub">' + esc(Q.dayText(s.day, 'vi')) + ' · ' + sessionTime(s) + (s.teacher ? ' · GV ' + esc(s.teacher) : '') + '</div>' +
+    '<div class="sum-sub">' + esc(Q.dayText(s.day, 'vi')) + ' · ' + sessionTime(s) + '</div>' +
     (s.book || s.detail ? '<div class="sum-sub">' + esc([s.book, Q.clean(s.detail).split('\n')[0]].filter(Boolean).join(' · ')) + '</div>' : '') + '</div>' +
     '<div class="sum-count"><b>' + here + '/' + t.pupils.length + '</b><span>có mặt</span></div></div>' +
     '<table class="sum-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
-    '<div class="sum-note">Video còn nợ tính đến <b>' + sumStamp(t.at) + '</b>. Bài con nộp sau thời điểm này chưa có trong bảng, bố mẹ xem trên trang học tập của con nhé.</div></div>';
+    '<div class="sum-note">Video còn nợ là <b>tổng các bài con chưa nộp hoặc phải quay lại, tính đến lúc chốt buổi: ' + sumStamp(t.at) + '</b>. Bài nộp sau thời điểm này chưa có trong bảng, bố mẹ xem trên trang học tập của con nhé.</div></div>';
 }
 const viewLenLopBeforeSummary = viewLenLop;
 viewLenLop = function () {
@@ -1646,3 +1646,56 @@ llAction = function (act, i, v) {
 };
 // The class screen does not redraw by itself every 30 s; at the end of the lesson it switches to the summary once.
 setInterval(() => { if (view === 'lenlop' && current && llSummary.mode === null && lessonEnded(current) && !document.querySelector('.sum-sheet')) render(); }, 20000);
+
+/* ---------- Live data on the class page and class screen (owner 08/11: "đảm bảo tất cả dữ liệu phải live, update ngay lập tức mà không hết quota") ----------
+ * While a class is open and the page is visible: new roll-call rows every 30 s (only the rows added since the last read, one request),
+ * the class sheet and the behaviour log every 60 s (three requests), never while this device still has unsent changes for that sheet,
+ * and never redrawing under the teacher's finger. About 5 requests a minute per open class, well inside Google's 60. */
+const LIVE_MARKS_MS = 30000, LIVE_SHEET_MS = 60000;
+const liveAt = { marks: 0, sheet: 0, key: '' };
+let liveBusy = false;
+async function liveMarks() {
+  if (!logs.marks || !marksCount) return loadMarks(true);
+  const [rows, [count = []]] = await batchGet(CONFIG.diemDanhId, ['DIEM_DANH!A' + Math.max(2, marksCount - 4) + ':L', 'DIEM_DANH!N1']);
+  const n = Number(count[0]) || marksCount, fresh = (rows || []).filter(r => r && r.length && Q.clean(r[0]));
+  // A few rows overlap the last read so the range always stays inside the sheet; a repeated row changes nothing (newest per pupil wins).
+  if (fresh.length) logs.marks.rows.push(...fresh.map(markOf));
+  marksCount = Math.max(marksCount, n);
+  logs.marks.at = Date.now();
+}
+setInterval(async () => {
+  if (liveBusy || document.visibilityState !== 'visible' || !me || !current || !['lop', 'lenlop'].includes(view)) return;
+  const key = Q.sessionKey(current);
+  if (liveAt.key !== key) { liveAt.key = key; liveAt.marks = liveAt.sheet = Date.now(); return; }
+  liveBusy = true;
+  try {
+    const now = Date.now(), c = classOf(current), jobs = [];
+    if (now - liveAt.marks >= LIVE_MARKS_MS) { liveAt.marks = now; jobs.push(liveMarks()); }
+    const pending = outbox.some(x => (x.kind === 'cell' && c && x.classKey === c.key) || (x.kind === 'append' && x.tab === 'HANH_VI'));
+    if (c && !pending && now - liveAt.sheet >= LIVE_SHEET_MS) { liveAt.sheet = now; jobs.push(loadTracker(c, true), loadBehave(true)); }
+    if (!jobs.length) return;
+    await Promise.all(jobs);
+    if (!(view === 'lenlop' && Date.now() < llFreezeUntil)) render();
+  } catch (e) { /* a missed refresh is retried on the next tick */ }
+  finally { liveBusy = false; }
+}, 10000);
+
+// Everything still owed up to the summary (the class sheet's last 60 days), not only the last two weeks the class screen shows.
+function totalOwed(ctx) {
+  const t = ctx.tracker, day = ctx.session.day, found = t.pupils.map(() => []);
+  const assigned = cols => t.pupils.length < 3 || t.pupils.some(p => cols.some(c => Q.videoState(t.cell(p.row, c)) === 'done'));
+  t.blocks.filter(b => b.date && b.date < day && b.videos.length).forEach(b => {
+    const cols = b.videos.map(v => v.col);
+    if (!assigned(cols)) return;
+    t.pupils.forEach((p, i) => {
+      if (p.since && b.date < p.since) return;
+      if (b.grade >= 0 && Q.isAbsentMark(t.cell(p.row, b.grade))) return;
+      b.videos.forEach(v => { const st = Q.videoState(t.cell(p.row, v.col)); if (st === 'missing' || st === 'wrong') found[i].push({ col: v.col, day: b.date, lesson: b.lesson, label: v.label, wrong: st === 'wrong' }); });
+    });
+  });
+  (t.practices || []).filter(p => p.due < day).forEach(x => {
+    if (!assigned([x.col])) return;
+    t.pupils.forEach((p, i) => { if (p.since && x.due < p.since) return; const st = Q.videoState(t.cell(p.row, x.col)); if (st === 'missing' || st === 'wrong') found[i].push({ col: x.col, day: x.due, lesson: '', label: x.label, wrong: st === 'wrong', practice: true }); });
+  });
+  return found;
+}
