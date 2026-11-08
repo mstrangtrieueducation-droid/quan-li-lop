@@ -224,11 +224,13 @@
 
   // The block of a session: by lesson number first, because a wrong date in a header must not hide the block.
   function findBlock(blocks, session) {
-    const byLesson = blocks.filter(b => b.lesson && b.lesson === String(session.lesson));
+    // "04" in the sheet and "4" in the Schedule are the same lesson.
+    const num = x => String(x == null ? '' : x).trim().replace(/^0+(?=\d)/, ''), want = num(session.lesson);
+    const byLesson = blocks.filter(b => b.lesson && num(b.lesson) === want);
     const hit = byLesson.find(b => b.date === session.day) || byLesson[0] || blocks.find(b => b.date === session.day);
     if (!hit) return { block: null, problem: 'thieu' };
     if (hit.date !== session.day) return { block: hit, problem: 'ngay' };
-    if (hit.lesson !== String(session.lesson)) return { block: hit, problem: 'tiet' };
+    if (num(hit.lesson) !== want) return { block: hit, problem: 'tiet' };
     return { block: hit, problem: '' };
   }
 
