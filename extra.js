@@ -2389,3 +2389,16 @@ loadTracker = async function (cls, force, light) {
   outbox.filter(x => x.kind === 'cell' && x.classKey === cls.key).forEach(x => t.set(x.row, x.col, x.value === '' ? '' : String(x.value)));
   return t;
 };
+
+/* ---------- Class boards switched off (owner 08/11: "thôi dừng các bảng lớp đi, không cần đâu") ----------
+ * No pairing code or QR any more: the sign-in button, the #bang link and the Điều hành › Màn hình lớp tab are gone.
+ * Teachers keep the class screen (Lên lớp) on their own device. Boards paired earlier keep working until a manager removes them. */
+const BOARDS_OFF = true;
+if (BOARDS_OFF) {
+  boardStart = function () {};
+  const bi = PANELS.findIndex(p => p[0] === 'manhinh');
+  if (bi >= 0) PANELS.splice(bi, 1);
+  if (panel === 'manhinh') panel = 'tong';
+  const btn = document.querySelector('[data-act="boardStart"]');
+  if (btn) btn.remove();
+}
