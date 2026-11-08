@@ -3420,3 +3420,86 @@ const dashTilesBeforeVivid = dashTiles;
 dashTiles = function (week) { return vividTiles(dashTilesBeforeVivid(week)); };
 const viewScheduleBeforeVivid = viewSchedule;
 viewSchedule = function (week) { return vividTiles(viewScheduleBeforeVivid(week)); };
+
+/* ---------- Lương, Hợp đồng, Người dùng: KPI cards, flat rows, details on tap (owner 09/11) ---------- */
+Object.assign(ICO, {
+  wallet: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M16 15h2"/>',
+  coin: '<circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .9-3 2s1.3 1.7 3 2 3 .9 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/>',
+  clockx: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'
+});
+const money = s => Number(String(s || '').replace(/[^\d]/g, '')) || 0;
+const fmtMoney = n => n.toLocaleString('vi-VN') + ' đ';
+const dmy = d => d ? String(viDate(d)).slice(0, 5) + '/' + String(d).slice(2, 4) : '—';
+
+// Lương: the explanation becomes three date pills; the owner's list becomes KPI cards and one line per person.
+const viewLuongBeforeKpi = viewLuong;
+viewLuong = function () {
+  let out = viewLuongBeforeKpi();
+  const d = isOwner() ? pay.all : pay.mine;
+  if (d && d.dates) out = out.replace(/<p class="small muted">(Ngày |Shows )[^<]*<\/p>/, '<div class="pls">' + pill('cal', T('Hiện ', 'Shows ') + dmy(d.dates.show)) + pill('check', T('Kiểm tra đến ', 'Check by ') + dmy(d.dates.check)) + pill('wallet', T('Trả lương ', 'Paid ') + dmy(d.dates.pay)) + '</div>');
+  if (!isOwner() || !d || pay.err || (pay.person && pay.mine)) return out;
+  const rows = d.rows || [], cut = out.indexOf('<div class="count">');
+  if (cut < 0 || !rows.length) return out;
+  const isPaid = r => r.state && r.state.paid, ok = r => r.state && r.state.check && r.state.check.action === 'Đúng' && !r.state.check.stale, wrong = r => r.state && r.state.check && r.state.check.action === 'Báo sai';
+  const total = rows.reduce((n, r) => n + money(r.net), 0), paidSum = rows.filter(isPaid).reduce((n, r) => n + money(r.net), 0);
+  let h = out.slice(0, cut) + '<div class="kpi4">' + kpi4Card('wallet', 'indigo', T('Tổng lương', 'Total pay'), fmtMoney(total), rows.length + T(' người', ' people')) +
+    kpi4Card('coin', 'green', T('Đã trả', 'Paid'), fmtMoney(paidSum), rows.filter(isPaid).length + T(' người', ' people')) +
+    kpi4Card('clockx', total - paidSum ? 'red' : 'green', T('Chưa trả', 'Unpaid'), fmtMoney(total - paidSum), rows.filter(r => !isPaid(r)).length + T(' người', ' people')) +
+    kpi4Card('check', rows.some(wrong) ? 'red' : 'amber', T('Đã xác nhận', 'Confirmed'), rows.filter(ok).length + '/' + rows.length, rows.some(wrong) ? rows.filter(wrong).length + T(' báo sai', ' wrong') : '') + '</div>';
+  h += '<div class="hr-tbl pay-tbl">' + rows.map(r => {
+    const st = wrong(r) ? ['bad', T('Báo sai', 'Wrong')] : r.state && r.state.check && r.state.check.stale ? ['warn', T('Đã sửa sau XN', 'Changed')] : ok(r) ? ['ok', T('Đã XN', 'Confirmed')] : ['', T('Chưa XN', 'Not checked')];
+    return '<div class="hr-row pay-row"><span class="av-chip"><i style="background:' + avColor(Q.key(r.name)) + '">' + esc(initials(r.name)) + '</i><span><b>' + esc(titleCase(r.name)) + '</b></span></span><span class="chip">' + esc(r.tab) + '</span>' +
+      '<span class="pay-st"><span class="tag ' + st[0] + '">' + st[1] + '</span>' + (isPaid(r) ? '<span class="tag ok">' + T('Đã trả', 'Paid') + '</span>' : '') + '</span><b class="pay-net">' + esc(r.net || '') + '</b>' +
+      (r.person ? '<span class="pay-btns"><button class="quiet" data-act="payOpen" data-p="' + esc(r.person) + '">' + T('Chi tiết ▸', 'Details ▸') + '</button>' + (isPaid(r) ? '<button class="quiet" data-act="payPaid" data-v="Bỏ đã trả" data-p="' + esc(r.person) + '" title="' + T('Bỏ đánh dấu đã trả', 'Unmark paid') + '">↺</button>' : '<button class="good" data-act="payPaid" data-v="Đã trả" data-p="' + esc(r.person) + '">' + ico('check') + T('Trả', 'Pay') + '</button>') + '</span>'
+        : '<span class="small muted">' + T('chưa có link', 'no app user') + '</span>') + '</div>';
+  }).join('') + '</div>';
+  return h;
+};
+
+// Hợp đồng: KPI cards, one line per person with a coloured term badge; everything else in a pop-up.
+let hdOpen = '';
+const viewHopDongBeforeKpi = viewHopDong;
+viewHopDong = function () {
+  const out = viewHopDongBeforeKpi(), cut = out.indexOf('<div class="count">'), formAt = out.indexOf('<div class="card row"><b>' + T('Thêm hoặc gia hạn hợp đồng', 'Add or renew'));
+  if (!hd.rows || cut < 0 || formAt < 0) return out;
+  const latest = new Map(); hd.rows.forEach(r => latest.set(Q.key(r.person), r));
+  const now = today(), soon = Q.addDays(now, 30), list = [...latest.values()].filter(r => r.status !== 'Đã xoá');
+  const state = r => r.end && r.end < now ? ['bad', T('Hết hạn', 'Expired')] : r.end && r.end <= soon ? ['warn', T('Sắp hết hạn', 'Ends soon')] : r.trial && r.trial >= now ? ['warn', T('Thử việc', 'Probation')] : ['ok', T('Còn hạn', 'In force')];
+  const without = people.filter(p => !/chủ/i.test(p.role) && !latest.has(Q.key(p.name))).map(p => p.name);
+  const n = k => list.filter(r => state(r)[0] === k).length;
+  let h = out.slice(0, cut) + '<div class="kpi4">' + kpi4Card('file', 'indigo', T('Hợp đồng', 'Contracts'), list.length, '') + kpi4Card('shield', 'green', T('Còn hạn', 'In force'), n('ok'), '') +
+    kpi4Card('clockx', n('warn') ? 'amber' : 'green', T('Sắp hết / thử việc', 'Soon / probation'), n('warn'), '') + kpi4Card('alert', n('bad') + without.length ? 'red' : 'green', T('Hết hạn / chưa có', 'Expired / none'), n('bad') + without.length, '') + '</div>';
+  h += '<div class="hr-tbl">' + without.map(p => '<div class="hr-row hd-row"><span class="dot d-red"></span><b>' + esc(titleCase(p)) + '</b><span class="small muted">—</span><span class="tag bad">' + T('Chưa có HĐ', 'No contract') + '</span><span></span></div>').join('') +
+    list.sort((a, b) => (a.end || '9999').localeCompare(b.end || '9999')).map(r => { const [c, t] = state(r); return '<div class="hr-row hd-row"><span class="dot d-' + (c === 'ok' ? 'green' : c === 'warn' ? 'amber' : 'red') + '"></span><b>' + esc(titleCase(r.person)) + '</b><span class="small muted hd-dates">' + esc(dmy(r.start)) + ' → ' + esc(r.end ? dmy(r.end) : T('không hạn', 'open')) + '</span><span class="tag ' + c + '">' + t + '</span><button class="quiet" data-act="hdOpen" data-p="' + esc(r.person) + '">' + T('Chi tiết ▸', 'Details ▸') + '</button></div>'; }).join('') + '</div>';
+  h += out.slice(formAt);
+  const o = hdOpen && latest.get(Q.key(hdOpen));
+  if (o) { const [c, t] = state(o), line = (k, v) => v ? '<div class="kv"><span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>' : '';
+    h += '<div class="dash-veil" data-act="hdClose"></div><div class="dash-modal" role="dialog"><div class="dash-head"><b>' + esc(titleCase(o.person)) + '</b><span class="tag ' + c + '">' + t + '</span><span class="spacer"></span><button class="quiet" data-act="hdClose" aria-label="' + T('Đóng', 'Close') + '">✕</button></div><div class="dash-body kvs">' +
+      line(T('Loại', 'Type'), o.type) + line(T('Số', 'No.'), o.no) + line(T('Ngày ký', 'Signed'), o.signed && viDate(o.signed)) + line(T('Bắt đầu', 'Start'), o.start && viDate(o.start)) + line(T('Kết thúc', 'End'), o.end ? viDate(o.end) : T('Không thời hạn', 'Open-ended')) + line(T('Thử việc đến', 'Probation to'), o.trial && viDate(o.trial)) + line(T('Ghi chú', 'Note'), o.note) + '</div></div>'; }
+  return h;
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="hdOpen"],[data-act="hdClose"]');
+  if (b) { hdOpen = b.dataset.act === 'hdOpen' ? b.dataset.p : ''; render(); }
+});
+
+// Người dùng: profile cards with an avatar coloured by role; shorter wording.
+const ROLE_COLOR = { 'Chủ': '#C026D3', 'Quản lí': '#4F46E5', 'GV': '#0284C7', 'TA': '#D97706' };
+const viewNguoiBeforeCards = viewNguoi;
+viewNguoi = function () {
+  let out = viewNguoiBeforeCards();
+  out = out.replace(/<p>Chọn tên trong danh sách[^<]*<\/p>/, '').replace(/<p class="sub">Mỗi người một link riêng[^<]*<\/p>/, '<p class="sub small muted">Mỗi người một link riêng · xoá là hết hiệu lực</p>')
+    .replace(/<p>Dùng trên máy ở lớp: [^<]*<\/p>/, '<p class="small muted">Dùng ở máy trên lớp · chỉ thấy lịch và màn hình lớp</p>');
+  const at = out.indexOf('<div class="card"><h3>Đang có link</h3>');
+  if (at < 0 || !nguoi || !nguoi.people.length) return out;
+  const by = {}; nguoi.people.forEach(p => { (by[p.role] = by[p.role] || []).push(p); });
+  const order = ['Chủ', 'Quản lí', 'GV', 'TA'].concat(Object.keys(by).filter(r => !['Chủ', 'Quản lí', 'GV', 'TA'].includes(r)));
+  const cards = order.filter(r => by[r]).map(r => '<div class="part"><h2>' + esc(r === 'Chủ' ? 'Admin' : r) + '</h2><span>' + by[r].length + '</span></div><div class="pf-grid">' + by[r].sort((a, b) => a.name.localeCompare(b.name, 'vi')).map(p => {
+    const col = ROLE_COLOR[p.role] || '#475569', self = p.name === me.name && p.role === me.role;
+    return '<div class="pf"><i style="background:' + col + '">' + esc(initials(p.name)) + '</i><div class="pf-t"><b>' + esc(titleCase(p.name)) + '</b><span class="pf-role" style="color:' + col + ';background:' + col + '1a">' + esc(p.role === 'Chủ' ? 'Admin' : p.role) + '</span><small>' + T('Cấp ', 'Since ') + esc(String(p.at || '').slice(0, 10)) + '</small></div>' +
+      (self ? '<span class="tag">' + T('Bạn', 'You') + '</span>' : '<button class="quiet pf-x" data-act="nguoiXoa" data-id="' + esc(p.id) + '" title="' + T('Xoá link', 'Remove link') + '" aria-label="' + T('Xoá link của ', 'Remove link of ') + esc(p.name) + '">✕</button>') + '</div>';
+  }).join('') + '</div>').join('');
+  return out.slice(0, at) + '<div class="card"><h3>Đang có link · ' + nguoi.people.length + '</h3>' + cards + '</div>';
+};
