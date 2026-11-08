@@ -448,6 +448,11 @@
   :root[data-theme="dark"] .rv-flag.owe { background: #4c1d1d; color: #fca5a5; } :root[data-theme="dark"] .rv-flag.redo { background: #4a2a12; color: #fdba74; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .rv-flag.owe { background: #4c1d1d; color: #fca5a5; } :root:not([data-theme="light"]) .rv-flag.redo { background: #4a2a12; color: #fdba74; } }
   .rv-en { display: block; font-size: 11px; font-weight: 500; opacity: .7; line-height: 1.1; }
+  /* Live lesson tags (owner 08/11) */
+  .tag.live { background: #16a34a; color: #fff; animation: livePulse 2s ease-in-out infinite; }
+  .tag.soon { background: var(--warn-soft); color: var(--warn); }
+  @keyframes livePulse { 50% { opacity: .65; } }
+  @media (prefers-reduced-motion: reduce) { .tag.live { animation: none; } }
 </style>
 </head>
 <body>

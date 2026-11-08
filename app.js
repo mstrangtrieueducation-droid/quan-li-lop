@@ -274,7 +274,12 @@ function setAbsence(ctx, pupil, status) {
 /* ---------- Lên lớp: stars and absence on the classroom touch screen ---------- */
 const NGHI = 'GV báo nghỉ';
 const starsOf = (ctx, p) => { const v = ctx.block && ctx.block.stars >= 0 ? Q.clean(ctx.tracker.cell(p.row, ctx.block.stars)) : ''; return /^\d+$/.test(v) ? Number(v) : 0; };
-function canTeach(s) { return isManager() || ([s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)) && Q.rollCall(s, marksOf(s), today(), minutesNow()).open); }
+// Owner 08/11: 30 minutes after a lesson ends it locks for teachers and TAs (A/B/F, stars, attendance), so nothing is tapped by mistake later; managers can still correct.
+const CLOSE_AFTER = 30;
+const lessonClosed = s => s.day < today() || (s.day === today() && minutesNow() > s.end + CLOSE_AFTER);
+// A lesson running now, or starting within 15 minutes.
+function liveTag(s) { if (s.off || s.day !== today()) return ''; const n = minutesNow(); if (n >= s.start && n < s.end) return '<span class="tag live">● ' + T('Đang diễn ra', 'In progress') + '</span>'; if (n >= s.start - 15 && n < s.start) return '<span class="tag soon">' + T('Sắp bắt đầu', 'Starting soon') + '</span>'; if (n >= s.end && n <= s.end + CLOSE_AFTER) return '<span class="tag">' + T('Vừa xong', 'Just ended') + '</span>'; return ''; }
+function canTeach(s) { return isManager() || ([s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)) && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s)); }
 // Everyone moves to their new place smoothly, so the class sees who overtook whom.
 function withMoves(work) {
   const before = new Map([...document.querySelectorAll('.ll-row')].map(el => [el.dataset.name, el.getBoundingClientRect().top]));
@@ -528,7 +533,7 @@ function sessionCard(s) {
   const c = classOf(s), k = kindOf(s), name = k === 'tutor' ? Q.clean(s.cls).replace(/^TUTOR\s*/i, '') : s.cls;
   const people = [[T('GV', 'Teacher'), s.teacher], [helperRole(s), s.video], [T('Chủ nhiệm', 'Homeroom'), s.ta]].filter(x => x[1]).map(x => '<span>' + x[0] + ' <b>' + esc(Q.key(x[1])) + '</b></span>').join('');
   const inner = '<div class="s-time"><b>' + Q.clock(s.start) + '</b><span>' + Q.clock(s.end) + '</span></div><div class="s-body">' +
-    '<div class="s-head">' + (k === 'tutor' ? '<span class="kind k-tutor">TUTOR</span>' : '') + '<strong>' + esc(name) + '</strong>' + (s.off ? '<span class="tag bad">' + T('Nghỉ', 'Off') + '</span>' : '') + '<span class="spacer"></span><span class="room small">' + esc(s.site || T('Chưa ghi phòng', 'No room listed')) + '</span></div>' +
+    '<div class="s-head">' + (k === 'tutor' ? '<span class="kind k-tutor">TUTOR</span>' : '') + '<strong>' + esc(name) + '</strong>' + liveTag(s) + (s.off ? '<span class="tag bad">' + T('Nghỉ', 'Off') + '</span>' : '') + '<span class="spacer"></span><span class="room small">' + esc(s.site || T('Chưa ghi phòng', 'No room listed')) + '</span></div>' +
     (s.book ? '<div class="s-book">' + esc(s.book) + (s.lesson ? T(' · Tiết ', ' · Lesson ') + esc(s.lesson) : '') + '</div>' : '') +
     (s.detail ? '<div class="detail">' + esc(s.detail) + '</div>' : '') +
     (s.also.length ? '<div class="detail">' + T('Cùng buổi: ', 'Same session: ') + esc(s.also.join(', ')) + '</div>' : '') +
@@ -839,7 +844,7 @@ const stateText = st => lang === 'en' ? ({ 'Vắng chờ xác minh': 'Absent, aw
 function viewClass() {
   const ctx = classContext(current), s = ctx.session, tracker = ctx.tracker;
   const assigned = [s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name));
-  const roll = Q.rollCall(s, ctx.marks, today(), minutesNow()), canEdit = isManager() || (assigned && roll.open);
+  const roll = Q.rollCall(s, ctx.marks, today(), minutesNow()), canEdit = isManager() || (assigned && roll.open && !lessonClosed(s));
   let h = '<div><button class="quiet" data-act="back">‹ ' + T('Lịch', 'Schedule') + '</button></div><div class="card class-head"><h1>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</h1>' +
     '<div>' + esc(dayLabel(s.day)) + ' · <b>' + sessionTime(s) + '</b> · <span class="room">' + esc(s.site || T('Chưa ghi phòng', 'No room listed')) + '</span></div>' +
     '<div class="detail">' + esc(s.book) + (s.detail ? '\n' + esc(s.detail) : '') + '</div>' +
@@ -855,7 +860,7 @@ function viewClass() {
   h += '<div class="count"><span>' + present + '/' + tracker.pupils.length + T(' có mặt', ' present') + '</span>' +
     (roll.noRollCall ? '<span class="tag bad">' + T('Chưa điểm danh', 'Attendance not taken') + '</span>' : roll.past ? (waiting ? '<span class="tag bad">' + waiting + T(' vắng chờ xác minh', ' absent, awaiting check') + '</span>' : '<span class="tag ok">' + T('Đủ', 'All here') + '</span>') : '<span class="tag">' + T('Chốt lúc ', 'Closes at ') + Q.clock(roll.closeAt) + '</span>') + '</div>';
   if (group) h += '<div class="notice">' + T('Đây là buổi nhóm nên danh sách là cả lớp, chỉ tick các em học nhóm này.', 'This is a group session showing the whole class, so tick only the pupils in this group.') + '</div>';
-  if (!canEdit) h += '<div class="notice">' + (assigned ? T('Điểm danh mở trước giờ học ' + Q.OPEN_BEFORE + ' phút.', 'Attendance opens ' + Q.OPEN_BEFORE + ' minutes before class.') : T('Chỉ xem được, buổi này không phân công cho Gmail này.', 'View only: this session is not assigned to this Gmail.')) + '</div>';
+  if (!canEdit) h += '<div class="notice">' + (assigned && lessonClosed(s) ? T('Buổi học đã kết thúc quá ' + CLOSE_AFTER + ' phút nên đã khoá, không sửa được nữa. Cần sửa thì báo quản lí.', 'This lesson ended more than ' + CLOSE_AFTER + ' minutes ago and is locked. Ask a manager to change anything.') : assigned ? T('Điểm danh mở trước giờ học ' + Q.OPEN_BEFORE + ' phút.', 'Attendance opens ' + Q.OPEN_BEFORE + ' minutes before class.') : T('Chỉ xem được, buổi này không phân công cho Gmail này.', 'View only: this session is not assigned to this Gmail.')) + '</div>';
   const owed = Q.owedVideos(tracker.pupils, tracker.blocks, tracker.practices, tracker.cell, s);
   h += '<div class="card">' + tracker.pupils.map((p, i) => {
     const m = ctx.marks.get(p.name), on = m && Q.PRESENT.includes(m.status), state = stateOf(p), value = ctx.block && ctx.block.grade >= 0 ? tracker.cell(p.row, ctx.block.grade) : '', g = Q.gradeOf(value);
