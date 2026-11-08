@@ -928,9 +928,9 @@ viewLenLop = function () {
         '<span class="ll-num rv-num" aria-label="' + r.stars + T(' sao', ' stars') + '">⭐ <b>' + r.stars + '</b></span>' +
         '<button class="ll-plus rv-plus" data-act="llStar" data-i="' + r.i + '"' + (starOk ? live : ' disabled') + ' aria-label="' + T('Thêm 1 sao cho ', 'Add a star for ') + esc(name) + '">+</button></div>') +
       TICKS.map((t, k) => '<button class="rv-tick' + (counts[t] ? ' on' : '') + '" data-act="llTick" data-i="' + r.i + '" data-k="' + k + '" data-v="' + k + '"' + live + '>' + biText(t) + badge(counts[t]) + '</button>').join('') +
-      '<button class="rv-warn' + (over ? ' hot' : '') + (warned ? ' on' : '') + '" data-act="llReason" data-i="' + r.i + '"' + live + '>⚠️ ' + T('Cảnh cáo', 'Warning') + badge(warned) + '</button>' +
+      '<button class="rv-warn' + (over ? ' hot' : '') + (warned ? ' on' : '') + '" data-act="llReason" data-i="' + r.i + '"' + live + '>⚠️ Cảnh cáo<small class="rv-en">Warning</small>' + badge(warned) + '</button>' +
       (group && !r.off ? '<button class="rv-here' + (r.here ? ' on' : '') + '" data-act="llHere" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.here + '">✓</button>' : '') +
-      (r.here && !r.off ? '' : '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? T('Nghỉ ✓', 'Absent ✓') : T('Nghỉ', 'Absent')) + '</button>') +
+      (r.here && !r.off ? '' : '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? 'Nghỉ ✓<small class="rv-en">Absent</small>' : 'Nghỉ<small class="rv-en">Absent</small>') + '</button>') +
       (histOpen ? histBox(ctx, r) : '') + '</div>';
   }).join('') + '</div>';
   const open = llReason != null ? rows.find(r => r.i === llReason) : null;
@@ -1520,14 +1520,14 @@ function owedOf(ctx) {
 }
 function pupilFlags(ctx, r) {
   const m = ctx.marks.get(r.p.name), out = [];
-  if (m && m.status === 'Đến muộn') out.push('<span class="rv-flag late">⏰ ' + T('Muộn', 'Late') + '</span>');
+  if (m && m.status === 'Đến muộn') out.push('<span class="rv-flag late">⏰ Muộn <i class="rv-en-i">Late</i></span>');
   const owed = owedOf(ctx)[r.i] || [], miss = owed.filter(x => !x.wrong), redo = owed.filter(x => x.wrong);
   const dm = d => d.slice(8, 10) + '/' + d.slice(5, 7), cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
-  const what = x => x.practice ? (x.label || T('Tự luyện', 'Practice')).replace(/^Tự luyện video/i, T('Tự luyện video', 'Practice video')) : (x.lesson ? T('Video tiết ', 'Video lesson ') + Number(x.lesson) : 'Video ' + dm(x.day)) + (x.label ? ' ' + cap(x.label) : '');
+  const what = x => x.practice ? (x.label || 'Tự luyện') : (x.lesson ? 'Video tiết ' + Number(x.lesson) : 'Video ' + dm(x.day)) + (x.label ? ' ' + cap(x.label) : '');
   const say = xs => xs.slice(0, 2).map(what).join(' · ') + (xs.length > 2 ? ' +' + (xs.length - 2) : '');
   const full = xs => xs.map(x => what(x) + ' (' + dm(x.day) + ')').join('\n');
-  if (miss.length) out.push('<span class="rv-flag owe" title="' + esc(full(miss)) + '">🎥 ' + T('Chưa nộp: ', 'Not handed in: ') + esc(say(miss)) + '</span>');
-  if (redo.length) out.push('<span class="rv-flag redo" title="' + esc(full(redo)) + '">↻ ' + T('Làm lại: ', 'Redo: ') + esc(say(redo)) + '</span>');
+  if (miss.length) out.push('<span class="rv-flag owe" title="' + esc(full(miss)) + '">🎥 Chưa nộp: ' + esc(say(miss)) + ' <i class="rv-en-i">Not handed in</i></span>');
+  if (redo.length) out.push('<span class="rv-flag redo" title="' + esc(full(redo)) + '">↻ Làm lại: ' + esc(say(redo)) + ' <i class="rv-en-i">Redo</i></span>');
   return out.length ? '<span class="rv-flags">' + out.join('') + '</span>' : '';
 }
 
