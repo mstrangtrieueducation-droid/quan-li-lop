@@ -150,7 +150,9 @@ async function loadTracker(cls, force, light) {
   const tab = quote(tabName), [rowsTop, roster] = top;
   const year = new Date().getFullYear();
   const pupils = [], isPupil = r => /^\d+$/.test(Q.clean((r || [])[0]));
-  roster.forEach((r, i) => { if (isPupil(r) && Q.clean(r[1])) pupils.push(Object.assign(Q.pupilOf([r[1], r[2]], i + 1), { phone: Q.clean(r[4]) })); });
+  // A marker row such as "IELTS 52.2" in column A starts a speaking group: its pupils belong to that group until the next marker.
+  let group = '';
+  roster.forEach((r, i) => { const a0 = Q.clean((r || [])[0]); if (/^[A-Z]+\s*\d+\.\d+$/i.test(a0)) group = Q.key(a0); if (isPupil(r) && Q.clean(r[1])) pupils.push(Object.assign(Q.pupilOf([r[1], r[2]], i + 1), { phone: Q.clean(r[4]), group })); });
   // The first pupil's row differs by class; everything above it is header.
   const firstPupil = rowsTop.findIndex(isPupil), head = firstPupil < 0 ? rowsTop : rowsTop.slice(0, firstPupil);
   const blocks = Q.trackerBlocks(head, year), practices = Q.practiceColumns(head, year);
@@ -872,7 +874,7 @@ function viewClass() {
   const waiting = tracker.pupils.filter(p => stateOf(p) === 'Vắng chờ xác minh').length;
   h += '<div class="count"><span>' + present + '/' + tracker.pupils.length + T(' có mặt', ' present') + '</span>' +
     (roll.noRollCall ? '<span class="tag bad">' + T('Chưa điểm danh', 'Attendance not taken') + '</span>' : roll.past ? (waiting ? '<span class="tag bad">' + waiting + T(' vắng chờ xác minh', ' absent, awaiting check') + '</span>' : '<span class="tag ok">' + T('Đủ', 'All here') + '</span>') : '<span class="tag">' + T('Chốt lúc ', 'Closes at ') + Q.clock(roll.closeAt) + '</span>') + '</div>';
-  if (group) h += '<div class="notice">' + T('Đây là buổi nhóm nên danh sách là cả lớp, chỉ tick các em học nhóm này.', 'This is a group session showing the whole class, so tick only the pupils in this group.') + '</div>';
+  if (group && !tracker.grouped) h += '<div class="notice">' + T('Đây là buổi nhóm nên danh sách là cả lớp, chỉ tick các em học nhóm này.', 'This is a group session showing the whole class, so tick only the pupils in this group.') + '</div>';
   if (isChot(s)) h += '<div class="notice ok">✅ ' + T('Buổi đã chốt lúc ', 'Lesson closed at ') + esc(String(chotOf(s).at || '').slice(11, 16) || '') + (chotOf(s).by ? T(' bởi ', ' by ') + esc(chotOf(s).by) : '') + T('. Không sửa được nữa.', '. It can no longer be changed.') + (isManager() ? ' <button class="quiet" data-act="chotUndo">' + T('Mở lại để sửa', 'Reopen') + '</button>' : T(' Cần sửa thì báo quản lí.', ' Ask a manager to change anything.')) + '</div>';
   else if (!canEdit) h += '<div class="notice">' + (assigned && lessonClosed(s) ? T('Buổi học đã kết thúc quá ' + CLOSE_AFTER + ' phút nên đã khoá, không sửa được nữa. Cần sửa thì báo quản lí.', 'This lesson ended more than ' + CLOSE_AFTER + ' minutes ago and is locked. Ask a manager to change anything.') : assigned ? T('Điểm danh mở trước giờ học ' + Q.OPEN_BEFORE + ' phút.', 'Attendance opens ' + Q.OPEN_BEFORE + ' minutes before class.') : T('Chỉ xem được, buổi này không phân công cho Gmail này.', 'View only: this session is not assigned to this Gmail.')) + '</div>';
   const owed = Q.owedVideos(tracker.pupils, tracker.blocks, tracker.practices, tracker.cell, s);
