@@ -1632,7 +1632,7 @@ function summaryView(ctx) {
     (s.book || s.detail ? '<div class="sum-sub">' + esc([s.book, Q.clean(s.detail).split('\n')[0]].filter(Boolean).join(' · ')) + '</div>' : '') + '</div>' +
     '<div class="sum-count"><b>' + here + '/' + t.pupils.length + '</b><span>có mặt</span></div></div>' +
     '<table class="sum-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
-    '<div class="sum-note">Video còn thiếu là <b>tổng các bài con chưa nộp hoặc phải quay lại, tính đến lúc chốt buổi: ' + sumStamp(t.at) + '</b>. Bài nộp sau thời điểm này chưa có trong bảng, bố mẹ xem trên trang học tập của con nhé.</div></div>';
+    '<div class="sum-note">Video còn thiếu là <b>các bài đã quá hạn mà con chưa nộp hoặc phải quay lại, tính đến lúc chốt buổi: ' + sumStamp(t.at) + '</b>. Bài nộp sau thời điểm này chưa có trong bảng, bố mẹ xem trên trang học tập của con nhé.</div></div>';
 }
 const viewLenLopBeforeSummary = viewLenLop;
 viewLenLop = function () {
@@ -1688,7 +1688,7 @@ setInterval(async () => {
 function totalOwed(ctx) {
   const t = ctx.tracker, day = ctx.session.day, found = t.pupils.map(() => []);
   const assigned = cols => t.pupils.length < 3 || t.pupils.some(p => cols.some(c => Q.videoState(t.cell(p.row, c)) === 'done'));
-  t.blocks.filter(b => b.date && b.date < day && b.videos.length).forEach(b => {
+  t.blocks.filter(b => b.date && b.date < day && b.videos.length && Q.videoDue(t.blocks, b) < day).forEach(b => {
     const cols = b.videos.map(v => v.col);
     if (!assigned(cols)) return;
     t.pupils.forEach((p, i) => {
@@ -1728,7 +1728,8 @@ function secOwedOf(ctx, p) {
   const hit = secOwedFor(ctx.session);
   if (!hit) return null;
   const x = hit.data.pupils.find(q => q.row === p.row) || hit.data.pupils.find(q => Q.key(q.name) === Q.key(p.name));
-  return x ? x.owed.filter(o => !o.due || o.due <= ctx.session.day) : [];
+  const s = ctx.session, started = s.day < today() || (s.day === today() && minutesNow() >= s.start);
+  return x ? x.owed.filter(o => o.due && (o.due < s.day || (o.due === s.day && started))) : [];
 }
 const shortTask = o => Q.clean(o.label).replace(/\s+/g, ' ').slice(0, 28) + (Q.clean(o.label).length > 28 ? '…' : '');
 const pupilFlagsBeforeSec = pupilFlags;
@@ -1792,7 +1793,7 @@ summaryView = function (ctx) {
     const cell = owed == null ? '<span class="sum-muted">Đang đọc…</span>' : owed.length ? '<b>Thiếu ' + owed.length + ' bài:</b> ' + esc(owed.map(o => Q.clean(o.label)).join('; ')) : '<span class="sum-ok">Đủ bài ✓</span>';
     return '<td class="sum-debt">' + cell + '</td></tr>';
   });
-  return h.replace(/<div class="sum-note">[\s\S]*?<\/div><\/div>$/, '<div class="sum-note">Bài còn thiếu là <b>các bài con chưa nộp tính đến lúc chốt buổi' + (stamp ? ': ' + stamp : '') + '</b>. Con thiếu bài thì chưa được vào học; bài nộp sau thời điểm này chưa có trong bảng.</div></div>');
+  return h.replace(/<div class="sum-note">[\s\S]*?<\/div><\/div>$/, '<div class="sum-note">Bài còn thiếu là <b>các bài đã quá hạn mà con chưa nộp, tính đến lúc chốt buổi' + (stamp ? ': ' + stamp : '') + '</b>. Con thiếu bài thì chưa được vào học; bài nộp sau thời điểm này chưa có trong bảng.</div></div>');
 };
 
 /* ---------- Review and close the lesson (owner 08/11) ---------- */
