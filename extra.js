@@ -2364,3 +2364,28 @@ llAction = function (act, i, v) {
   setBehave(ctx, pupil, tags, old ? old.note : '');
   render();
 };
+
+/* ---------- A re-read of the class sheet never takes back what this device just set (Angelo 08/11: stars "0 again") ----------
+ * The sheet is re-read every minute and whenever a class screen opens. A read that left before a tap, or came back while the
+ * tap was still waiting to be sent (stars go together every 10 s), used to put the old value back on screen; the next tap then
+ * counted from 0. Now every fresh read gets this device's unsent cells laid back on top, and the stars it sent in the last
+ * 2 minutes, so the screen keeps the teacher's numbers until the sheet itself shows them. */
+const KEEP_SENT_MS = 120000, sentCells = new Map();
+const writeCellsBeforeKeep = writeCells;
+writeCells = async function (file, items) {
+  await writeCellsBeforeKeep(file, items);
+  const at = Date.now();
+  items.filter(x => x.blind && x.classKey).forEach(x => sentCells.set(x.classKey + '|' + x.row + '|' + x.col, { row: x.row, col: x.col, value: x.value, at }));
+};
+const loadTrackerBeforeKeep = loadTracker;
+loadTracker = async function (cls, force, light) {
+  const t = await loadTrackerBeforeKeep(cls, force, light);
+  if (!t || !cls) return t;
+  const now = Date.now();
+  sentCells.forEach((x, k) => {
+    if (now - x.at > KEEP_SENT_MS) { sentCells.delete(k); return; }
+    if (k.startsWith(cls.key + '|')) t.set(x.row, x.col, x.value === '' ? '' : String(x.value));
+  });
+  outbox.filter(x => x.kind === 'cell' && x.classKey === cls.key).forEach(x => t.set(x.row, x.col, x.value === '' ? '' : String(x.value)));
+  return t;
+};
