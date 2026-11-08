@@ -1893,9 +1893,14 @@ dayParts = function (list) {
  * The tuition app is shown in a frame that stays alive while you move around, so it is not reloaded every time this page redraws.
  * It keeps its own sign-in on this device (the personal tuition link); nothing of it passes through this app. */
 const HOC_PHI_URL = '../hoc-phi/';
+// Once the link is in (pasted here, or the owner says so with "ẩn"), the bar is gone for good on this device (owner 08/11: "đã ấn link vào rồi thì bỏ cái header trên đầu đi").
+const hpDone = () => { try { return localStorage.getItem('ql-hp-ok') === '1'; } catch (e) { return false; } };
+const hpSetDone = () => { try { localStorage.setItem('ql-hp-ok', '1'); } catch (e) {} };
+document.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-act="hpHide"]')) { hpSetDone(); render(); } });
 function viewHocPhi() {
+  if (hpDone()) return '';
   return '<div class="hp-bar"><b>💰 ' + T('Học phí', 'Tuition') + '</b><span class="small muted">' + T('Lần đầu trên máy này: dán link học phí riêng của bạn vào ô bên cạnh rồi bấm Mở. Máy sẽ nhớ, lần sau không cần dán.', 'First time on this device: paste your personal tuition link and press Open; it is remembered.') + '</span>' +
-    '<input id="hpPaste" type="password" autocomplete="off" placeholder="' + T('Dán link học phí…', 'Paste the tuition link…') + '"><button class="primary" data-act="hpOpen">' + T('Mở', 'Open') + '</button><span class="spacer"></span><a class="small" href="' + HOC_PHI_URL + '" target="_blank" rel="noopener">' + T('Mở riêng', 'Open separately') + ' ↗</a></div>';
+    '<input id="hpPaste" type="password" autocomplete="off" placeholder="' + T('Dán link học phí…', 'Paste the tuition link…') + '"><button class="primary" data-act="hpOpen">' + T('Mở', 'Open') + '</button><span class="spacer"></span><button class="quiet" data-act="hpHide">' + T('Đã dán rồi · ẩn dòng này', 'Already done · hide') + '</button></div>';
 }
 function hocPhiFrame() {
   let f = document.getElementById('hpFrame');
@@ -1932,7 +1937,7 @@ document.addEventListener('click', e => {
   const box = document.getElementById('hpPaste'), link = String(box && box.value || '').trim(), base = new URL(HOC_PHI_URL, location.href).href;
   if (box) box.value = '';
   if (!link.startsWith(base)) return say(T('Link này không phải link trang học phí. Dán đúng link học phí cô Trang gửi.', 'This is not a tuition link.'), 'bad');
-  view = 'hocphi'; render();
+  hpSetDone(); view = 'hocphi'; render();
   const f = document.getElementById('hpFrame'); if (f) f.src = link;
 });
 
@@ -2162,3 +2167,49 @@ setInterval(async () => {
   panelLiveBusy = true; panelLiveAt = Date.now();
   try { await Promise.all([liveMarks(), panel === 'vang' ? Promise.resolve() : loadCaAll(true)]); const a = document.activeElement; if (!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) render(); } catch (e) {} finally { panelLiveBusy = false; }
 }, 10000);
+
+/* ---------- Lesson comment written into the sheet at the close (owner 08/11: "nếu mất tập trung thì nhận xét tương ứng chứ") ----------
+ * On "Xác nhận đúng, chốt buổi", each present pupil's "Nhận xét" cell of the lesson gets one line per reminder, in Vietnamese for
+ * parents; a pupil with none gets a short praise line. Lines the teacher typed in the sheet are kept under ours; our own lines
+ * (they start with ⚠️ ⛔ 👍 ⏰ ✓) are replaced, so closing again after a reopen never doubles them. The server colours warnings red. */
+const AUTO_LINE = /^(⚠️|⛔|👍|⏰|✓)/u;
+const COMMENT_LINES = {
+  'Mất tập trung': 'con còn mất tập trung, cần chú ý nghe giảng hơn.',
+  'Mất trật tự': 'con còn mất trật tự, cần giữ trật tự trong lớp.',
+  'Dùng điện thoại': 'con dùng điện thoại trong giờ học.',
+  'Làm việc riêng': 'con làm việc riêng, cần tập trung vào bài hơn.'
+};
+function lessonComment(counts, m) {
+  const x = n => n > 1 ? ' (' + n + ' lần)' : '', out = [];
+  if (m && m.status === 'Đến muộn') out.push('⏰ Con đến muộn.');
+  if (counts[CANH_CAO]) out.push('⛔ Bị cảnh cáo' + x(counts[CANH_CAO]) + ' trong buổi học.');
+  Object.entries(counts).forEach(([k, n]) => { if (k === CANH_CAO || k === PRAISE) return; out.push('⚠️ ' + k + x(n) + ': ' + (COMMENT_LINES[k] || 'con cần cố gắng hơn.')); });
+  if (counts[PRAISE]) out.push('👍 Con phát biểu tốt' + x(counts[PRAISE]) + '.');
+  if (!out.length || out.every(l => l.startsWith('👍') || l.startsWith('⏰'))) out.push('✓ Con tập trung, giữ trật tự tốt.');
+  return out;
+}
+function writeLessonComments(ctx) {
+  const { block, tracker, cls, session } = ctx;
+  if (!block || block.comment < 0 || !tracker) return 0;
+  const behave = behaveFor(session);
+  let n = 0;
+  tracker.pupils.forEach(p => {
+    const m = ctx.marks.get(p.name);
+    if (!m || !Q.PRESENT.includes(m.status)) return;
+    const b = behave.get(p.name), auto = lessonComment(tagCounts(b ? b.tags : []), m);
+    const now = String(tracker.cell(p.row, block.comment) || ''), mine = now.split('\n').filter(l => l.trim() && !AUTO_LINE.test(l.trim()));
+    let value = auto.concat(mine).join('\n');
+    if (value.length > 200) value = auto.join('\n').slice(0, 200);
+    if (value === now) return;
+    const range = quote(tracker.tab) + '!' + Q.colName(block.comment) + p.row;
+    tracker.set(p.row, block.comment, value);
+    queue({ kind: 'cell', file: cls.tracker, classKey: cls.key, range, row: p.row, col: block.comment, expected: now, value, label: (p.eng || p.name) + ' · ' + T('Nhận xét', 'Comment') });
+    n++;
+  });
+  return n;
+}
+const llActionBeforeComments = llAction;
+llAction = function (act, i, v) {
+  if (act === 'llChot' && current && canConfirm(current)) { try { writeLessonComments(classContext(current)); } catch (e) { console.warn('comments', e); } }
+  return llActionBeforeComments(act, i, v);
+};
