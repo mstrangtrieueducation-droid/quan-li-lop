@@ -2610,3 +2610,17 @@ kidsMakeup = function (ctx, p, i, canEdit) {
   if (!owed || !owed.length) return base;
   return base + '<div class="owed">📚 ' + T('Thiếu ', 'Missing ') + owed.length + T(' bài: ', ' tasks: ') + esc(skillSummary(owed)) + '</div>';
 };
+
+/* ---------- Class page: KIDS pupils show what they still owe the same way (owner 08/11: "phần kids cũng vậy") ----------
+ * Same rule and count as the class screen and the summary: every lesson or self-study video already overdue,
+ * "🎥 Thiếu 2 video: Tiết 54 ngữ pháp, Tự luyện 22". */
+const owedOnPage = new WeakMap();
+const kidsMakeupBeforeKidsOwed = kidsMakeup;
+kidsMakeup = function (ctx, p, i, canEdit) {
+  const base = kidsMakeupBeforeKidsOwed(ctx, p, i, canEdit);
+  if (!ctx || !ctx.session || !ctx.tracker || isSecondary(ctx.session) || !ctx.tracker.blocks.length) return base;
+  let all = owedOnPage.get(ctx.tracker);
+  if (!all) { all = totalOwed(ctx); owedOnPage.set(ctx.tracker, all); }
+  const list = (all[i] || []).map(x => (x.practice ? (x.label || 'Tự luyện').replace(/^Tự luyện video/i, 'Tự luyện') : (x.lesson ? 'Tiết ' + Number(x.lesson) : viDate(x.day).slice(0, 5)) + (x.label ? ' ' + x.label.toLowerCase() : '')) + (x.wrong ? ' (quay sai)' : ''));
+  return list.length ? base + '<div class="owed">🎥 ' + T('Thiếu ', 'Missing ') + list.length + ' video: ' + esc(list.join(', ')) + '</div>' : base;
+};
