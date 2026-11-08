@@ -102,7 +102,7 @@ function weekOf(target, force) {
   if (!have && stored) { setWeek(tab, stored.rows); weeks[tab].at = stored.at; }
   const hit = weeks[tab];
   if (hit && !force && Date.now() - hit.at < FRESH_MS) return Promise.resolve(hit);
-  const read = batchGet(CONFIG.scheduleId, [quote(tab) + '!A1:M400']).then(([rows]) => {
+  const read = batchGet(CONFIG.scheduleId, [quote(tab) + '!A1:O400']).then(([rows]) => {
     return setWeek(tab, rows);
   });
   if (hit) { read.then(render).catch(() => {}); return Promise.resolve(hit); }
@@ -1071,7 +1071,7 @@ async function loadPay(month, force) {
   const hit = payCache[month];
   if (hit && !force && Date.now() - hit.at < FRESH_MS) return hit;
   const wanted = Q.tabsOfMonth(tabs, month), missing = wanted.filter(t => force || !weeks[t] || Date.now() - weeks[t].at >= FRESH_MS);
-  const ranges = missing.map(t => quote(t) + '!A1:M400').concat(["'CHẤM CÔNG TỔNG HỢP'!R7:W46"]);
+  const ranges = missing.map(t => quote(t) + '!A1:O400').concat(["'CHẤM CÔNG TỔNG HỢP'!R7:W46"]);
   const data = await batchGet(CONFIG.scheduleId, ranges);
   missing.forEach((t, i) => setWeek(t, data[i]));
   return (payCache[month] = { at: Date.now(), entries: wanted.flatMap(t => weeks[t].pay), marking: Q.parseMarking(data[data.length - 1]).filter(x => x.day.startsWith(month)) });
