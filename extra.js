@@ -824,7 +824,7 @@ const renderBeforeBoard = render;
 render = function () { if (isBoard()) renderBoard(); else renderBeforeBoard(); };
 // The board takes the roll of today's classes only, in the same window as the teacher.
 const canTeachBeforeBoard = canTeach;
-canTeach = s => isBoard() ? s.day === today() && Q.rollCall(s, marksOf(s), today(), minutesNow()).open : canTeachBeforeBoard(s);
+canTeach = s => isBoard() ? s.day === today() && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s) : canTeachBeforeBoard(s);
 setInterval(() => {
   if (!isBoard()) return;
   if (day !== today()) { day = today(); weekOf(day).then(render).catch(() => {}); }
@@ -914,7 +914,7 @@ viewLenLop = function () {
   if (noStars) h += '<div class="notice">' + T('Sheet lớp này không có cột Số sao, nên chỉ điểm danh và nhắc nhở.', 'This class sheet has no star column.') + '</div>';
   else if (ctx.problem || !starOk) h += '<div class="notice">' + esc(columnWarning(ctx) || T('Tiết này chưa có cột Số sao trong sheet lớp, TA mở cột giúp.', 'This lesson has no star column yet, TA please open it.')) + '</div>';
   if (can && !edit) h += '<div class="small muted rv-hint">🔒 ' + T('Đang khoá để học sinh không bấm nhầm. Giáo viên giữ nút "Giữ để sửa" 1 giây để mở. Bấm mũi tên ▸ cạnh tên để xem 3 buổi trước.', 'Locked so pupils cannot change anything. Hold "Hold to edit" for a second. Tap ▸ to see the last 3 lessons.') + '</div>';
-  else if (!edit) h += '<div class="notice">' + T('Buổi này chưa mở hoặc không phân công cho bạn, chỉ xem được.', 'This session is not open or not assigned to you, view only.') + '</div>';
+  else if (!edit) h += '<div class="notice">' + ([s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)) && lessonClosed(s) ? T('Buổi học đã kết thúc quá ' + CLOSE_AFTER + ' phút nên đã khoá, không sửa được nữa. Cần sửa thì báo quản lí.', 'This lesson ended more than ' + CLOSE_AFTER + ' minutes ago and is locked. Ask a manager to change anything.') : T('Buổi này chưa mở hoặc không phân công cho bạn, chỉ xem được.', 'This session is not open or not assigned to you, view only.')) + '</div>';
   else h += '<div class="small muted rv-hint">' + T('Bấm Nghỉ cho bạn vắng, rồi "Còn lại có mặt". Nhắc quá ' + WARN_LIMIT + ' lần thì hiện dấu ! đỏ. Bấm nhầm: chạm tên để bớt.', 'Tap Absent for missing pupils, then "Rest are here". More than ' + WARN_LIMIT + ' reminders shows a red !. Mis-tap: tap the name to take one off.') + '</div>';
   h += '<div class="rv-list" role="list">' + rows.map(r => {
     const rank = r.off || !r.stars ? 0 : scores.indexOf(r.stars) + 1, name = r.p.eng || r.p.name, counts = tagCounts(r.b ? r.b.tags : []), n = tickTotal(counts), over = n > WARN_LIMIT, warned = counts[CANH_CAO] || 0;
