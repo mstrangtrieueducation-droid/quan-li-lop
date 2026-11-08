@@ -911,7 +911,7 @@ viewLenLop = function () {
   let h = '<div class="ll-head"><button class="quiet" data-act="llExit" aria-label="' + T('Thoát', 'Exit') + '">‹</button><div class="ll-title"><b>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</b><span>' + sessionTime(s) + ' · ' + rows.filter(r => r.here).length + '/' + rows.length + T(' có mặt', ' here') + '</span></div>' +
     (podium.length ? '<div class="ll-podium" aria-label="' + T('Dẫn đầu', 'Leaders') + '">' + podium.map(r => '<span>' + (medal[scores.indexOf(r.stars)] || '') + ' ' + esc(r.p.eng || r.p.name) + ' <b>' + r.stars + '</b></span>').join('') + '</div>' : '') +
     (edit && unmarked && !group ? '<button class="primary" data-act="llAll">' + T('Còn lại có mặt', 'Rest are here') + '</button>' : '') + lockBar(can, edit) + '</div>';
-  if (noStars) h += '<div class="notice">' + T('Sheet lớp này không có cột Số sao, nên chỉ điểm danh và nhắc nhở.', 'This class sheet has no star column.') + '</div>';
+  if (noStars) h += '<div class="notice">' + (isSecondary(s) ? T('IELTS / FIGHTER: không chấm sao. Điểm danh, nhắc nhở; bạn thiếu bài thì bấm "Cho về", bạn ở nhà vì chưa làm bài thì bấm "Ở nhà · chưa làm bài".', 'IELTS / FIGHTER: no stars. Roll call and reminders; "Sent home" for missing homework.') : T('Sheet lớp này không có cột Số sao, nên chỉ điểm danh và nhắc nhở.', 'This class sheet has no star column.')) + '</div>';
   else if (ctx.problem || !starOk) h += '<div class="notice">' + esc(columnWarning(ctx) || T('Tiết này chưa có cột Số sao trong sheet lớp, TA mở cột giúp.', 'This lesson has no star column yet, TA please open it.')) + '</div>';
   if (can && !edit) h += '<div class="small muted rv-hint">🔒 ' + T('Đang khoá để học sinh không bấm nhầm. Giáo viên giữ nút "Giữ để sửa" 1 giây để mở. Bấm mũi tên ▸ cạnh tên để xem 3 buổi trước.', 'Locked so pupils cannot change anything. Hold "Hold to edit" for a second. Tap ▸ to see the last 3 lessons.') + '</div>';
   else if (!edit) h += '<div class="notice">' + ([s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name)) && lessonClosed(s) ? T('Buổi học đã kết thúc quá ' + CLOSE_AFTER + ' phút nên đã khoá, không sửa được nữa. Cần sửa thì báo quản lí.', 'This lesson ended more than ' + CLOSE_AFTER + ' minutes ago and is locked. Ask a manager to change anything.') : T('Buổi này chưa mở hoặc không phân công cho bạn, chỉ xem được.', 'This session is not open or not assigned to you, view only.')) + '</div>';
@@ -930,7 +930,7 @@ viewLenLop = function () {
       TICKS.map((t, k) => '<button class="rv-tick' + (counts[t] ? ' on' : '') + '" data-act="llTick" data-i="' + r.i + '" data-k="' + k + '" data-v="' + k + '"' + live + '>' + biText(t) + badge(counts[t]) + '</button>').join('') +
       '<button class="rv-warn' + (over ? ' hot' : '') + (warned ? ' on' : '') + '" data-act="llReason" data-i="' + r.i + '"' + live + '>⚠️ Cảnh cáo<small class="rv-en">Warning</small>' + badge(warned) + '</button>' +
       (group && !r.off ? '<button class="rv-here' + (r.here ? ' on' : '') + '" data-act="llHere" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.here + '">✓</button>' : '') +
-      (r.here && !r.off ? '' : '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? 'Nghỉ ✓<small class="rv-en">Absent</small>' : 'Nghỉ<small class="rv-en">Absent</small>') + '</button>') +
+      secButtons(ctx, r, live) + ((r.here && !r.off) || secStatus(r) ? '' : '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? 'Nghỉ ✓<small class="rv-en">Absent</small>' : 'Nghỉ<small class="rv-en">Absent</small>') + '</button>') +
       (histOpen ? histBox(ctx, r) : '') + '</div>';
   }).join('') + '</div>';
   const open = llReason != null ? rows.find(r => r.i === llReason) : null;
@@ -1616,11 +1616,11 @@ function summaryView(ctx) {
     return '<tr' + (r.off ? ' class="sum-offrow"' : '') + '><td class="sum-rank">' + (rank && rank <= 3 ? medal[rank - 1] : rank ? '#' + rank : '') + '</td>' +
       '<td class="sum-name"><b>' + esc(r.p.eng || r.p.name) + '</b></td><td>' + attendText(r.m) + '</td>' +
       (noStars ? '' : '<td class="sum-stars">' + (r.off ? '' : '⭐ ' + r.stars) + '</td>') +
-      (noGrade ? '' : '<td>' + (g && g !== '/' ? '<span class="sum-g g' + g[0] + '">' + esc(g) + '</span>' + (gp.why && g !== 'A+' ? '<div class="sum-why">' + esc(gp.why) + '</div>' : '') : '') + '</td>') +
-      '<td class="sum-remind">' + (warned ? '<span class="sum-warn">⚠️ Cảnh cáo' + (warned > 1 ? ' ×' + warned : '') + '</span>' + (remind ? '<br>' : '') : '') + remind + '</td>' +
+      (noGrade ? '' : '<td class="sum-gcell">' + (g && g !== '/' ? '<span class="sum-g g' + g[0] + '">' + esc(g) + '</span>' + (gp.why && g !== 'A+' ? '<div class="sum-why">' + esc(gp.why) + '</div>' : '') : '') + '</td>') +
+      '<td class="sum-remind">' + (warned ? '<span class="sum-warn">⚠️ Cảnh cáo' + (warned > 1 ? ' ×' + warned : '') + '</span>' + (remind ? '<br>' : '') : '') + remind + (!warned && !remind && !r.off ? '<span class="sum-ok">Tốt ✓</span>' : '') + '</td>' +
       '<td class="sum-debt">' + (debt.length ? '<b>Nợ ' + debt.length + ' video:</b> ' + esc(debt.join(', ')) : '<span class="sum-ok">Không nợ ✓</span>') + '</td></tr>';
   }).join('');
-  const head = '<tr><th></th><th>Học sinh</th><th>Điểm danh</th>' + (noStars ? '' : '<th>Sao</th>') + (noGrade ? '' : '<th>Bài tập sách giấy</th>') + '<th>Nhắc nhở</th><th>Video còn nợ đến lúc chốt (' + sumStamp(t.at).replace(' ngày ', ', ') + ')</th></tr>';
+  const head = '<tr><th></th><th>Học sinh</th><th>Điểm danh</th>' + (noStars ? '' : '<th>Sao</th>') + (noGrade ? '' : '<th class="sum-c">Bài tập sách giấy</th>') + '<th>Nhắc nhở</th><th>Video còn nợ</th></tr>';
   return '<div class="sum-bar"><button class="quiet" data-act="llSumClose">‹ ' + T('Quay lại màn hình lớp', 'Back to the class screen') + '</button><span class="spacer"></span>' +
     '<button class="quiet" data-act="llSumRefresh">↻ ' + T('Đọc lại sheet', 'Re-read the sheet') + '</button><span class="small muted">' + T('Chụp phần khung trắng bên dưới để gửi phụ huynh.', 'Take a photo of the white sheet below for parents.') + '</span></div>' +
     '<div class="sum-sheet"><div class="sum-top"><img src="logo.png" alt="" width="44" height="44"><div><div class="sum-title">' + esc(s.cls) + ' · Tiết ' + esc(s.lesson) + '</div>' +
@@ -1699,3 +1699,94 @@ function totalOwed(ctx) {
   });
   return found;
 }
+
+/* ---------- Owed work in every class, and IELTS / FIGHTER on the class screen (owner 08/11) ----------
+ * "mỗi một lớp giáo viên dạy hiển thị nợ bao nhiêu video... gọn gàng mà vẫn đủ thông tin... màn hình này tôi dùng xuyên suốt buổi học";
+ * "áp dụng cả IELTS và FIGHTER... hs lớn không cần sao... bị đuổi về vì thiếu bài tập... hoặc ở nhà luôn vì biết không làm bài thì không được học".
+ * KIDS: the chip under the name counts every video still owed (same count as the lesson summary).
+ * IELTS / FIGHTER: no stars; the homework still owed for this lesson comes from the class sheet (server 'baino', kept 10 minutes);
+ * two extra marks: "Cho về (thiếu bài)" for a pupil who came without the homework, "Nghỉ (chưa làm bài)" for one who stayed home. */
+const SEND_HOME = 'Cho về (thiếu bài)', HOME_NO_HW = 'Nghỉ (chưa làm bài)';
+const secStatus = r => { const st = current ? ((marksOf(current).get(r.p.name)) || {}).status : ''; return st === SEND_HOME || st === HOME_NO_HW ? st : ''; };
+const secLoading = new Set();
+function secOwedFor(s) {
+  const c = classOf(s);
+  if (!c || !isSecondary(s)) return null;
+  const key = c.tracker + '|' + s.day, hit = owedCache[key];
+  if ((!hit || Date.now() - hit.at > 600000) && !secLoading.has(key)) {
+    secLoading.add(key);
+    call('baino', { file: c.tracker, day: s.day }).then(data => { owedCache[key] = { at: Date.now(), data }; }).catch(e => { owedCache[key] = { at: Date.now(), data: null, error: e.message }; }).finally(() => { secLoading.delete(key); render(); });
+  }
+  return hit && hit.data ? hit : null;
+}
+// The work a pupil of an IELTS / FIGHTER class still owes for this lesson or earlier.
+function secOwedOf(ctx, p) {
+  const hit = secOwedFor(ctx.session);
+  if (!hit) return null;
+  const x = hit.data.pupils.find(q => q.row === p.row) || hit.data.pupils.find(q => Q.key(q.name) === Q.key(p.name));
+  return x ? x.owed.filter(o => !o.due || o.due <= ctx.session.day) : [];
+}
+const shortTask = o => Q.clean(o.label).replace(/\s+/g, ' ').slice(0, 28) + (Q.clean(o.label).length > 28 ? '…' : '');
+const pupilFlagsBeforeSec = pupilFlags;
+pupilFlags = function (ctx, r) {
+  const m = ctx.marks.get(r.p.name), out = [], st = m ? m.status : '';
+  if (st === 'Đến muộn') out.push('<span class="rv-flag late">⏰ Muộn <i class="rv-en-i">Late</i></span>');
+  if (st === SEND_HOME) out.push('<span class="rv-flag sent">🚪 Cho về · thiếu bài <i class="rv-en-i">Sent home</i></span>');
+  if (st === HOME_NO_HW) out.push('<span class="rv-flag sent">🏠 Ở nhà · chưa làm bài <i class="rv-en-i">Stayed home</i></span>');
+  if (isSecondary(ctx.session)) {
+    const owed = secOwedOf(ctx, r.p);
+    if (owed && owed.length) out.push('<span class="rv-flag debt" title="' + esc(owed.map(o => Q.clean(o.label) + (o.due ? ' · hạn ' + viDate(o.due).slice(0, 5) : '')).join('\n')) + '">📚 Nợ ' + owed.length + ' bài: ' + esc(owed.slice(0, 2).map(shortTask).join(', ') + (owed.length > 2 ? ' +' + (owed.length - 2) : '')) + ' <i class="rv-en-i">Homework owed</i></span>');
+  } else {
+    const owed = totalOwed(ctx)[r.i] || [], dm = d => d.slice(8, 10) + '/' + d.slice(5, 7);
+    const what = x => (x.practice ? (x.label || 'Tự luyện').replace(/^Tự luyện video/i, 'Tự luyện') : (x.lesson ? 'Tiết ' + Number(x.lesson) : dm(x.day)) + (x.label ? ' ' + x.label.toLowerCase() : '')) + (x.wrong ? ' (quay sai)' : '');
+    if (owed.length) out.push('<span class="rv-flag debt" title="' + esc(owed.map(x => what(x) + ' · ' + dm(x.day)).join('\n')) + '">🎥 Nợ ' + owed.length + ' video: ' + esc(owed.slice(0, 2).map(what).join(', ') + (owed.length > 2 ? ' +' + (owed.length - 2) : '')) + ' <i class="rv-en-i">Missing video</i></span>');
+  }
+  return out.length ? '<span class="rv-flags">' + out.join('') + '</span>' : '';
+};
+// totalOwed runs once per class-sheet read, not once per row.
+const totalOwedRaw = totalOwed, totalMemo = { key: '', list: [] };
+totalOwed = function (ctx) { const k = Q.sessionKey(ctx.session) + '|' + ctx.tracker.at; if (totalMemo.key !== k) { totalMemo.key = k; totalMemo.list = totalOwedRaw(ctx); } return totalMemo.list; };
+function secButtons(ctx, r, live) {
+  if (!isSecondary(ctx.session)) return '';
+  const st = (ctx.marks.get(r.p.name) || {}).status || '';
+  if (st === SEND_HOME) return '<button class="rv-send on" data-act="llUnsend" data-i="' + r.i + '"' + live.replace(' disabled', '') + '>🚪 Cho về ✓<small class="rv-en">Undo</small></button>';
+  if (st === HOME_NO_HW) return '<button class="rv-send on" data-act="llUnsend" data-i="' + r.i + '"' + live.replace(' disabled', '') + '>🏠 Ở nhà ✓<small class="rv-en">Undo</small></button>';
+  if (r.here) return '<button class="rv-send" data-act="llSend" data-i="' + r.i + '"' + live + '>🚪 Cho về<small class="rv-en">Sent home · no homework</small></button>';
+  return '<button class="rv-send" data-act="llHomeNoHw" data-i="' + r.i + '"' + live + '>🏠 Ở nhà<small class="rv-en">Stayed home · no homework</small></button>';
+}
+const llActionBeforeSec = llAction;
+llAction = function (act, i, v) {
+  if (!['llSend', 'llHomeNoHw', 'llUnsend'].includes(act)) return llActionBeforeSec(act, i, v);
+  const ctx = classContext(current), s = ctx.session, pupil = ctx.tracker && ctx.tracker.pupils[Number(i)];
+  if (!pupil || !canTeach(s) || !llUnlocked(s)) return;
+  llLock.at = Date.now();
+  const m = ctx.marks.get(pupil.name);
+  appendMark(s, pupil, act === 'llSend' ? SEND_HOME : act === 'llHomeNoHw' ? HOME_NO_HW : 'Có mặt', m && m.contact, m && m.note);
+  llFreezeUntil = Date.now() + RANK_WAIT; clearTimeout(llRankTimer); llRankTimer = setTimeout(rerankNow, RANK_WAIT);
+  render();
+};
+// The lesson summary reads the same marks and, for IELTS / FIGHTER, the homework owed.
+const attendTextBeforeSec = attendText;
+attendText = function (m) {
+  const st = m ? m.status : '';
+  if (st === SEND_HOME) return '<span class="sum-sent">Cho về · thiếu bài</span>';
+  if (st === HOME_NO_HW) return '<span class="sum-sent">Ở nhà · chưa làm bài</span>';
+  return attendTextBeforeSec(m);
+};
+const summaryViewBeforeSec = summaryView;
+summaryView = function (ctx) {
+  if (!isSecondary(ctx.session)) return summaryViewBeforeSec(ctx);
+  const hit = secOwedFor(ctx.session);
+  let h = summaryViewBeforeSec(ctx);
+  // Replace the video column with the homework still owed, stamped with the time the class sheet was read for it.
+  const rows = ctx.tracker.pupils, stamp = hit ? sumStamp(hit.at) : '';
+  h = h.replace(/<th>Video còn nợ[^<]*<\/th>/, '<th>Bài còn nợ</th>');
+  let n = 0;
+  const order = [...h.matchAll(/<td class="sum-name"><b>([^<]*)<\/b>/g)].map(mm => mm[1]);
+  h = h.replace(/<td class="sum-debt">[\s\S]*?<\/td><\/tr>/g, () => {
+    const name = order[n++], p = rows.find(q => esc(q.eng || q.name) === name), owed = p ? secOwedOf(ctx, p) : null;
+    const cell = owed == null ? '<span class="sum-muted">Đang đọc…</span>' : owed.length ? '<b>Nợ ' + owed.length + ' bài:</b> ' + esc(owed.map(o => Q.clean(o.label)).join('; ')) : '<span class="sum-ok">Đủ bài ✓</span>';
+    return '<td class="sum-debt">' + cell + '</td></tr>';
+  });
+  return h.replace(/<div class="sum-note">[\s\S]*?<\/div><\/div>$/, '<div class="sum-note">Bài còn nợ là <b>các bài con chưa nộp tính đến lúc chốt buổi' + (stamp ? ': ' + stamp : '') + '</b>. Con thiếu bài thì chưa được vào học; bài nộp sau thời điểm này chưa có trong bảng.</div></div>');
+};
