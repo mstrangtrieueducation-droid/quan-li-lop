@@ -106,7 +106,7 @@ async function caCentre() {
 // The owner can also enter a point from a map: "21.310936, 105.409042" or a Google Maps link.
 async function caCentreTyped() {
   const name = Q.clean(drafts.caName || ''), text = String(drafts.caPoint || '');
-  const m = text.match(/!3d(-?d+.d+)!4d(-?d+.d+)/) || text.match(/(-?d{1,2}.d{4,})s*,s*(-?d{2,3}.d{4,})/);
+  const m = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || text.match(/(-?\d{1,2}\.\d{4,})\s*,\s*(-?\d{2,3}\.\d{4,})/);
   if (!name) return say(T('Gõ tên cơ sở trước.', 'Type the site name first.'), 'bad');
   if (!m) return say(T('Chưa đọc được toạ độ. Dán dạng 21.310936, 105.409042 hoặc link Google Maps của đúng điểm.', 'Could not read the coordinates.'), 'bad');
   try { const r = await call('vaoca', { set: 'centre', manual: true, name, lat: Number(m[1]), lng: Number(m[2]) }, 1); ca.names = r.centres; ca.centres = r.centres.length; drafts.caPoint = ''; say(T('Đã lưu ', 'Saved ') + name + '. ' + T('Các điểm đang dùng: ', 'Points in use: ') + r.centres.join(', ') + '.'); }
