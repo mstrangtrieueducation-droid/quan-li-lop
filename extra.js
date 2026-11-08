@@ -552,6 +552,7 @@ async function loadLadder(force) {
 }
 // Ticks began on 07/11: a level entered earlier may have been handled outside the app, so it is never shown as overdue.
 const CONTACT_START = '2026-11-07';
+const contactOld = x => { const d = viToIso(x.since); return x.level < 4 && !!d && d < CONTACT_START; };
 const isFriday = d => new Date(d + 'T12:00:00').getDay() === 5;
 function contactRule(x) {
   const since = viToIso(x.since) || today();
@@ -570,7 +571,7 @@ function ladderBlock(week) {
   (week ? week.data.sessions : []).filter(s => s.day === day && !s.off).forEach(s => { const k = Q.key(s.cls); if (!todayCls.has(k) || todayCls.get(k).start > s.start) todayCls.set(k, s); });
   // Penalties are handled by managers, staff on the TA side and the homeroom; a class teacher does not see them.
   const mine = x => isManager() || isTaSide(week) || isMe(homeroom[Q.key(x.cls)] || '');
-  const list = ladder.rows.filter(mine).map(x => { const rule = contactRule(x), done = contactDone(x, rule); return { x, rule, done, late: !done && today() > rule.due && (viToIso(x.since) || today()) >= CONTACT_START, s: todayCls.get(Q.key(x.cls)) }; });
+  const list = ladder.rows.filter(mine).map(x => { const rule = contactRule(x), done = contactDone(x, rule) || (contactOld(x) ? { by: T('trước khi dùng app', 'before the app'), at: '', old: true } : null); return { x, rule, done, late: !done && today() > rule.due && (viToIso(x.since) || today()) >= CONTACT_START, s: todayCls.get(Q.key(x.cls)) }; });
   if (!list.length) return '';
   list.sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || b.late - a.late || (a.s ? 0 : 1) - (b.s ? 0 : 1) || b.x.level - a.x.level || a.x.cls.localeCompare(b.x.cls, 'vi', { numeric: true }));
   const todo = list.filter(l => !l.done).length, late = list.filter(l => l.late).length;
@@ -587,7 +588,7 @@ function ladderBlock(week) {
     return '<div class="card row lad-class"><div class="row-top"><b>' + esc(cls) + '</b>' + (s0 ? '<span class="tag">' + T('học ', 'class ') + Q.clock(s0.start) + '</span>' : '') + '<span class="spacer"></span><span class="muted small">' + items.length + T(' HS', '') + '</span></div>' + items.map(({ x, rule, done, late }) => {
       const m = x.name.match(/^(.*?)\s*\(([^)]+)\)\s*$/), eng = m ? m[2] : '', full = m ? m[1] : x.name;
       return '<div class="lad lv' + x.level + (late ? ' late' : '') + (done ? ' done' : '') + '"><div class="lad-line"><span class="lvl l' + x.level + '">M' + x.level + '</span><b>' + esc(eng || full) + '</b>' +
-        (done ? '<span class="tag ok">✓ ' + esc(rule.action) + ' · ' + esc(done.by || '?') + (done.at ? ' · ' + esc(String(done.at).slice(11, 16) + ' ' + String(done.at).slice(0, 5)) : '') + '</span>' : '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Gọi', 'Call') : T('Nhắn', 'Message')) + ' · ' + esc(rule.who) + (rule.call ? ' · ' + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>') +
+        (done && done.old ? '<span class="tag">' + T('Vào mức trước 07/11', 'Before 07/11') + '</span>' : '') + (done && !done.old ? '<span class="tag ok">✓ ' + esc(rule.action) + ' · ' + esc(done.by || '?') + (done.at ? ' · ' + esc(String(done.at).slice(11, 16) + ' ' + String(done.at).slice(0, 5)) : '') + '</span>' : done ? '' : '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Gọi', 'Call') : T('Nhắn', 'Message')) + ' · ' + esc(rule.who) + (rule.call ? ' · ' + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>') +
         '<span class="spacer"></span>' + (!done && canContact(x, rule) ? '<button class="good" data-act="ladTick" data-cls="' + esc(x.cls) + '" data-name="' + esc(x.name) + '">' + esc(rule.action) + '</button>' : '') +
         (x.level === 2 ? '<button class="quiet" data-act="ladCopy" data-cls="' + esc(x.cls) + '" data-name="' + esc(eng || full) + '">' + T('Bài chép', 'Copy text') + '</button>' : '') + '</div>' +
         '<details class="lad-more"><summary>' + esc(x.reason || T('Chi tiết', 'Details')) + '</summary><div class="small">' + esc(full) + ' · ' + T('vào mức từ ', 'since ') + esc(x.since) + '</div>' + (x.owed.length ? '<div class="small muted">' + T('Còn nợ: ', 'Owes: ') + esc(x.owed.join('; ')) + '</div>' : '') + '</details></div>';
@@ -655,7 +656,7 @@ function bellItems() {
     // Parents to message or call (penalty ladder).
     if (ladder.rows) {
       const mine = r => isManager() || isTaSide(week) || isMe(homeroom[Q.key(r.cls)] || '');
-      const todo = ladder.rows.filter(r => mine(r)).map(r => ({ r, rule: contactRule(r) })).filter(x => !contactDone(x.r, x.rule));
+      const todo = ladder.rows.filter(r => mine(r)).map(r => ({ r, rule: contactRule(r) })).filter(x => !contactDone(x.r, x.rule) && !contactOld(x.r));
       const late = todo.filter(x => t > x.rule.due && (viToIso(x.r.since) || t) >= CONTACT_START).length, mineToo = todo.filter(x => canContact(x.r, x.rule)).length;
       if (todo.length) add('lad', '📞', todo.length + T(' phụ huynh cần nhắn / gọi', ' parents to contact') + (late ? T(' · ' + late + ' quá hạn', ' · ' + late + ' overdue') : '') + (mineToo && mineToo < todo.length ? T(' (' + mineToo + ' việc của bạn)', ' (' + mineToo + ' yours)') : ''), todo.length, late > 0, { view: 'lich', sec: 'phat' });
     }
@@ -1249,7 +1250,7 @@ ladderBlock = function (week) {
   const dayCls = new Map();
   (week ? week.data.sessions : []).filter(s => s.day === day && !s.off).forEach(s => { const k = Q.key(s.cls); if (!dayCls.has(k) || dayCls.get(k).start > s.start) dayCls.set(k, s); });
   const mine = x => isManager() || isTaSide(week) || isMe(homeroom[Q.key(x.cls)] || '');
-  const list = ladder.rows.filter(mine).map(x => { const rule = contactRule(x), done = contactDone(x, rule); return { x, rule, done, late: !done && today() > rule.due && (viToIso(x.since) || today()) >= CONTACT_START, s: dayCls.get(Q.key(x.cls)), since: viToIso(x.since) }; });
+  const list = ladder.rows.filter(mine).map(x => { const rule = contactRule(x), done = contactDone(x, rule) || (contactOld(x) ? { by: T('trước khi dùng app', 'before the app'), at: '', old: true } : null); return { x, rule, done, late: !done && today() > rule.due && (viToIso(x.since) || today()) >= CONTACT_START, s: dayCls.get(Q.key(x.cls)), since: viToIso(x.since) }; });
   if (!list.length) return '';
   const todo = list.filter(l => !l.done).length, late = list.filter(l => l.late).length, onDay = list.filter(l => l.s);
   const mode = ['ngay', 'can', 'tat'].includes(filters.lad) ? filters.lad : 'ngay';
@@ -1259,7 +1260,7 @@ ladderBlock = function (week) {
   const line = ({ x, rule, done, late }) => {
     const m = x.name.match(/^(.*?)\s*\(([^)]+)\)\s*$/), eng = m ? m[2] : '', full = m ? m[1] : x.name;
     return '<div class="lad lv' + x.level + (late ? ' late' : '') + (done ? ' done' : '') + '"><div class="lad-line"><span class="lvl l' + x.level + '">M' + x.level + '</span><b>' + esc(eng || full) + '</b>' + (mode !== 'tat' && x.since ? '<span class="small muted">' + T('từ ', 'since ') + esc(String(x.since).slice(0, 5)) + '</span>' : '') +
-      (done ? '<span class="tag ok">✓ ' + esc(rule.action) + ' · ' + esc(done.by || '?') + (done.at ? ' · ' + esc(String(done.at).slice(11, 16) + ' ' + String(done.at).slice(0, 5)) : '') + '</span>' : '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Gọi', 'Call') : T('Nhắn', 'Message')) + ' · ' + esc(rule.who) + (rule.call ? ' · ' + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>') +
+      (done && done.old ? '<span class="tag">' + T('Vào mức trước 07/11', 'Before 07/11') + '</span>' : '') + (done && !done.old ? '<span class="tag ok">✓ ' + esc(rule.action) + ' · ' + esc(done.by || '?') + (done.at ? ' · ' + esc(String(done.at).slice(11, 16) + ' ' + String(done.at).slice(0, 5)) : '') + '</span>' : done ? '' : '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Gọi', 'Call') : T('Nhắn', 'Message')) + ' · ' + esc(rule.who) + (rule.call ? ' · ' + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>') +
       '<span class="spacer"></span>' + (!done && canContact(x, rule) ? '<button class="good" data-act="ladTick" data-cls="' + esc(x.cls) + '" data-name="' + esc(x.name) + '">' + esc(rule.action) + '</button>' : '') +
       (x.level === 2 ? '<button class="quiet" data-act="ladCopy" data-cls="' + esc(x.cls) + '" data-name="' + esc(eng || full) + '">' + T('Bài chép', 'Copy text') + '</button>' : '') + '</div>' +
       '<div class="small lad-do">' + esc(LADDER_ACT[x.level] || '') + '</div>' +
@@ -1269,7 +1270,7 @@ ladderBlock = function (week) {
   // Owner 08/11: handled pupils stay (faded, with who and when); pending ones are sorted first.
   const shown = mode === 'ngay' ? onDay : list;
   if (mode === 'tat') shown.forEach(l => add(l.since || '0', l.since ? T('Vào mức ngày ', 'Since ') + dayLabel(l.since) : T('Chưa rõ ngày', 'No date'), l.since || '0', l));
-  else shown.forEach(l => add(l.x.cls, '<b>' + esc(l.x.cls) + '</b>' + (l.s ? '<span class="tag">' + T('học ', 'class ') + Q.clock(l.s.start) + '</span>' : ''), l.s ? String(l.s.start).padStart(5, '0') : '99999' + l.x.cls, l));
+  else shown.forEach(l => add(l.x.cls, '<b>' + esc(l.x.cls) + '</b>' + (l.s ? '<span class="tag">' + T('học ', 'class ') + Q.clock(l.s.start) + '</span>' : '') + ladCheckTag(l), l.s ? String(l.s.start).padStart(5, '0') : '99999' + l.x.cls, l));
   if (!shown.length) return h + '<div class="card empty">' + (mode === 'ngay' ? T('Các lớp học ' + dayLabel(day) + ' không có học sinh nào trong danh sách phạt.', 'No pupil on the ladder in classes on this day.') : mode === 'can' ? T('Đã liên hệ phụ huynh đủ.', 'All parents contacted.') : T('Không có học sinh nào.', 'Nobody here.')) + '</div>' + (ladder.copy ? copySheet(ladder.copy) : '');
   const ordered = [...groups.values()].sort((a, b) => mode === 'tat' ? b.sort.localeCompare(a.sort) : a.sort.localeCompare(b.sort, 'vi', { numeric: true }));
   h += '<div class="grid">' + ordered.map(g => {
@@ -3152,7 +3153,7 @@ function qaRows(kind) {
     });
     if (kind === 'lad' && ladder.rows) {
       const mine = r => isManager() || isTaSide(week) || isMe(homeroom[Q.key(r.cls)] || '');
-      ladder.rows.filter(mine).forEach(r => { const rule = contactRule(r); if (contactDone(r, rule)) return; push(r.cls + r.name, r.cls, r.name, (rule.call ? T('Gọi PH', 'Call') : T('Nhắn PH', 'Message')) + ' · ' + T('mức ', 'lv ') + r.level, canContact(r, rule) ? '<button class="good" data-act="ladTick" data-cls="' + esc(r.cls) + '" data-name="' + esc(r.name) + '">' + ico('check') + '</button>' : '', t > rule.due); });
+      ladder.rows.filter(mine).forEach(r => { const rule = contactRule(r); if (contactDone(r, rule) || contactOld(r)) return; push(r.cls + r.name, r.cls, r.name, (rule.call ? T('Gọi PH', 'Call') : T('Nhắn PH', 'Message')) + ' · ' + T('mức ', 'lv ') + r.level, canContact(r, rule) ? '<button class="good" data-act="ladTick" data-cls="' + esc(r.cls) + '" data-name="' + esc(r.name) + '">' + ico('check') + '</button>' : '', t > rule.due); });
     }
     if ((kind === 'tlate' || kind === 'ttoday') && week) {
       const dueOf = z => isMe(z.teacher) ? z.gradeDue : z.returnDue;
@@ -3201,3 +3202,10 @@ paintBell = function () {
   box.appendChild(list);
   keep.forEach(c => box.appendChild(c));
 };
+
+function ladCheckTag(l) {
+  const c = viToIso(l.x.checked), dm = d => d.slice(8, 10) + '/' + d.slice(5, 7);
+  if (!l.s) return c ? '<span class="tag">' + T('xét ', 'checked ') + dm(c) + '</span>' : '';
+  if (c && c >= l.s.day) return '<span class="tag ok">' + T('Đã xét buổi này', 'Checked for this lesson') + '</span>';
+  return '<span class="tag warn">' + T('Chưa xét buổi này · xét ~', 'Not checked yet · ~') + Q.clock(Math.max(0, l.s.start - 60)) + '</span>' + (c ? '<span class="small muted">' + T('đang hiện kết quả ', 'showing ') + dm(c) + '</span>' : '');
+}
