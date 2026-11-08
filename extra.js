@@ -1371,3 +1371,96 @@ document.addEventListener('contextmenu', e => { if (e.target.closest && e.target
 document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('[data-act="llUnlock"]')) { e.preventDefault(); unlockNow(); } });
 // After 5 minutes without a tap the screen locks itself again.
 setInterval(() => { if (view === 'lenlop' && llLock.open && Date.now() - llLock.at >= LOCK_IDLE) { llLock.open = false; llGradeBox = null; flush(); render(); } }, 15000);
+
+/* ---------- Điều hành reorganised (owner 08/11: "không còn mục chấm công nữa vì là tự động chấm công... cái nào trùng lặp bỏ đi...
+ * bố trí lại cho dễ theo dõi... cái nào cần thì thêm") ----------
+ * Staff time now comes only from GPS check-in (Vào ca), so the manual "Chấm công" tab is gone; KPI and the month table are one tab;
+ * a new "Tổng quan" tab comes first and lists, for today, what needs someone, each line opening the tab that handles it. */
+PANELS.splice(0, PANELS.length, ['tong', 'Tổng quan'], ['ca', 'Vào ca'], ['vang', 'HS vắng'], ['task', 'Important Task'], ['loi', 'Lỗi'], ['thang', 'Tháng & KPI'], ['cot', 'Cột lớp'], ['manhinh', 'Màn hình lớp']);
+if (!PANELS.some(p => p[0] === panel)) panel = 'tong';
+const PANEL_EN = { 'Tổng quan': 'Overview', 'Vào ca': 'Check-in', 'HS vắng': 'Absences', 'Lỗi': 'Errors', 'Tháng & KPI': 'Month & KPI', 'Cột lớp': 'Lesson columns', 'Màn hình lớp': 'Class screens' };
+const panelTabs = () => '<div class="tabs">' + PANELS.map(([k, t]) => '<button class="' + (k === panel ? 'on' : '') + '" data-act="panel" data-v="' + k + '">' + esc(lang === 'en' ? PANEL_EN[t] || t : t) + '</button>').join('') + '</div>';
+// Today's counts, from what is already read; a figure that needs class sheets says so instead of guessing.
+function overviewStats(week) {
+  const t = today(), saved = day, out = {};
+  day = t;
+  try {
+    // Check-in: reuse the Vào ca tab's own count line, so both always agree.
+    const c = ca.all ? (caPanel(week).match(/<div class="count">([\s\S]*?)<\/div>/) || [])[1] : null;
+    out.ca = c == null ? null : c.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    out.caWaiting = c ? Number((c.match(/(\d+)\s*(chờ duyệt|waiting)/) || [])[1] || 0) : 0;
+    out.caMissing = c ? Number((c.match(/(\d+)\s*(chưa vào ca|not in)/) || [])[1] || 0) : 0;
+    const ses = week ? week.data.sessions.filter(s => s.day === t && !s.off && classOf(s)) : [];
+    let noRoll = 0, pending = 0, cols = 0, read = 0;
+    ses.forEach(s => {
+      const ctx = classContext(s);
+      if (!ctx.tracker) return;
+      read++;
+      if (ctx.tracker.blocks.length && columnWarning(ctx)) cols++;
+      if (isGroup(s) || s.day < (classOf(s).since || '')) return;
+      const roll = Q.rollCall(s, ctx.marks, t, minutesNow());
+      if (!roll.past) return;
+      if (roll.noRollCall) { noRoll++; return; }
+      pending += ctx.tracker.pupils.filter(p => Q.pupilState(ctx.marks.get(p.name), roll) === 'Vắng chờ xác minh').length;
+    });
+    Object.assign(out, { classes: ses.length, read, noRoll, pending, cols });
+    const tasks = week ? week.data.tasks.map(x => Q.taskState(x, t).state) : [];
+    out.taskLate = tasks.filter(x => x === 'quahan').length; out.taskToday = tasks.filter(x => x === 'homnay').length; out.taskOpen = tasks.filter(x => x !== 'xong').length;
+    out.errors = logs.errors ? [...Q.latest(logs.errors.rows, r => r.id).values()].filter(e => e.status === 'Mở').length : null;
+  } catch (e) { out.err = e.message; }
+  finally { day = saved; }
+  return out;
+}
+function overviewPanel(week) {
+  const s = overviewStats(week), bellNow = bellItems().filter(x => !['in', 'inno', 'out'].includes(x.k));
+  const line = (icon, title, text, tag, go, v) => '<div class="card row ov-line"><div class="row-top"><span class="ico">' + icon + '</span><b>' + esc(title) + '</b>' + (tag || '') + '<span class="spacer"></span>' +
+    (go ? '<button class="quiet" data-act="' + go + '"' + (v ? ' data-v="' + v + '"' : '') + '>' + T('Mở', 'Open') + ' ›</button>' : '') + '</div>' + (text ? '<div class="small muted">' + text + '</div>' : '') + '</div>';
+  const tag = (n, kind, word) => n ? '<span class="tag ' + kind + '">' + n + ' ' + esc(word) + '</span>' : '';
+  let h = '<p class="small muted">' + T('Hôm nay ', 'Today ') + esc(dayLabel(today())) + T('. Chấm công là tự động theo Vào ca (định vị); quản lí chỉ duyệt các lượt muộn hoặc sai chỗ.', '. Staff time comes from GPS check-in; managers only decide late or off-site check-ins.') + '</p>';
+  if (bellNow.length) h += '<h2>' + T('Cần xử lý ngay', 'Needs action now') + '</h2><div class="list">' + bellNow.map((x, i) => '<button class="bell-item' + (x.hot ? ' hot' : '') + '" data-act="ovGo" data-i="' + i + '"><span>' + x.icon + '</span><span>' + esc(x.text) + '</span><span class="muted">›</span></button>').join('') + '</div>';
+  h += '<h2>' + T('Hôm nay ở trung tâm', 'Today at the centre') + '</h2><div class="grid">' +
+    line('📍', T('Vào ca', 'Check-in'), s.ca == null ? T('Đang đọc…', 'Reading…') : esc(s.ca), tag(s.caWaiting, 'warn', T('chờ duyệt', 'waiting')), 'panel', 'ca') +
+    line('🧒', T('Điểm danh học sinh', 'Pupil roll call'), s.classes ? (s.read < s.classes ? T('Đã đọc ' + s.read + '/' + s.classes + ' sheet lớp hôm nay…', 'Read ' + s.read + '/' + s.classes + ' class sheets…') : s.classes + T(' buổi hôm nay', ' sessions today')) : T('Hôm nay không có lớp.', 'No classes today.'),
+      tag(s.noRoll, 'bad', T('buổi GV chưa điểm danh', 'not taken')) + tag(s.pending, 'warn', T('HS vắng chờ xác minh', 'absences to check')), 'panel', 'vang') +
+    line('📝', 'Important Task', s.taskOpen ? s.taskOpen + T(' việc chưa xong trong tuần', ' open this week') : T('Tuần này đã xong hết.', 'All done this week.'), tag(s.taskLate, 'bad', T('quá hạn', 'overdue')) + tag(s.taskToday, 'warn', T('hạn hôm nay', 'due today')), 'panel', 'task') +
+    line('⚠️', T('Lỗi nhân viên', 'Staff errors'), s.errors == null ? T('Đang đọc…', 'Reading…') : s.errors ? s.errors + T(' lỗi đang mở', ' open') : T('Không có lỗi đang mở.', 'None open.'), '', 'panel', 'loi') +
+    line('🗂️', T('Cột tiết học hôm nay', 'Lesson columns today'), s.read ? (s.cols ? s.cols + T(' buổi cần TA kiểm tra cột', ' need a column check') : T('Các lớp hôm nay đều đã có cột.', 'All classes today have their column.')) : T('Đang đọc sheet lớp…', 'Reading class sheets…'), tag(s.cols, 'bad', T('cần xem', 'to check')), 'panel', 'cot') +
+    '</div>';
+  return h;
+}
+// The month tab: KPI cards (on time from check-in, Important Task, returns, roll call) and errors per person of that month.
+function thangPanel() {
+  const month = filters.kpiMonth || xMonth(), errors = {};
+  [...Q.latest(logs.errors ? logs.errors.rows : [], r => r.id).values()].filter(e => String(e.day).startsWith(month)).forEach(e => { errors[e.person] = (errors[e.person] || 0) + 1; });
+  const rows = Object.entries(errors).sort((a, b) => b[1] - a[1]);
+  return kpiPanel() + (rows.length ? '<h2>' + T('Lỗi trong ', 'Errors in ') + esc(monthName(month)) + '</h2><div class="card table"><table><thead><tr><th>' + T('Người', 'Person') + '</th><th>' + T('Số lỗi', 'Errors') + '</th></tr></thead><tbody>' +
+    rows.map(([p, n]) => '<tr><td>' + esc(p) + '</td><td>' + n + '</td></tr>').join('') + '</tbody></table></div>' : '');
+}
+viewManager = function (week) {
+  const body = { tong: () => overviewPanel(week), kpi: thangPanel, ca: () => caPanel(week), vang: absencePanel, task: () => taskPanel(week), loi: errorPanel, thang: thangPanel, cot: columnPanel, manhinh: boardPanel }[panel] || (() => overviewPanel(week));
+  return panelTabs() + body();
+};
+const loadPanelBeforeReorg = loadPanel;
+loadPanel = async function () {
+  if (panel === 'thang') { panel = 'kpi'; try { await loadPanelBeforeReorg(); } finally { panel = 'thang'; } return; }
+  if (panel !== 'tong') return loadPanelBeforeReorg();
+  const t = today();
+  await weekOf(t);
+  await Promise.all([loadManager().catch(() => {}), loadCaAll(true).catch(() => {}), loadMarks().catch(() => {})]);
+  render();
+  // Today's class sheets only, two at a time, so the overview stays light on Google's limit.
+  const week = weeks[Q.weekTab(tabs, t)], left = [...new Set((week ? week.data.sessions : []).filter(s => s.day === t && !s.off && classOf(s)).map(classOf))];
+  const work = async () => { while (left.length) { const c = left.shift(); try { await loadTracker(c, false, true); } catch (e) {} if (panel === 'tong') render(); } };
+  await Promise.all([work(), work()]);
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="ovGo"]');
+  if (!b) return;
+  const x = bellItems().filter(y => !['in', 'inno', 'out'].includes(y.k))[Number(b.dataset.i)];
+  if (!x || !x.go) return;
+  if (x.go.view) view = x.go.view;
+  if (x.go.panel) panel = x.go.panel;
+  if (x.go.sec) filters.sec = x.go.sec;
+  render(); window.scrollTo(0, 0);
+  guarded(() => view === 'dieuhanh' ? loadPanel() : view === 'lopcn' ? loadHomerooms() : weekOf(day));
+});
