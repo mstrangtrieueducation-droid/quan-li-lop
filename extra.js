@@ -2713,3 +2713,16 @@ function markTrail(s, p) {
   });
   return out.length ? '<div class="abs-trail">' + out.slice(-5).join('') + '</div>' : '';
 }
+
+/* ---------- Stars tapped just before the page closes still reach the sheet (MY LINH 08/11: "thỉnh thoảng có bạn không được cập nhật sao") ----------
+ * Stars wait about 10 s to go together. A tab closed inside that wait used to leave the last stars on the device until the app was opened
+ * again on that same device. On pagehide the waiting star cells are also sent with keepalive, which the browser finishes after the page is
+ * gone; they stay in the outbox too, so the next opening sends them once more (the same number, nothing changes). */
+window.addEventListener('pagehide', () => {
+  try {
+    if (!accessKey) return;
+    const byFile = {};
+    outbox.filter(x => x.kind === 'cell' && x.blind).forEach(x => { (byFile[x.file] = byFile[x.file] || []).push({ range: x.range, values: [[x.value]] }); });
+    Object.entries(byFile).forEach(([file, data]) => fetch(CONFIG.server, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ k: accessKey, op: 'set', file, data: data.slice(0, 150) }) }).catch(() => {}));
+  } catch (e) {}
+});
