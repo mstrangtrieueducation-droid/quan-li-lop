@@ -2141,7 +2141,7 @@ function owedLine(s) {
 }
 const sessionCardBeforeOwed = sessionCard;
 sessionCard = function (s) {
-  const h = sessionCardBeforeOwed(s), line = owedLine(s);
+  const h = sessionCardBeforeOwed(s), line = '';
   if (!line) return h;
   const i = h.lastIndexOf('</div></button>') >= 0 ? h.lastIndexOf('</div></button>') : h.lastIndexOf('</div></div>');
   return i >= 0 ? h.slice(0, i) + line + h.slice(i) : h + line;
@@ -3209,3 +3209,108 @@ function ladCheckTag(l) {
   if (c && c >= l.s.day) return '<span class="tag ok">' + T('Đã xét buổi này', 'Checked for this lesson') + '</span>';
   return '<span class="tag warn">' + T('Chưa xét buổi này · xét ~', 'Not checked yet · ~') + Q.clock(Math.max(0, l.s.start - 60)) + '</span>' + (c ? '<span class="small muted">' + T('đang hiện kết quả ', 'showing ') + dm(c) + '</span>' : '');
 }
+
+/* ---------- Lesson cards, toolbar and table view (owner 09/11, pasted spec; owed work stays off the cards) ----------
+ * A card has three tiers: time + class + room; book · lesson with the detail cut to two lines; small chips for people, break and notes.
+ * Cards in a row have the same height. Split groups with the same time and lesson (IELTS 46.1 / 46.2) share one card.
+ * Above the list (whole-centre view): search (class, teacher, pupil), kind, room, "Cần in bài", and a card / table switch. */
+const titleCase = n => Q.clean(n).toLowerCase().replace(/(^|[\s\-(])(\S)/g, (m, p, c) => p + c.toUpperCase());
+const SC_ICO = { printer: '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>', cam: '<path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>', home: '<path d="M3 10.5L12 3l9 7.5V21H3z"/><path d="M9 21v-6h6v6"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>', grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>', rows: '<path d="M3 6h18M3 12h18M3 18h18"/>' };
+Object.assign(ICO, SC_ICO);
+const roomText = site => Q.clean(site).replace(/_/g, ' · ');
+function noteChips(s) {
+  return String(s.note || '').split('\n').map(Q.clean).filter(Boolean).map(n => {
+    const k = Q.key(n);
+    if (/PRINT/.test(k)) return '<span class="chip warn">' + ico('printer') + T('Cần in bài', 'Printing needed') + '</span>';
+    if (/VIDEO ?TAPER/.test(k)) return '<span class="chip">' + ico('cam') + T('Cần quay video', 'Video taper') + '</span>';
+    if (/\bTA NEEDED\b/.test(k)) return '<span class="chip">' + ico('user') + T('Cần TA trông KT', 'Invigilator') + '</span>';
+    return '<span class="chip" title="' + esc(n) + '">' + esc(n.length > 28 ? n.slice(0, 26) + '…' : n) + '</span>';
+  }).join('');
+}
+const peopleChips = list => {
+  const seen = new Set();
+  return [s => ['user', 'GV', s.teacher], s => ['cam', helperRole(s), s.video], s => ['home', 'CN', s.ta]].flatMap(f => list.map(f)).filter(([, , n]) => n && !seen.has(Q.key(n)) && (seen.add(Q.key(n)), true))
+    .map(([i, role, n]) => '<span class="chip">' + ico(i) + esc(role) + ': <b>' + esc(titleCase(n)) + '</b></span>').join('');
+};
+const schQ = s => { const c = classOf(s), t = c && trackers[c.key]; return Q.key([s.cls, s.teacher, s.ta, s.video, s.site, s.book, (s.merged || []).map(z => z.cls).join(' ')].concat(t ? t.pupils.flatMap(p => [p.name, p.eng]) : []).join(' ')); };
+function scard(s) {
+  const group = s.merged || [s], first = group[0], k = kindOf(first), c = classOf(first);
+  const name = group.length > 1 ? group.map((z, i) => i ? Q.clean(z.cls).replace(/^.*?(\.\d+)$/, '$1') : Q.clean(z.cls)).join(' · ') : (k === 'tutor' ? Q.clean(s.cls).replace(/^TUTOR\s*/i, '') : Q.clean(s.cls));
+  const rooms = [...new Set(group.map(z => z.site).filter(Boolean).map(roomText))];
+  const detail = [String(first.detail || '').split('\n').map(Q.clean).filter(Boolean).join(' · ')].concat(first.also && first.also.length ? [T('Cùng buổi: ', 'Same session: ') + first.also.join(', ')] : []).filter(Boolean).join(' — ');
+  const lesson = [first.book ? Q.clean(first.book) : '', first.lesson ? T('Tiết ', 'Lesson ') + first.lesson : ''].filter(Boolean).join(' · ');
+  const chips = peopleChips(group) + (first.breakAt ? '<span class="chip">' + ico('clock') + T('Giải lao ', 'Break ') + esc(String(first.breakAt).replace(/^(\d{1,2})[.h](\d{2})$/, '$1:$2')) + '</span>' : '') + group.map(noteChips).join('');
+  const inner = '<div class="sc-h"><span class="sc-time">' + Q.clock(first.start) + '–' + Q.clock(first.end) + '</span><strong>' + esc(name) + '</strong>' + liveTag(first) + (first.off ? '<span class="tag bad">' + T('Nghỉ', 'Off') + '</span>' : '') +
+    '<span class="spacer"></span>' + (rooms.length ? '<span class="sc-room" title="' + esc(rooms.join(' / ')) + '">' + ico('pin') + esc(rooms.join(' / ')) + '</span>' : '') + '</div>' +
+    (lesson || detail ? '<div class="sc-l">' + (lesson ? '<b>' + esc(lesson) + '</b>' : '') + (detail ? '<div class="sc-d" title="' + esc(detail) + '">' + esc(detail) + '</div>' : '') + '</div>' : '') +
+    (chips ? '<div class="sc-c">' + chips + '</div>' : '') +
+    (group.length > 1 && group.some(z => classOf(z)) ? '<div class="sc-open">' + group.filter(z => classOf(z)).map(z => '<button class="quiet" data-act="open" data-row="' + z.row + '" data-day="' + z.day + '">' + T('Mở ', 'Open ') + esc(Q.clean(z.cls)) + '</button>').join('') + '</div>' : '');
+  const cl = 'card session sc k-' + k + (first.off ? ' off' : ''), q = ' data-q="' + esc(schQ(s)) + '"';
+  return group.length === 1 && c ? '<button class="' + cl + ' link" data-act="open" data-row="' + first.row + '" data-day="' + first.day + '"' + q + '>' + inner + '</button>' : '<div class="' + cl + '"' + q + '>' + inner + '</div>';
+}
+sessionCard = scard;
+// Split groups with the same time, book and lesson become one card.
+function mergeGroups(list) {
+  const out = [], seen = new Map();
+  list.forEach(s => {
+    const base = Q.key(s.cls).replace(/\.\d+$/, '');
+    if (!/\.\d+$/.test(Q.clean(s.cls))) { out.push(s); return; }
+    const k = [base, s.day, s.start, s.end, Q.key(s.book), s.lesson].join('|');
+    if (seen.has(k)) { const m = seen.get(k); m.merged.push(s); return; }
+    const m = Object.assign({}, s, { merged: [s] });
+    seen.set(k, m); out.push(m);
+  });
+  return out.map(m => m.merged && m.merged.length === 1 ? m.merged[0] : m);
+}
+let schView = 'grid';
+try { schView = localStorage.getItem('ql-schview') || 'grid'; } catch (e) {}
+function schTable(list) {
+  if (!list.length) return '';
+  return '<div class="stbl" role="table"><div class="st-h" role="row"><span>' + T('Giờ', 'Time') + '</span><span>' + T('Lớp', 'Class') + '</span><span>' + T('Phòng', 'Room') + '</span><span>' + T('Bài học', 'Lesson') + '</span><span>' + T('GV & CN', 'Staff') + '</span><span>' + T('Trạng thái', 'Status') + '</span></div>' +
+    list.map(s => {
+      const g = s.merged || [s], f = g[0], c = classOf(f), name = g.map(z => Q.clean(z.cls)).join(' · '), staff = [...new Set(g.flatMap(z => [z.teacher, z.ta]).filter(Boolean).map(titleCase))].join(' · ');
+      const status = liveTag(f) + (f.off ? '<span class="tag bad">' + T('Nghỉ', 'Off') + '</span>' : '') + (g.some(z => /PRINT/.test(Q.key(z.note))) ? '<span class="chip warn">' + ico('printer') + T('In bài', 'Print') + '</span>' : '');
+      const cells = '<span class="st-t">' + Q.clock(f.start) + '–' + Q.clock(f.end) + '</span><span class="st-c">' + clsBadge(name) + '</span><span class="st-r">' + esc(f.site ? laneOf(f.site).name : '') + '</span><span class="st-l" title="' + esc([f.book, f.lesson, f.detail].filter(Boolean).join(' · ')) + '">' + esc([f.book ? Q.clean(f.book) : '', f.lesson ? T('T', 'L') + f.lesson : ''].filter(Boolean).join(' · ')) + '</span><span class="st-p">' + esc(staff) + '</span><span class="st-s">' + status + '</span>';
+      const tag = g.length === 1 && c ? 'button' : 'div';
+      return '<' + tag + ' class="st-row k-' + kindOf(f) + (f.off ? ' off' : '') + '" role="row" data-q="' + esc(schQ(s)) + '"' + (tag === 'button' ? ' data-act="open" data-row="' + f.row + '" data-day="' + f.day + '"' : '') + '>' + cells + '</' + tag + '>';
+    }).join('') + '</div>';
+}
+function schToolbar(all) {
+  const kinds = KINDS.filter(([k]) => all.some(s => kindOf(s) === k)), rooms = [...new Set(all.filter(s => s.site).map(s => laneOf(s.site)).sort((p, q) => p.order - q.order).map(l => l.name))];
+  const pill = (act, v, on, label) => '<button class="fp' + (on ? ' on' : '') + '" data-act="' + act + '" data-v="' + esc(v) + '">' + label + '</button>';
+  return '<div class="stools"><label class="sq">' + ico('search') + '<input id="schQ" type="search" placeholder="' + T('Tìm lớp, GV, học sinh…', 'Find class, teacher, pupil…') + '" value="' + esc(filters.q || '') + '" autocomplete="off"></label>' +
+    '<div class="fps">' + pill('kind', '', !filters.kind, T('Tất cả', 'All')) + kinds.map(([k]) => pill('kind', k, filters.kind === k, esc(kindName(k)))).join('') + '</div>' +
+    (rooms.length > 1 ? '<div class="fps">' + rooms.map(r => pill('schRoom', r, filters.room === r, esc(r))).join('') + '</div>' : '') +
+    '<div class="fps">' + pill('schPrint', '1', !!filters.print, ico('printer') + T('Cần in bài', 'Printing')) + '</div>' +
+    '<div class="seg st-view">' + '<button class="' + (schView === 'grid' ? 'on' : '') + '" data-act="schView" data-v="grid" aria-label="' + T('Dạng thẻ', 'Cards') + '">' + ico('grid') + '</button><button class="' + (schView === 'table' ? 'on' : '') + '" data-act="schView" data-v="table" aria-label="' + T('Dạng bảng', 'Table') + '">' + ico('rows') + '</button></div></div>';
+}
+const schMatch = (s, q) => !q || schQ(s).includes(q);
+const dayPartsBeforeCards = dayParts;
+dayParts = function (list) {
+  const centre = isManager() && filters.showAll;
+  const q = Q.key(filters.q || '');
+  let shown = mergeGroups(list.filter(s => (!filters.room || (s.site && laneOf(s.site).name === filters.room)) && (!filters.print || /PRINT/.test(Q.key(s.note))) && (!centre || schMatch(s, q))));
+  if (!centre) return dayPartsBeforeCards(shown);
+  const body = !shown.length ? '<div class="card empty">' + T('Không có ca nào khớp bộ lọc.', 'Nothing matches.') + ' <button class="quiet" data-act="schClear">' + T('Bỏ lọc', 'Clear') + '</button></div>'
+    : schView === 'table' ? schTable(shown) : dayPartsBeforeCards(shown);
+  const wk = weeks[Q.weekTab(tabs, day)], dayAll = wk ? wk.data.sessions.filter(z => z.day === day) : list;
+  return schToolbar(dayAll) + '<div class="sch-list">' + body + '</div>';
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="schRoom"],[data-act="schPrint"],[data-act="schView"],[data-act="schClear"]');
+  if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'schRoom') filters.room = filters.room === b.dataset.v ? '' : b.dataset.v;
+  if (act === 'schPrint') filters.print = !filters.print;
+  if (act === 'schView') { schView = b.dataset.v; try { localStorage.setItem('ql-schview', schView); } catch (err) {} }
+  if (act === 'schClear') { filters.room = ''; filters.print = false; filters.q = ''; filters.kind = ''; }
+  render();
+});
+// Typing filters the list on the spot (the page does not redraw while the box has focus).
+document.addEventListener('input', e => {
+  if (!e.target || e.target.id !== 'schQ') return;
+  filters.q = e.target.value;
+  const q = Q.key(filters.q);
+  document.querySelectorAll('.sch-list [data-q]').forEach(el => { el.style.display = !q || el.dataset.q.includes(q) ? '' : 'none'; });
+});
+document.addEventListener('focusout', e => { if (e.target && e.target.id === 'schQ') setTimeout(render, 0); });
