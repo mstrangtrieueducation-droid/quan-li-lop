@@ -2402,3 +2402,25 @@ if (BOARDS_OFF) {
   const btn = document.querySelector('[data-act="boardStart"]');
   if (btn) btn.remove();
 }
+
+/* ---------- The owner's own teacher link (owner 08/11: "tôi như là GV cũng cho tôi tạo link để tôi đăng nhập bằng link") ----------
+ * One tap in Người dùng makes a GV link with her own name, for class computers: it shows her lessons and the class screen,
+ * never pay, tuition, contracts or people. Her owner link stays as it is. */
+const viewNguoiBeforeOwnGv = viewNguoi;
+viewNguoi = function () {
+  const h = viewNguoiBeforeOwnGv();
+  if (!isOwner() || !nguoi) return h;
+  const mine = nguoi.people.filter(p => Q.key(p.name) === Q.key(me.name) && p.role === 'GV');
+  const card = '<div class="card"><h3>Link GV của cô</h3><p>Dùng trên máy ở lớp: chỉ thấy lịch dạy và màn hình lớp của cô, không thấy lương, học phí, hợp đồng hay danh sách người dùng. Link Chủ của cô vẫn giữ nguyên.</p>' +
+    (mine.length ? '<p class="small muted">Đã có link GV (tạo ngày ' + esc(mine[0].at || '') + '). Muốn tạo lại thì xoá dòng "' + esc(me.name) + ' · GV" ở danh sách bên dưới trước.</p>'
+      : '<button class="primary" data-act="nguoiThemToi">Tạo link GV cho tôi</button>') + '</div>';
+  const at = h.indexOf('<div class="card"><h3>Thêm người</h3>');
+  return at >= 0 ? h.slice(0, at) + card + h.slice(at) : h + card;
+};
+document.addEventListener('click', async e => {
+  const b = e.target.closest && e.target.closest('[data-act="nguoiThemToi"]');
+  if (!b || !isOwner()) return;
+  b.disabled = true;
+  try { const r = await call('them', { name: me.name, role: 'GV' }); nguoiMoi = { name: r.name + ' (GV)', link: location.origin + location.pathname + '#k=' + r.key }; await loadNguoi(); render(); window.scrollTo(0, 0); }
+  catch (err) { say(err.message, 'bad'); render(); }
+});
