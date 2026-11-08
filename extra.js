@@ -1165,7 +1165,7 @@ function reportRow(x, showCm) {
 function reportSection() {
   ensureReportData();
   const all = reportItems(isManager() ? '' : me.name), head = '<div class="part p-1"><h2>' + T('Report tiết học', 'Lesson reports') + '</h2><span>' + T('Hạn: hết ngày hôm sau ngày học', 'Due: end of the day after the lesson') + '</span></div>';
-  const how = '<div class="small muted">' + T('Mở tab BÁO CÁO của lớp, chọn "Nhận xét buổi học", điền ngày học, dán nhận xét GV, tick B8, gửi phụ huynh, rồi bấm "Đã report ✓" ở đây.', 'Open the class BÁO CÁO tab, make the lesson report, send it, then tap "Mark reported".') + '</div>';
+  const how = '<details class="small muted how"><summary>' + T('Cách làm', 'How') + '</summary>' + T('Mở tab BÁO CÁO của lớp, chọn "Nhận xét buổi học", điền ngày học, dán nhận xét GV, tick B8, gửi phụ huynh, rồi bấm "Đã report ✓" ở đây.', 'Open the class BÁO CÁO tab, make the lesson report, send it, then tap "Mark reported".') + '</details>';
   if (!reports.rows) return head + '<div class="card empty">' + T('Đang đọc…', 'Reading…') + '</div>';
   if (!all.length) return head + how + '<div class="card empty">' + T('Chưa có tiết nào cần report (tính từ ' + viDate(REPORT_START) + ').', 'No lesson to report yet.') + '</div>';
   const recent = all.filter(x => x.state !== 'ok' || x.s.day >= Q.addDays(today(), -3)), older = all.filter(x => !recent.includes(x));
@@ -1440,7 +1440,7 @@ function overviewPanel(week) {
   const line = (icon, title, text, tag, go, v) => '<div class="card row ov-line"><div class="row-top"><span class="ico">' + icon + '</span><b>' + esc(title) + '</b>' + (tag || '') + '<span class="spacer"></span>' +
     (go ? '<button class="quiet" data-act="' + go + '"' + (v ? ' data-v="' + v + '"' : '') + '>' + T('Mở', 'Open') + ' ›</button>' : '') + '</div>' + (text ? '<div class="small muted">' + text + '</div>' : '') + '</div>';
   const tag = (n, kind, word) => n ? '<span class="tag ' + kind + '">' + n + ' ' + esc(word) + '</span>' : '';
-  let h = '<p class="small muted">' + T('Hôm nay ', 'Today ') + esc(dayLabel(today())) + T('. Chấm công là tự động theo Vào ca (định vị); quản lí chỉ duyệt các lượt muộn hoặc sai chỗ.', '. Staff time comes from GPS check-in; managers only decide late or off-site check-ins.') + '</p>';
+  let h = '';
   if (bellNow.length) h += '<h2>' + T('Cần xử lý ngay', 'Needs action now') + '</h2><div class="list">' + bellNow.map((x, i) => '<button class="bell-item' + (x.hot ? ' hot' : '') + '" data-act="ovGo" data-i="' + i + '"><span>' + x.icon + '</span><span>' + esc(x.text) + '</span><span class="muted">›</span></button>').join('') + '</div>';
   h += '<h2>' + T('Hôm nay ở trung tâm', 'Today at the centre') + '</h2><div class="grid">' +
     line('📍', T('Vào ca', 'Check-in'), s.ca == null ? T('Đang đọc…', 'Reading…') : esc(s.ca), tag(s.caWaiting, 'warn', T('chờ duyệt', 'waiting')), 'panel', 'ca') +
@@ -3352,3 +3352,71 @@ document.addEventListener('click', e => {
   e.preventDefault(); e.stopPropagation();
   d.classList.toggle('open');
 }, true);
+
+/* ---------- Lớp chủ nhiệm: KPI cards, one line per class, pupils in a side drawer (owner 09/11) ---------- */
+Object.assign(ICO, {
+  users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  school: '<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/>',
+  pct: '<path d="M19 5L5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+  bolt: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
+  alert: '<path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  chart: '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
+  folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+  cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>'
+});
+const kpi4Card = (icon, tone, label, value, sub) => '<div class="kpi4c t-' + tone + '"><span class="kpi4i">' + ico(icon) + '</span><div><span class="kpi4l">' + esc(label) + '</span><b>' + value + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</div></div>';
+let hrDrawer = null;
+function hrStats(x) {
+  const t = trackers[x.cls.key];
+  if (!t || t.light) return null;
+  const owed = Q.owedVideos(t.pupils, t.blocks, t.practices, t.cell, { day: Q.addDays(today(), 1) });
+  const rows = t.pupils.map((p, i) => ({ p, o: owed[i] || [] }));
+  return { t, rows, owing: rows.filter(r => r.o.length).length, total: t.pupils.length };
+}
+const oweLabel = o => o.practice ? String(o.label || '').replace(/^Tự luyện video/i, 'Tự luyện') : T('Tiết ', 'L') + o.lesson;
+viewHomerooms = function () {
+  const list = myHomerooms();
+  if (!list.length) return '<div class="card empty">' + (cnLoading ? T('Đang đọc…', 'Reading…') : T('Bạn chưa chủ nhiệm lớp nào trong tuần này.', 'No homeroom class this week.')) + '</div>' + (isManager() || isCm() ? reportSection() : '');
+  const stats = list.map(x => ({ x, s: hrStats(x) })), loaded = stats.filter(z => z.s);
+  const pupils = loaded.reduce((n, z) => n + z.s.total, 0), owing = loaded.reduce((n, z) => n + z.s.owing, 0);
+  const rate = pupils ? Math.round((pupils - owing) / pupils * 100) : null;
+  const reps = reports.rows ? reportItems(isManager() ? '' : me.name).filter(r => r.state === 'over' || r.state === 'today') : [];
+  let h = '<div class="kpi4">' + kpi4Card('school', 'indigo', T('Lớp chủ nhiệm', 'Classes'), list.length, isManager() ? new Set(list.map(z => Q.key(z.cm))).size + T(' chủ nhiệm', ' homeroom teachers') : '') +
+    kpi4Card('users', 'sky', T('Học sinh', 'Pupils'), loaded.length ? pupils : '—', loaded.length < list.length ? T('đã đọc ', 'read ') + loaded.length + '/' + list.length + T(' lớp', ' classes') : '') +
+    kpi4Card('pct', rate == null ? 'slate' : rate >= 85 ? 'green' : rate >= 60 ? 'amber' : 'red', T('Đủ bài', 'Caught up'), rate == null ? '—' : rate + '%', owing ? owing + T(' HS còn nợ', ' pupils owe') : '') +
+    kpi4Card('bolt', reps.length ? 'red' : 'green', T('Cần xử lý ngay', 'Act now'), reps.length, T('report quá hạn / hôm nay', 'reports due')) + '</div>';
+  h += '<div class="hr-tbl">' + stats.sort((a, b) => (b.s ? b.s.owing / Math.max(1, b.s.total) : -1) - (a.s ? a.s.owing / Math.max(1, a.s.total) : -1)).map(({ x, s }) => {
+    const pct = s && s.total ? Math.round((s.total - s.owing) / s.total * 100) : 0, tone = !s ? 'none' : pct >= 85 ? 'green' : pct >= 60 ? 'amber' : 'red';
+    const next = x.next ? dayLabel(x.next.day).replace(/^Thứ /, 'T').replace(/^Chủ nhật/, 'CN') + ' ' + Q.clock(x.next.start) : '';
+    return '<div class="hr-row"><span class="dot d-' + tone + '"></span>' + clsBadge(x.cls.name) + (isManager() ? '<span class="hr-cm">' + esc(titleCase(x.cm)) + '</span>' : '') + '<span class="hr-next">' + esc(next) + '</span>' +
+      (s ? '<span class="hr-bar"><i class="d-' + tone + '" style="width:' + pct + '%"></i></span><span class="hr-n">' + (s.total - s.owing) + '/' + s.total + '</span><button class="quiet hr-go" data-act="hrDrawer" data-k="' + esc(x.cls.key) + '">' + (s.owing ? '<span class="tag bad">' + s.owing + T(' nợ', ' owe') + '</span>' : '<span class="tag ok">' + T('Đủ', 'OK') + '</span>') + ' ›</button>'
+        : '<span class="hr-bar"></span><span class="hr-n">—</span><button class="quiet hr-go" data-act="cnLoad" data-k="' + esc(x.cls.key) + '">' + T('Xem ›', 'Load ›') + '</button>') + '</div>';
+  }).join('') + '</div>';
+  h += isManager() || isCm() ? reportSection() : '';
+  if (hrDrawer) h += hrDrawerHtml(list.find(z => z.cls.key === hrDrawer));
+  return h;
+};
+function hrDrawerHtml(x) {
+  if (!x) { hrDrawer = null; return ''; }
+  const s = hrStats(x);
+  const rows = s ? s.rows.slice().sort((a, b) => b.o.length - a.o.length) : [];
+  const body = !s ? '<div class="fl-empty">' + T('Đang đọc…', 'Reading…') + '</div>' : rows.map(r => '<div class="dw-row' + (r.o.length ? '' : ' done') + '"><span class="dw-n' + (r.o.length ? '' : ' ok') + '">' + (r.o.length || '✓') + '</span><div><b>' + esc(r.p.eng || r.p.name) + '</b>' + (r.p.eng ? '<small>' + esc(r.p.name) + '</small>' : '') +
+    (r.o.length ? '<div class="dw-chips">' + [...new Set(r.o.map(oweLabel))].map(l => '<span class="chip">' + esc(l) + '</span>').join('') + '</div>' : '') + '</div></div>').join('');
+  return '<div class="dw-veil" data-act="hrClose"></div><aside class="drawer" role="dialog" aria-label="' + esc(x.cls.name) + '"><div class="dw-head">' + clsBadge(x.cls.name) + '<b>' + (s ? s.owing + T(' HS còn nợ bài', ' pupils owe work') : '') + '</b><span class="spacer"></span>' +
+    (x.next ? '<button class="quiet" data-act="open" data-row="' + x.next.row + '" data-day="' + x.next.day + '">' + T('Mở lớp', 'Open') + '</button>' : '') + '<button class="quiet" data-act="hrClose" aria-label="' + T('Đóng', 'Close') + '">✕</button></div><div class="dw-body">' + body + '</div></aside>';
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="hrDrawer"],[data-act="hrClose"]');
+  if (b) { hrDrawer = b.dataset.act === 'hrDrawer' ? b.dataset.k : null; render(); return; }
+  if (hrDrawer && e.target.closest && e.target.closest('.drawer [data-act="open"]')) hrDrawer = null;
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && hrDrawer) { hrDrawer = null; render(); } });
+
+// Colour icon squares in place of the emoji on dashboard tiles (Điều hành and the Lịch tiles).
+const TILE_ICO = { ca: ['pin', 'green'], vang: ['users', 'sky'], task: ['list', 'amber'], loi: ['alert', 'red'], thang: ['chart', 'indigo'], cot: ['folder', 'violet'], phat: ['phone', 'red'], lamviec: ['cal', 'indigo'], sach: ['book', 'sky'] };
+const vividTiles = html => html.replace(/data-v="(\w+)"><span class="dash-ico">[^<]*<\/span>/g, (m, k) => TILE_ICO[k] ? 'data-v="' + k + '"><span class="dash-ico vi t-' + TILE_ICO[k][1] + '">' + ico(TILE_ICO[k][0]) + '</span>' : m);
+const dashTilesBeforeVivid = dashTiles;
+dashTiles = function (week) { return vividTiles(dashTilesBeforeVivid(week)); };
+const viewScheduleBeforeVivid = viewSchedule;
+viewSchedule = function (week) { return vividTiles(viewScheduleBeforeVivid(week)); };
