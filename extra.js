@@ -574,7 +574,8 @@ function ladderBlock(week) {
   if (!list.length) return '';
   list.sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || b.late - a.late || (a.s ? 0 : 1) - (b.s ? 0 : 1) || b.x.level - a.x.level || a.x.cls.localeCompare(b.x.cls, 'vi', { numeric: true }));
   const todo = list.filter(l => !l.done).length, late = list.filter(l => l.late).length;
-  const mode = filters.lad || 'can', shown = mode === 'can' ? list.filter(l => !l.done) : mode === 'homnay' ? list.filter(l => l.s) : list;
+  // Owner 08/11: handled pupils do not disappear, they fade and say who did it and when (pending ones stay on top).
+  const mode = filters.lad || 'can', shown = mode === 'homnay' ? list.filter(l => l.s) : list;
   let h = '<div class="part p-alert"><h2>' + T('Học sinh trong danh sách phạt', 'Pupils on the penalty ladder') + '</h2><span>' + list.length + T(' HS', ' pupils') + (late ? ' · ' + late + T(' quá hạn', ' overdue') : '') + '</span></div>';
   h += '<div class="chips">' + [['can', T('Cần liên hệ PH', 'To contact') + ' ' + todo], ['homnay', T('Lớp học hôm nay', 'In class today') + ' ' + list.filter(l => l.s).length], ['tat', T('Tất cả', 'All') + ' ' + list.length]].map(([k, t]) => '<button class="' + (mode === k ? 'on' : '') + '" data-act="ladMode" data-v="' + k + '">' + esc(t) + '</button>').join('') + '</div>';
   h += '<details class="card row lad-legend"><summary>' + T('Việc từng mức · nhắn tin hôm nay: ', 'What each level means · messages today: ') + '<b>' + (isFriday(today()) ? 'THUY TRANG' : T('quản lí', 'managers')) + '</b></summary>' + [1, 2, 3, 4, 5].map(l => '<div class="small"><span class="lvl l' + l + '">M' + l + '</span> ' + esc(LADDER_ACT[l]) + (l >= 4 ? T(' Hạn 2 ngày.', ' Within 2 days.') : '') + '</div>').join('') + '</details>';
@@ -585,8 +586,8 @@ function ladderBlock(week) {
     const s0 = items[0].s;
     return '<div class="card row lad-class"><div class="row-top"><b>' + esc(cls) + '</b>' + (s0 ? '<span class="tag">' + T('học ', 'class ') + Q.clock(s0.start) + '</span>' : '') + '<span class="spacer"></span><span class="muted small">' + items.length + T(' HS', '') + '</span></div>' + items.map(({ x, rule, done, late }) => {
       const m = x.name.match(/^(.*?)\s*\(([^)]+)\)\s*$/), eng = m ? m[2] : '', full = m ? m[1] : x.name;
-      return '<div class="lad lv' + x.level + (late ? ' late' : '') + '"><div class="lad-line"><span class="lvl l' + x.level + '">M' + x.level + '</span><b>' + esc(eng || full) + '</b>' +
-        (done ? '<span class="tag ok">✓ ' + esc(rule.action.replace('Đã ', '')) + ' · ' + esc(done.by) + '</span>' : '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Gọi', 'Call') : T('Nhắn', 'Message')) + ' · ' + esc(rule.who) + (rule.call ? ' · ' + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>') +
+      return '<div class="lad lv' + x.level + (late ? ' late' : '') + (done ? ' done' : '') + '"><div class="lad-line"><span class="lvl l' + x.level + '">M' + x.level + '</span><b>' + esc(eng || full) + '</b>' +
+        (done ? '<span class="tag ok">✓ ' + esc(rule.action) + ' · ' + esc(done.by || '?') + (done.at ? ' · ' + esc(String(done.at).slice(11, 16) + ' ' + String(done.at).slice(0, 5)) : '') + '</span>' : '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Gọi', 'Call') : T('Nhắn', 'Message')) + ' · ' + esc(rule.who) + (rule.call ? ' · ' + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>') +
         '<span class="spacer"></span>' + (!done && canContact(x, rule) ? '<button class="good" data-act="ladTick" data-cls="' + esc(x.cls) + '" data-name="' + esc(x.name) + '">' + esc(rule.action) + '</button>' : '') +
         (x.level === 2 ? '<button class="quiet" data-act="ladCopy" data-cls="' + esc(x.cls) + '" data-name="' + esc(eng || full) + '">' + T('Bài chép', 'Copy text') + '</button>' : '') + '</div>' +
         '<details class="lad-more"><summary>' + esc(x.reason || T('Chi tiết', 'Details')) + '</summary><div class="small">' + esc(full) + ' · ' + T('vào mức từ ', 'since ') + esc(x.since) + '</div>' + (x.owed.length ? '<div class="small muted">' + T('Còn nợ: ', 'Owes: ') + esc(x.owed.join('; ')) + '</div>' : '') + '</details></div>';
@@ -2160,9 +2161,9 @@ absencePanel = function () {
   const pupilLine = (s, x) => '<div class="abs-line"><div class="abs-who"><b>' + esc(x.p.eng || x.p.name) + '</b> <span class="small muted">' + esc(x.p.name) + '</span> ' + phoneOf(x.p) + '</div>' +
     '<div class="choices">' + choice(s, x, 'Có phép', 'mid') + choice(s, x, 'Không phép', 'low') + '<button class="' + (x.m && x.m.contact ? 'on good' : 'good') + '" data-act="contact" data-row="' + s.row + '" data-day="' + s.day + '" data-name="' + esc(x.p.name) + '">' + T('Đã liên hệ PH', 'Parent contacted') + '</button></div></div>';
   let h = '<div class="count"><span>' + (todo.length ? todo.reduce((n, c) => n + (c.none ? 1 : c.list.length), 0) + T(' mục chờ xác minh', ' to check') : T('Không còn mục chờ xác minh', 'Nothing left to check')) + '</span><span class="small muted">' + T('Tự cập nhật mỗi 30 giây', 'Updates every 30 s') + '</span></div>';
-  h += todo.length ? '<div class="list">' + todo.map(c => '<div class="card row">' + head(c.s) + (c.none ? '<div class="notice bad">' + T('GV chưa điểm danh buổi này', 'Roll call not taken') + ' (' + esc(rollTaker(c.s)) + ').</div>' : c.list.map(x => pupilLine(c.s, x)).join('')) + '</div>').join('') + '</div>' : '';
-  if (done.length) h += '<details class="card row abs-done"><summary>' + T('Đã xác minh trong 7 ngày', 'Checked in the last 7 days') + ' · ' + done.reduce((n, c) => n + c.list.length, 0) + '</summary>' +
-    done.map(c => '<div class="abs-group">' + head(c.s) + c.list.map(x => '<div class="small">' + esc(x.p.eng || x.p.name) + ' · <b>' + esc(stateText(x.st)) + '</b>' + (x.m && x.m.by ? ' · ' + esc(x.m.by) + ' ' + esc(String(x.m.at || '').slice(0, 16)) : '') + '</div>').join('') + '</div>').join('') + '</details>';
+  h += todo.length ? '<div class="list">' + todo.map(c => '<div class="card row">' + head(c.s) + (c.none ? '<div class="notice bad">' + T('GV chưa điểm danh buổi này', 'Roll call not taken') + ' (' + esc(rollTaker(c.s)) + ').</div>' : c.list.map(x => pupilLine(c.s, x) + markTrail(c.s, x.p)).join('')) + '</div>').join('') + '</div>' : '';
+  if (done.length) h += '<details class="card row abs-done" open><summary>' + T('Đã xác minh trong 7 ngày', 'Checked in the last 7 days') + ' · ' + done.reduce((n, c) => n + c.list.length, 0) + '</summary>' +
+    done.map(c => '<div class="abs-group">' + head(c.s) + c.list.map(x => pupilLine(c.s, x) + markTrail(c.s, x.p)).join('') + '</div>').join('') + '</details>';
   return h;
 };
 // Live: the absence tab, the overview and the check-in tab re-read the roll-call log (and check-ins) every 30 s while open.
@@ -2665,3 +2666,50 @@ render = function () {
   renderBeforeFresh();
   if (view === 'lenlop' && current && document.querySelector('.sum-sheet')) { const k = Q.sessionKey(current); if (!sumSeen.has(k)) { sumSeen.add(k); refreshOwedNow(current); } }
 };
+
+/* ---------- Điều hành as a dashboard (owner 08/11: "tổ chức lại app quản trị hơi giống dash... có nút ấn xong mở ra hộp thoại phụ... gọn gàng,
+ * thẩm mĩ hơn") ----------
+ * The page is a grid of tiles, one per area, each with its number and a colour (red = act now, amber = waiting, green = fine).
+ * A tile opens its area in a dialog over the grid; ✕ or the dark background closes it. "Cần xử lý ngay" stays under the tiles. */
+const DASH = [['ca', '📍', 'Vào ca', 'Check-in'], ['vang', '🧒', 'HS vắng', 'Absences'], ['task', '📝', 'Important Task', 'Important Task'], ['loi', '⚠️', 'Lỗi nhân viên', 'Staff errors'], ['thang', '📊', 'Tháng & KPI', 'Month & KPI'], ['cot', '🗂️', 'Cột lớp', 'Lesson columns']];
+function dashTiles(week) {
+  const s = overviewStats(week);
+  const v = {
+    ca: [s.caWaiting || 0, s.caWaiting ? 'warn' : 'ok', s.ca == null ? T('Đang đọc…', 'Reading…') : s.caWaiting ? T('chờ duyệt', 'to approve') : String(s.ca)],
+    vang: [(s.pending || 0) + (s.noRoll || 0), s.noRoll ? 'bad' : s.pending ? 'warn' : 'ok', s.noRoll ? s.noRoll + T(' buổi chưa điểm danh', ' not taken') : s.pending ? T('chờ xác minh', 'to check') : T('đã xử lý hết', 'all handled')],
+    task: [(s.taskLate || 0) + (s.taskToday || 0), s.taskLate ? 'bad' : s.taskToday ? 'warn' : 'ok', s.taskLate ? s.taskLate + T(' quá hạn', ' overdue') : s.taskToday ? T('hạn hôm nay', 'due today') : T('ổn', 'fine')],
+    loi: [s.errors || 0, s.errors ? 'warn' : 'ok', s.errors == null ? T('Đang đọc…', 'Reading…') : s.errors ? T('lỗi đang mở', 'open') : T('không có lỗi', 'none')],
+    thang: ['', 'plain', monthName(filters.kpiMonth || xMonth())],
+    cot: [s.cols || 0, s.cols ? 'warn' : 'ok', s.cols ? T('buổi cần kiểm tra cột', 'to check') : T('đủ cột', 'all there')]
+  };
+  return '<div class="dash-grid">' + DASH.map(([k, ico, vi, en]) => { const [n, tone, sub] = v[k]; return '<button class="dash-tile ' + tone + '" data-act="panel" data-v="' + k + '"><span class="dash-ico">' + ico + '</span><span class="dash-num">' + n + '</span><span class="dash-name">' + T(vi, en) + '</span><span class="dash-sub">' + esc(sub) + '</span></button>'; }).join('') + '</div>';
+}
+const viewManagerBeforeDash = viewManager;
+viewManager = function (week) {
+  if (isBoard()) return viewManagerBeforeDash(week);
+  const savedPanel = panel;
+  // The grid and "needs action now" always show; an open area sits in a dialog above them.
+  panel = 'tong';
+  let base;
+  try { const ov = overviewPanel(week), cut = ov.indexOf('<h2>' + T('Hôm nay ở trung tâm', 'Today at the centre')); base = dashTiles(week) + (cut >= 0 ? ov.slice(0, cut) : ov); } finally { panel = savedPanel; }
+  if (!panel || panel === 'tong') return base;
+  const item = DASH.find(d => d[0] === panel), title = item ? item[1] + ' ' + T(item[2], item[3]) : panel;
+  const full = viewManagerBeforeDash(week), tabsEnd = full.startsWith('<div class="tabs">') ? full.indexOf('</div>') + 6 : 0;
+  return base + '<div class="dash-veil" data-act="panel" data-v="tong"></div><div class="dash-modal" role="dialog" aria-label="' + esc(title) + '"><div class="dash-head"><b>' + esc(title) + '</b><span class="spacer"></span><button class="quiet" data-act="panel" data-v="tong" aria-label="' + T('Đóng', 'Close') + '">✕</button></div><div class="dash-body">' + full.slice(tabsEnd) + '</div></div>';
+};
+
+/* ---------- HS vắng keeps the handled ones, faded, with their trail (owner 08/11: "không mất hẳn mà chỉ ẩn mờ... lưu vết là ai ấn, ai đã nhắn,
+ * ai đã xác nhận, để chủ nhiệm, TA, quản lí biết") ----------
+ * Each pupil line lists the changes for that lesson from the roll-call log: status or "đã liên hệ PH", who, and when (last five). */
+function markTrail(s, p) {
+  const rows = (logs.marks ? logs.marks.rows : []).filter(r => r.day === s.day && Q.key(r.cls) === Q.key(s.cls) && String(r.lesson) === String(s.lesson) && r.name === p.name);
+  const out = [];
+  let lastContact = '', lastStatus = '';
+  rows.forEach(r => {
+    const when = String(r.at || '').slice(11, 16), who = r.by || '?';
+    if (r.status !== lastStatus) out.push('<span>' + esc(stateText(r.status)) + ' · ' + esc(who) + ' ' + esc(when) + '</span>');
+    lastStatus = r.status;
+    if (r.contact && r.contact !== lastContact) { out.push('<span>📞 ' + T('Đã liên hệ PH', 'Parent contacted') + ' · ' + esc(who) + ' ' + esc(when) + '</span>'); lastContact = r.contact; }
+  });
+  return out.length ? '<div class="abs-trail">' + out.slice(-5).join('') + '</div>' : '';
+}
