@@ -3314,3 +3314,41 @@ document.addEventListener('input', e => {
   document.querySelectorAll('.sch-list [data-q]').forEach(el => { el.style.display = !q || el.dataset.q.includes(q) ? '' : 'none'; });
 });
 document.addEventListener('focusout', e => { if (e.target && e.target.id === 'schQ') setTimeout(render, 0); });
+
+/* ---------- Lesson card, four facts (owner 09/11, "Vibrant SaaS" spec) ----------
+ * (1) solid time pill + big class name + room badge; (2) lesson title only, the long notes behind a small "Nội dung" icon (hover or tap);
+ * (3) round avatars with short names. Owed work stays off the card (owner: "bỏ mục thiếu bài ở ngoài này đi"). */
+const AV_COLORS = ['#4F46E5', '#0284C7', '#059669', '#D97706', '#DB2777', '#7C3AED', '#0D9488', '#E11D48'];
+const avColor = n => { let s = 0; String(n).split('').forEach(c => { s = (s * 31 + c.charCodeAt(0)) >>> 0; }); return AV_COLORS[s % AV_COLORS.length]; };
+const initials = n => Q.clean(n).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+const avatar = (role, n) => '<span class="av-chip" title="' + esc(role + ': ' + titleCase(n)) + '"><i style="background:' + avColor(Q.key(n)) + '">' + esc(initials(n)) + '</i><span>' + esc(role) + ': <b>' + esc(titleCase(n)) + '</b></span></span>';
+ICO.doc = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/>';
+function scard4(s) {
+  const group = s.merged || [s], f = group[0], k = kindOf(f), c = classOf(f);
+  const name = group.length > 1 ? group.map((z, i) => i ? Q.clean(z.cls).replace(/^.*?(\.\d+)$/, '$1') : Q.clean(z.cls)).join(' · ') : (k === 'tutor' ? Q.clean(s.cls).replace(/^TUTOR\s*/i, '') : Q.clean(s.cls));
+  const rooms = [...new Set(group.map(z => z.site).filter(Boolean).map(z => laneOf(z).name))];
+  const lesson = [f.book ? Q.clean(f.book) : '', f.lesson ? T('Tiết ', 'Lesson ') + f.lesson : ''].filter(Boolean).join(' · ');
+  const notes = group.flatMap(z => String(z.note || '').split('\n').map(Q.clean).filter(Boolean));
+  const printing = notes.some(n => /PRINT/.test(Q.key(n)));
+  const pop = [String(f.detail || '').trim() ? '<div class="pop-d">' + esc(String(f.detail).trim()) + '</div>' : '', f.also && f.also.length ? '<div>' + T('Cùng buổi: ', 'Same session: ') + esc(f.also.join(', ')) + '</div>' : '',
+    f.breakAt ? '<div>' + T('Giải lao ', 'Break ') + esc(String(f.breakAt).replace(/^(\d{1,2})[.h](\d{2})$/, '$1:$2')) + '</div>' : '', notes.filter(n => !/PRINT/.test(Q.key(n))).map(n => '<div>• ' + esc(n) + '</div>').join(''),
+    rooms.length ? '<div class="muted">' + esc(group.map(z => Q.clean(z.site)).filter(Boolean).join(' / ')) + '</div>' : ''].join('');
+  const seen = new Set(), people = [z => ['GV', z.teacher], z => [helperRole(z), z.video], z => ['CN', z.ta]].flatMap(fn => group.map(fn)).filter(([, n]) => n && !seen.has(Q.key(n)) && (seen.add(Q.key(n)), true)).map(([r, n]) => avatar(r, n)).join('');
+  const inner = '<div class="c4-h"><span class="c4-time">' + Q.clock(f.start) + '</span><strong>' + esc(name) + '</strong>' + (rooms.length ? '<span class="c4-room">' + esc(rooms.join(' / ')) + '</span>' : '') + '</div>' +
+    '<div class="c4-l"><span class="c4-lt">' + esc(lesson || T('Chưa ghi bài', 'No lesson set')) + '</span>' + (printing ? '<span class="c4-print" title="' + T('Cần in bài', 'Printing needed') + '">' + ico('printer') + '</span>' : '') +
+    (pop ? '<span class="c4-doc" data-act="scDoc" role="button" tabindex="0" aria-label="' + T('Nội dung', 'Details') + '">' + ico('doc') + T('Nội dung', 'Details') + '<span class="c4-pop">' + pop + '</span></span>' : '') + '</div>' +
+    (people ? '<div class="c4-p">' + people + '</div>' : '') +
+    '<div class="c4-tags">' + liveTag(f) + (f.off ? '<span class="tag bad">' + T('Nghỉ', 'Off') + '</span>' : '') + '<span class="c4-end">→ ' + Q.clock(f.end) + '</span></div>' +
+    (group.length > 1 && group.some(z => classOf(z)) ? '<div class="sc-open">' + group.filter(z => classOf(z)).map(z => '<span class="c4-go" role="button" tabindex="0" data-act="open" data-row="' + z.row + '" data-day="' + z.day + '">' + T('Mở ', 'Open ') + esc(Q.clean(z.cls)) + '</span>').join('') + '</div>' : '');
+  const cl = 'card session sc c4 k-' + k + (f.off ? ' off' : ''), q = ' data-q="' + esc(schQ(s)) + '"';
+  return group.length === 1 && c ? '<button class="' + cl + ' link" data-act="open" data-row="' + f.row + '" data-day="' + f.day + '"' + q + '>' + inner + '</button>' : '<div class="' + cl + '"' + q + '>' + inner + '</div>';
+}
+sessionCard = scard4;
+// "Nội dung": hover shows it on a computer; a tap pins it open (and does not open the class).
+document.addEventListener('click', e => {
+  const d = e.target.closest && e.target.closest('[data-act="scDoc"]');
+  document.querySelectorAll('.c4-doc.open').forEach(o => { if (o !== d) o.classList.remove('open'); });
+  if (!d) return;
+  e.preventDefault(); e.stopPropagation();
+  d.classList.toggle('open');
+}, true);
