@@ -1225,7 +1225,14 @@ function todoCard() {
     items.map(x => '<div class="todo-item' + (x.hot ? ' hot' : '') + '"><span class="ico">' + x.icon + '</span><span class="txt">' + esc(x.text) + '</span>' + (x.hot ? '<span class="tag bad">' + T('Làm ngay', 'Now') + '</span>' : '') + '<button class="quiet" data-act="bellGo" data-i="' + x.i + '">' + T('Mở ›', 'Open ›') + '</button></div>').join('') + '</div>';
 }
 const checkinBlockBeforeTodo = checkinBlock;
-checkinBlock = function (week) { return checkinBlockBeforeTodo(week) + todoCard(); };
+let dvTodoOpen = false;
+checkinBlock = function (week) {
+  const pic = typeof dayVisual === 'function' ? dayVisual(week) : '';
+  const list = dvTodoOpen ? '<div class="dash-veil" data-act="dvTodo" data-v="0"></div><div class="dash-modal" role="dialog"><div class="dash-head"><b>✅ ' + T('Việc cần làm hôm nay', 'To do today') + '</b><span class="spacer"></span><button class="quiet" data-act="dvTodo" data-v="0" aria-label="' + T('Đóng', 'Close') + '">✕</button></div><div class="dash-body">' + todoCard() + '</div></div>' : '';
+  return checkinBlockBeforeTodo(week) + (pic || todoCard()) + list;
+};
+document.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-act="bellGo"]')) dvTodoOpen = false; }, true);
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-act="dvTodo"]'); if (!b) return; dvTodoOpen = b.dataset.v === '1'; render(); });
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
@@ -2829,3 +2836,61 @@ bellItems = function () {
   } catch (e) {}
   return out;
 };
+
+/* ---------- The day at a glance (owner 08/11: "việc cần làm trong ngày hiển thị trực quan hơn... chèn đồ thị hay biểu lịch chuyên nghiệp,
+ * lắm chữ mệt mỏi") ----------
+ * Progress rings (today only): roll call taken / lessons begun, homework returned, printing done, things still waiting for me.
+ * A timeline from 8:00 to 21:30: one coloured bar per lesson (KIDS blue, IELTS purple, FIGHTER amber, TA green, tutor grey), a red line
+ * at the time now, finished lessons faded; the centre view has one lane per site. A bar opens its class. */
+const TL_FROM = 8 * 60, TL_TO = 21 * 60 + 30;
+const kindOfS = s => { const c = Q.key(s.cls); return /^KIDS/.test(c) ? 'kids' : /^IELTS/.test(c) ? 'ielts' : /^FIGHTER/.test(c) ? 'fighter' : /^TA\d*$/.test(c) || /^TA /.test(c) ? 'ta' : /TUTOR/.test(c) ? 'tutor' : 'other'; };
+function ring(label, done, total, tone) {
+  const pct = total ? Math.min(1, done / total) : 1, r = 22, c = 2 * Math.PI * r, col = tone || (pct >= 1 ? '#16a34a' : pct >= 0.5 ? '#f59e0b' : '#dc2626');
+  return '<div class="ring"><svg viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="' + r + '" class="ring-bg"/><circle cx="28" cy="28" r="' + r + '" stroke="' + col + '" stroke-dasharray="' + (c * pct).toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(-90 28 28)" class="ring-fg"/></svg>' +
+    '<b>' + (total ? done + '/' + total : '✓') + '</b><span>' + esc(label) + '</span></div>';
+}
+// "KIDS 20" -> "KIDS " (hidden on phones) + "20", so a narrow bar still says which class it is.
+function barLabel(s) {
+  const name = Q.clean(s.cls).replace(/^TUTOR\s*/i, ''), m = name.match(/^(.*?\s)(\d[\d.]*)$/);
+  return m ? '<span class="tl-pre">' + esc(m[1]) + '</span>' + esc(m[2]) : esc(name);
+}
+function dayVisual(week) {
+  if (!me || isBoard() || !week) return '';
+  const centre = isManager() && filters.showAll, now = minutesNow(), isToday = day === today();
+  const mine = s => isMe(s.teacher) || isMe(s.ta) || isMe(s.video);
+  const all = week.data.sessions.filter(s => s.day === day && !s.off && s.start != null && s.end != null && (centre || mine(s)));
+  if (!all.length) return '';
+  let rings = '';
+  if (isToday) {
+    const begun = all.filter(s => classOf(s) && !isGroup(s) && now >= s.start + 15);
+    const taken = begun.filter(s => { try { return !Q.rollCall(s, marksOf(s), today(), now).noRollCall; } catch (e) { return false; } }).length;
+    const lastName = Q.key(me.name).split(' ').pop(), rets = (week.data.returns || []).filter(r => r.day === day && (centre || Q.key(r.who) === lastName));
+    const duty = dutyOf(week, day), prints = duty && duty.print ? duty.print.filter(p => centre || isMe(p.name)) : [];
+    const waiting = bellItems().filter(b => !['in', 'inno', 'out', 'rp'].includes(b.k));
+    const reps = isCm() && reports.rows ? reportItems(me.name).filter(r => r.state === 'over' || r.state === 'today' || r.state === 'soon') : [];
+    if (reps.length) waiting.unshift({ icon: '📝', text: reps.length + T(' tiết cần report', ' lessons to report'), n: reps.length, hot: reps.some(r => r.state === 'over') });
+    const badges = waiting.length ? waiting.map(b => '<button class="dv-badge' + (b.hot ? ' hot' : '') + '" data-act="dvTodo" data-v="1" title="' + esc(b.text) + '" aria-label="' + esc(b.text) + '"><span>' + b.icon + '</span><b>' + (b.n || 1) + '</b></button>').join('')
+      : '<span class="dv-badge ok" title="' + T('Không có việc nào chờ bạn', 'Nothing waiting') + '"><span>✅</span></span>';
+    rings = '<div class="rings">' + (begun.length ? ring(T('Điểm danh', 'Roll call'), taken, begun.length) : '') + (rets.length ? ring(T('Trả BTVN', 'Returns'), rets.filter(r => r.done).length, rets.length) : '') +
+      (prints.length ? ring(T('In ấn', 'Printing'), prints.filter(p => printDone(day, p.name)).length, prints.length) : '') +
+      '<div class="dv-badges">' + badges + '</div></div>';
+  }
+  // Lanes: one per site in the centre view, else one; lessons that overlap in a lane go on separate rows.
+  const lanes = {};
+  all.slice().sort((a, b) => a.start - b.start).forEach(s => { const k = centre ? (Q.clean(s.site) || T('Khác', 'Other')) : T('Lịch của tôi', 'My day'); (lanes[k] = lanes[k] || []).push(s); });
+  const pos = m => ((Math.max(TL_FROM, Math.min(TL_TO, m)) - TL_FROM) / (TL_TO - TL_FROM) * 100).toFixed(2) + '%';
+  let ticks = '';
+  for (let m = TL_FROM + 60 - (TL_FROM % 60); m <= TL_TO; m += 60) ticks += '<span class="tl-tick' + ((m / 60) % 2 ? ' odd' : '') + '" style="left:' + pos(m) + '">' + (m / 60) + 'h</span>';
+  const laneHtml = Object.entries(lanes).map(([name, list]) => {
+    const rowsEnd = [];
+    const bars = list.map(s => {
+      let r = rowsEnd.findIndex(e => e <= s.start); if (r < 0) { r = rowsEnd.length; rowsEnd.push(0); } rowsEnd[r] = s.end;
+      const st = !isToday ? '' : now >= s.end ? ' past' : now >= s.start ? ' now' : '';
+      const tg = classOf(s) ? 'button' : 'div';
+      return '<' + tg + ' class="tl-bar k-' + kindOfS(s) + st + (tg === 'div' ? ' nolink' : '') + '" style="left:' + pos(s.start) + ';width:calc(' + pos(s.end) + ' - ' + pos(s.start) + ');top:' + (r * 30) + 'px" data-act="open" data-row="' + s.row + '" data-day="' + s.day + '" title="' + esc(s.cls + ' · ' + sessionTime(s) + (s.teacher ? ' · GV ' + s.teacher : '')) + '">' + barLabel(s) + '</' + tg + '>';
+    }).join('');
+    return '<div class="tl-lane"><div class="tl-name">' + esc(name) + '</div><div class="tl-track" style="height:' + (Math.max(1, rowsEnd.length) * 30) + 'px">' + bars + '</div></div>';
+  }).join('');
+  const nowLine = isToday && now >= TL_FROM && now <= TL_TO ? '<div class="tl-now" style="left:calc(var(--lane) + (100% - var(--lane)) * ' + (parseFloat(pos(now)) / 100).toFixed(4) + ')"><i>' + Q.clock(now) + '</i></div>' : '';
+  return '<div class="card row dayvis">' + rings + '<div class="tl"><div class="tl-axis">' + ticks + '</div><div class="tl-body">' + laneHtml + nowLine + '</div></div></div>';
+}
