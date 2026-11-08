@@ -1688,7 +1688,8 @@ setInterval(async () => {
 function totalOwed(ctx) {
   const t = ctx.tracker, day = ctx.session.day, found = t.pupils.map(() => []);
   const assigned = cols => t.pupils.length < 3 || t.pupils.some(p => cols.some(c => Q.videoState(t.cell(p.row, c)) === 'done'));
-  t.blocks.filter(b => b.date && b.date < day && b.videos.length && Q.videoDue(t.blocks, b) < day).forEach(b => {
+  const k = classKeyOfBlocks(t.blocks), due = b => (k && scheduleDue(k, b.date)) || Q.videoDue(t.blocks, b);
+  t.blocks.filter(b => b.date && b.date < day && b.videos.length && due(b) < day).forEach(b => {
     const cols = b.videos.map(v => v.col);
     if (!assigned(cols)) return;
     t.pupils.forEach((p, i) => {
@@ -1826,3 +1827,15 @@ document.addEventListener('click', e => {
   if (!b || !current || !isManager()) return;
   appendMark(current, { row: '', name: CHOT_NAME, eng: '' }, 'Bỏ chốt'); flush(); render();
 });
+
+/* Deadlines from the Schedule for every owed-work count (owner 08/11: "hạn theo schedule"). */
+function scheduleDue(classKey, day) {
+  for (const w of Object.values(weeks)) { const s = w.data.sessions.find(x => x.classKey === classKey && x.day === day && x.due); if (s) return s.due; }
+  return '';
+}
+const classKeyOfBlocks = blocks => { const e = Object.entries(trackers).find(([, t]) => t && t.blocks === blocks); return e ? e[0] : ''; };
+const owedVideosRaw = Q.owedVideos;
+Q.owedVideos = function (pupils, blocks, practices, cell, session, dueOf) {
+  const k = classKeyOfBlocks(blocks);
+  return owedVideosRaw(pupils, blocks, practices, cell, session, dueOf || (k ? b => scheduleDue(k, b.date) : null));
+};

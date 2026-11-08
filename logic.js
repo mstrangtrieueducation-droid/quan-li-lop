@@ -67,7 +67,7 @@
       const status = clean(r[12]), dayOff = /^nghỉ/i.test(flags[day] || '');
       out.sessions.push({ row: i + 1, day, timeText: clean(r[1]), start: time.start, end: time.end, breakAt: clean(r[2]), cls,
         classKey: key(cls), teacher: clean(r[4]), video: clean(r[5]), ta: clean(r[6]), book: clean(r[7]), lesson: clean(r[8]),
-        detail: String(r[9] || '').trim(), site: clean(r[10]), note: String(r[11] || '').trim(), off: status === 'Nghỉ học' || dayOff, also: [] });
+        detail: String(r[9] || '').trim(), site: clean(r[10]), note: String(r[11] || '').trim(), off: status === 'Nghỉ học' || dayOff, also: [], due: dueIn(r[14]) });
     }
     out.tasks = parseTasks(rows, head);
     out.returns = parseReturns(rows, head);
@@ -265,12 +265,15 @@
   }
 
   // What each pupil still owes before this session. A column nobody submitted is a lesson without web homework.
-  // A lesson's video is due the day before the next lesson of that class (a week later when no later lesson is open yet).
+  // The deadline written at the end of the lesson message (Schedule column O): "HẠN: Thứ Hai, ngày 09/11/2026".
+  function dueIn(text) { const m = String(text || '').match(/H[ẠA]N[^0-9\n]{0,40}(\d{1,2})\/(\d{1,2})\/(\d{4})/i); return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : ''; }
+  // Without the Schedule's date a lesson's video is due the day before the next lesson of that class (a week later when none is open yet).
   function videoDue(blocks, b) { const next = blocks.map(o => o.date).filter(d => d && d > b.date).sort()[0]; return next ? addDays(next, -1) : addDays(b.date, 6); }
-  function owedVideos(pupils, blocks, practices, cell, session) {
+  function owedVideos(pupils, blocks, practices, cell, session, dueOf) {
+    const due = b => (dueOf && dueOf(b)) || videoDue(blocks, b);
     const from = addDays(session.day, -RECENT_DAYS), found = pupils.map(() => []);
     const assigned = cols => pupils.length < 3 || pupils.some(p => cols.some(c => videoState(cell(p.row, c)) === 'done'));
-    blocks.filter(b => b.date && b.date < session.day && b.date >= from && b.videos.length && videoDue(blocks, b) < session.day).forEach(b => {
+    blocks.filter(b => b.date && b.date < session.day && b.date >= from && b.videos.length && due(b) < session.day).forEach(b => {
       const cols = b.videos.map(v => v.col);
       if (!assigned(cols)) return;
       pupils.forEach((p, i) => {
@@ -413,6 +416,6 @@
   }
 
   return { parsePenalty, parseDuty, parseReturns, ARRIVE_BEFORE, ROLL_CALL_MINUTES, OPEN_BEFORE, PRESENT, ABSENT, clean, key, iso, fromIso, addDays, dayText, dateIn, colName, parseTime, clock, weekTab,
-    parseWeek, taskState, mine, staffOf, sessionKey, trackerBlocks, practiceColumns, findBlock, videoState, isAbsentMark, gradeOf, pupilOf, owedVideos, videoDue,
+    parseWeek, taskState, mine, staffOf, sessionKey, trackerBlocks, practiceColumns, findBlock, videoState, isAbsentMark, gradeOf, pupilOf, owedVideos, videoDue, dueIn,
     latest, rollCall, tickStatus, pupilState, lateMinutes, monthSummary, nameKey, parsePay, parseMarking, payTable, payOf, hoursText, tabsOfMonth };
 }));
