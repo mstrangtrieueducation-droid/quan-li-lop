@@ -907,6 +907,42 @@
   /* Nothing disappears, it fades (owner 09/11) */
   .card.row.task-done, .card.row.faded, details.done-list .rp-row { opacity: .55; }
   .trail { margin-top: 2px; }
+  /* Lịch, inside: flat lines, pills, class card (owner 09/11) */
+  svg.i { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .dash-head svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .dash-head { display: flex; align-items: center; gap: 8px; }
+  .cb { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 7px; font: 700 12px/1 "Be Vietnam Pro", system-ui, sans-serif; color: #fff; background: var(--k-other); white-space: nowrap; }
+  .cb.k-kids { background: var(--k-kids); } .cb.k-ielts { background: var(--k-ielts); } .cb.k-fighter { background: var(--k-fighter); } .cb.k-ta { background: var(--k-ta); } .cb.k-ls { background: var(--k-ls); } .cb.k-tutor { background: var(--k-tutor); }
+  :root[data-theme="dark"] .cb { color: #0d1420; }
+  @media (prefers-color-scheme: dark) { :root[data-theme="auto"] .cb { color: #0d1420; } }
+  .pls { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pl { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 99px; background: var(--soft); border: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .pl svg { color: var(--muted); }
+  .tl-card .dash-body { display: grid; gap: 12px; }
+  .tl-lesson { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; } .tl-lesson svg { color: var(--muted); }
+  .tl-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tl-btns button, .tl-btns .btn { display: inline-flex; align-items: center; gap: 7px; min-height: 42px; padding: 0 14px; border-radius: 10px; font-weight: 600; text-decoration: none; }
+  .tl-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 13px; font-weight: 700; color: var(--ink); }
+  .tl-legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .tl-legend i { width: 9px; height: 9px; border-radius: 50%; background: var(--k-other); }
+  .tl-legend i.k-kids { background: var(--k-kids); } .tl-legend i.k-ielts { background: var(--k-ielts); } .tl-legend i.k-fighter { background: var(--k-fighter); } .tl-legend i.k-ta { background: var(--k-ta); } .tl-legend i.k-ls { background: var(--k-ls); } .tl-legend i.k-tutor { background: var(--k-tutor); }
+  .tl-legend em { font-style: normal; color: var(--muted); font-weight: 400; } .tl-legend .bad { color: var(--bad); }
+  .tl-bar { cursor: pointer; }
+  /* Flat lines (dialogs and bell) */
+  .fl-modal .dash-body, .bell-flat { display: grid; gap: 10px; }
+  .fl-kind { display: flex; align-items: center; gap: 7px; margin-top: 4px; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .fl-kind svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+  .fl-group { display: grid; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); }
+  .fl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: var(--soft); font-size: 12px; font-weight: 700; color: var(--muted); }
+  .fl { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 46px; padding: 0 8px 0 12px; border-top: 1px solid var(--line); }
+  .fl-group > .fl:first-child { border-top: 0; }
+  .fl-who { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fl-why { font-size: 12px; font-weight: 700; color: var(--muted); padding: 3px 9px; border-radius: 99px; background: var(--soft); white-space: nowrap; }
+  .fl.hot .fl-why { color: var(--bad); background: var(--bad-soft); }
+  .fl-act button, .fl-act .btn { min-height: 36px; min-width: 40px; padding: 0 10px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; }
+  .fl.done { opacity: .5; } .fl-ok { color: var(--ok); display: inline-flex; padding: 0 10px; }
+  .fl-empty { display: flex; align-items: center; gap: 8px; padding: 12px; color: var(--ok); font-weight: 600; }
+  .bell-box .bell-flat { margin-top: 8px; }
 </style>
 </head>
 <body class="notranslate">
@@ -936,10 +972,10 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261109B"></script>
-<script src="logic.js?v=20261109B"></script>
-<script src="app.js?v=20261109B"></script>
-<script src="qrcode.js?v=20261109B"></script>
-<script src="extra.js?v=20261109B"></script>
+<script src="config.js?v=20261109C"></script>
+<script src="logic.js?v=20261109C"></script>
+<script src="app.js?v=20261109C"></script>
+<script src="qrcode.js?v=20261109C"></script>
+<script src="extra.js?v=20261109C"></script>
 </body>
 </html>
