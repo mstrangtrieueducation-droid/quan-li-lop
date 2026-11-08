@@ -2178,31 +2178,36 @@ setInterval(async () => {
  * On "Xác nhận đúng, chốt buổi", each present pupil's "Nhận xét" cell of the lesson gets one line per reminder, in Vietnamese for
  * parents; a pupil with none gets a short praise line. Lines the teacher typed in the sheet are kept under ours; our own lines
  * (they start with ⚠️ ⛔ 👍 ⏰ ✓) are replaced, so closing again after a reopen never doubles them. The server colours warnings red. */
-const AUTO_LINE = /^(⚠️|⛔|👍|⏰|✓)/u;
+const AUTO_LINE = /^(⚠️|⛔|👍|⏰|✓|🏆|🌟)/u;
 const COMMENT_LINES = {
   'Mất tập trung': 'con còn mất tập trung, cần chú ý nghe giảng hơn.',
   'Mất trật tự': 'con còn mất trật tự, cần giữ trật tự trong lớp.',
   'Dùng điện thoại': 'con dùng điện thoại trong giờ học.',
   'Làm việc riêng': 'con làm việc riêng, cần tập trung vào bài hơn.'
 };
-function lessonComment(counts, m) {
+function lessonComment(counts, m, extra) {
   const x = n => n > 1 ? ' (' + n + ' lần)' : '', out = [];
   if (counts[CANH_CAO]) out.push('⛔ Bị cảnh cáo' + x(counts[CANH_CAO]) + ' trong buổi học.');
   Object.entries(counts).forEach(([k, n]) => { if (k === CANH_CAO || k === PRAISE) return; out.push('⚠️ ' + k + x(n) + ': ' + (COMMENT_LINES[k] || 'con cần cố gắng hơn.')); });
   if (counts[PRAISE]) out.push('👍 Con phát biểu tốt' + x(counts[PRAISE]) + '.');
   // Lateness stays in the attendance column only (a roll taken late would mark the whole class late in every comment).
-  if (!out.length || out.every(l => l.startsWith('👍'))) out.push('✓ Con tập trung, giữ trật tự tốt.');
+  if (!out.length || out.every(l => l.startsWith('👍'))) out.push(pickLine(GOOD_LINES, extra && extra.seed));
+  // Owner 08/11: the top stars of the lesson get their own praise line.
+  if (extra && extra.rank && extra.stars) out.unshift(TOP_LINES[extra.rank - 1](extra.stars));
   return out;
 }
 function writeLessonComments(ctx) {
   const { block, tracker, cls, session } = ctx;
   if (!block || block.comment < 0 || !tracker) return 0;
   const behave = behaveFor(session);
+  const here = p => { const m = ctx.marks.get(p.name); return m && Q.PRESENT.includes(m.status); };
+  const scores = block.stars >= 0 ? [...new Set(tracker.pupils.filter(here).map(p => starsOf(ctx, p)).filter(Boolean))].sort((a, b) => b - a) : [];
   let n = 0;
   tracker.pupils.forEach(p => {
     const m = ctx.marks.get(p.name);
     if (!m || !Q.PRESENT.includes(m.status)) return;
-    const b = behave.get(p.name), auto = lessonComment(tagCounts(b ? b.tags : []), m);
+    const b = behave.get(p.name), st = block.stars >= 0 ? starsOf(ctx, p) : 0, rank = st ? scores.indexOf(st) + 1 : 0;
+    const auto = lessonComment(tagCounts(b ? b.tags : []), m, { stars: st, rank: rank && rank <= 3 ? rank : 0, seed: p.name + '|' + session.day });
     const now = String(tracker.cell(p.row, block.comment) || ''), mine = now.split('\n').filter(l => l.trim() && !AUTO_LINE.test(l.trim()));
     let value = auto.concat(mine).join('\n');
     if (value.length > 200) value = auto.join('\n').slice(0, 200);
@@ -2726,3 +2731,27 @@ window.addEventListener('pagehide', () => {
     Object.entries(byFile).forEach(([file, data]) => fetch(CONFIG.server, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ k: accessKey, op: 'set', file, data: data.slice(0, 150) }) }).catch(() => {}));
   } catch (e) {}
 });
+
+/* ---------- Kinder words in the lesson comment (owner 08/11: "nếu không có lần nào ấn mất trật tự thì ghi nhận xét tương ứng... linh hoạt câu chữ
+ * từng lần... bạn đứng top sao thì cũng ghi tương ứng") ----------
+ * A pupil with no reminder gets one of several praise lines; the choice is fixed for that pupil and lesson (closing again keeps it).
+ * The top three by stars get a line of their own above the rest. */
+const GOOD_LINES = [
+  '✓ Con tập trung, giữ trật tự tốt trong buổi học.',
+  '✓ Hôm nay con học rất ngoan và chăm chú, cô khen con!',
+  '✓ Con tham gia bài học tích cực, tiếp tục phát huy nhé!',
+  '✓ Con hoàn thành tốt các hoạt động trên lớp.',
+  '✓ Con chú ý nghe giảng và hợp tác tốt với các bạn.',
+  '✓ Buổi học hôm nay con rất chăm chỉ, cô rất vui!',
+  '✓ Con giữ trật tự và làm theo hướng dẫn rất tốt.',
+  '✓ Con học bài nghiêm túc, cố gắng như vậy nhé!'
+];
+const TOP_LINES = [
+  n => '🏆 Con đứng đầu lớp hôm nay với ' + n + ' ⭐, cô khen con!',
+  n => '🌟 Con đứng thứ hai về sao hôm nay (' + n + ' ⭐), rất giỏi!',
+  n => '🌟 Con nằm trong top 3 sao của lớp hôm nay (' + n + ' ⭐), cố lên nhé!'
+];
+function pickLine(list, seed) {
+  let hsh = 0; String(seed || Math.random()).split('').forEach(c => { hsh = (hsh * 31 + c.charCodeAt(0)) >>> 0; });
+  return list[hsh % list.length];
+}
