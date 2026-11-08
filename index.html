@@ -1099,6 +1099,34 @@
     .hr-row { grid-template-columns: 10px auto minmax(0, 1fr) auto; row-gap: 4px; padding: 8px 10px; }
     .hr-cm, .hr-next { display: none; } .hr-bar { grid-column: 2 / 4; grid-row: 2; } .hr-n { grid-column: 3; grid-row: 1; } .hr-go { grid-column: 4; grid-row: 1 / 3; }
   }
+  /* Lương, Hợp đồng, Người dùng (owner 09/11) */
+  .pay-row { grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr) auto auto; }
+  .pay-st { display: flex; gap: 4px; flex-wrap: wrap; }
+  .pay-net { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  .pay-btns { display: flex; gap: 6px; justify-content: flex-end; }
+  .pay-btns button { min-height: 34px; padding: 0 10px; display: inline-flex; align-items: center; gap: 4px; }
+  .kpi4c b { font-variant-numeric: tabular-nums; }
+  .hd-row { grid-template-columns: 10px minmax(0, 1fr) auto auto auto; }
+  .hd-row > b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hd-dates { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .kvs { display: grid; gap: 0; }
+  .kv { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .kv:first-child { border-top: 0; } .kv span { color: var(--muted); font-weight: 600; } .kv b { font-weight: 600; }
+  .card:has(> h3:first-child) { padding: 14px 16px; }
+  .pf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; margin: 4px 0 12px; }
+  .pf { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+  .pf > i { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: #fff; font: 800 13px/1 "Inter", system-ui, sans-serif; font-style: normal; }
+  .pf-t { flex: 1; min-width: 0; display: grid; gap: 1px; }
+  .pf-t b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pf-role { justify-self: start; padding: 1px 8px; border-radius: 99px; font-size: 11px; font-weight: 800; }
+  .pf-t small { font-size: 11px; color: var(--muted); }
+  .pf-x { min-height: 32px; min-width: 32px; padding: 0; color: var(--muted); }
+  .pf-x:hover { color: var(--bad); border-color: var(--bad); }
+  @media (max-width: 760px) {
+    .pay-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; padding: 8px 10px; }
+    .pay-row .chip { display: none; } .pay-net { grid-column: 2; grid-row: 1; } .pay-st { grid-column: 1; } .pay-btns { grid-column: 2; }
+    .hd-row { grid-template-columns: 10px minmax(0, 1fr) auto; } .hd-dates { grid-column: 2; grid-row: 2; } .hd-row .tag { grid-column: 3; grid-row: 1; } .hd-row button { grid-column: 3; grid-row: 2; }
+  }
 </style>
 </head>
 <body class="notranslate">
@@ -1128,10 +1156,10 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261109G"></script>
-<script src="logic.js?v=20261109G"></script>
-<script src="app.js?v=20261109G"></script>
-<script src="qrcode.js?v=20261109G"></script>
-<script src="extra.js?v=20261109G"></script>
+<script src="config.js?v=20261109H"></script>
+<script src="logic.js?v=20261109H"></script>
+<script src="app.js?v=20261109H"></script>
+<script src="qrcode.js?v=20261109H"></script>
+<script src="extra.js?v=20261109H"></script>
 </body>
 </html>
