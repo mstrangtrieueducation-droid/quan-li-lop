@@ -2756,3 +2756,76 @@ function pickLine(list, seed) {
   let hsh = 0; String(seed || Math.random()).split('').forEach(c => { hsh = (hsh * 31 + c.charCodeAt(0)) >>> 0; });
   return list[hsh % list.length];
 }
+
+/* ---------- Book orders (owner 08/11: "đặt in sách cho học sinh... KIDS 36 hôm nay chủ nhiệm quên không đặt nên không có sách"; "chủ nhiệm đặt";
+ * how many days before is up to me) ----------
+ * From the Schedule: a KIDS class whose lessons in the next two weeks use a book it has not used in the last two weeks (or whose Schedule
+ * still says the book is to be confirmed) needs its books printed. The homeroom teacher orders them 7 days before the first lesson of the
+ * new book (reminded from 10 days before, red after). Steps "Đã đặt in" then "Đã nhận sách", each kept with who and when in DIEM_DANH
+ * (class "ĐẶT SÁCH"); a finished order stays, faded. */
+const BOOK_CLS = 'ĐẶT SÁCH', BOOK_LEAD = 7, BOOK_WARN = 10;
+const bookKeyOf = b => Q.key(b).replace(/^SACH\s*:?\s*/, '').replace(/\bOXFORD\s+/, '').replace(/\s+/g, ' ').trim();
+const bookPending = b => /CHECK PROGRAM|CHO XAC NHAN/.test(Q.key(b));
+let bookWeeksAsked = 0;
+function bookNeeds() {
+  const t = today(), from = Q.addDays(t, -14), until = Q.addDays(t, 14);
+  if (Date.now() - bookWeeksAsked > 600000) { bookWeeksAsked = Date.now(); [-7, 7, 14].forEach(d => weekOf(Q.addDays(t, d)).catch(() => {})); }
+  const all = [];
+  Object.values(weeks).forEach(w => w.data.sessions.forEach(s => { if (/^KIDS \d+$/i.test(Q.clean(s.cls)) && !s.off && s.day >= from && s.day <= until && Q.clean(s.book)) all.push(s); }));
+  const byClass = {};
+  all.forEach(s => (byClass[Q.key(s.cls)] = byClass[Q.key(s.cls)] || []).push(s));
+  const out = [];
+  Object.values(byClass).forEach(list => {
+    list.sort((p, q) => p.day.localeCompare(q.day));
+    const past = new Set(list.filter(s => s.day < t && !bookPending(s.book)).map(s => bookKeyOf(s.book)));
+    if (!past.size) return;
+    const seen = new Set();
+    list.filter(s => s.day >= t).forEach(s => {
+      const k = bookPending(s.book) ? '?' : bookKeyOf(s.book);
+      if (seen.has(k) || (k !== '?' && past.has(k))) return;
+      seen.add(k);
+      out.push({ cls: Q.clean(s.cls), book: k === '?' ? '' : Q.clean(s.book), unsure: k === '?', first: s.day, due: Q.addDays(s.day, -BOOK_LEAD), cm: homeroom[Q.key(s.cls)] || '' });
+    });
+  });
+  return out.sort((p, q) => p.first.localeCompare(q.first));
+}
+const bookName = n => n.cls + ' · ' + (n.book || 'SÁCH MỚI');
+function bookSteps(n) {
+  const rows = (logs.marks ? logs.marks.rows : []).filter(r => r.cls === BOOK_CLS && r.name === bookName(n));
+  const last = st => { const hit = rows.filter(r => r.status === st || r.status === 'Bỏ ' + st).pop(); return hit && hit.status === st ? hit : null; };
+  return { ordered: last('Đã đặt in'), received: last('Đã nhận sách') };
+}
+function bookBlock() {
+  if (!me) return '';
+  if (!logs.marks) setTimeout(() => loadMarks().then(render).catch(() => {}), 0);
+  const t = today(), list = bookNeeds().filter(n => isManager() || isMe(n.cm));
+  if (!list.length) return '';
+  const when = r => r ? ' · ' + esc(r.by || '?') + ' ' + esc(String(r.at || '').slice(11, 16) + ' ' + String(r.at || '').slice(0, 5)) : '';
+  const cards = list.map(n => {
+    const st = bookSteps(n), done = st.ordered && st.received, late = !st.ordered && t > n.due, soon = !st.ordered && Q.addDays(n.first, -BOOK_WARN) <= t;
+    const can = isManager() || isMe(n.cm), btn = (v, label, on) => can ? '<button class="' + (on ? 'quiet' : 'primary') + '" data-act="bookTick" data-n="' + esc(bookName(n)) + '" data-d="' + n.first + '" data-v="' + v + '">' + label + '</button>' : '';
+    return '<div class="card row book ' + (done ? 'done' : 'todo') + (late ? ' late' : '') + '">' +
+      '<div class="row-top"><b>📚 ' + esc(n.cls) + '</b><span class="tag">' + esc(n.unsure ? T('Schedule chưa rõ sách mới', 'new book not set on the Schedule') : n.book) + '</span><span class="spacer"></span>' +
+      '<span class="small ' + (late ? 'bad' : soon ? 'warn' : 'muted') + '">' + T('Học từ ', 'Starts ') + esc(viDate(n.first).slice(0, 5)) + T(' · đặt trước ', ' · order by ') + esc(viDate(n.due).slice(0, 5)) + (late ? T(' · QUÁ HẠN', ' · OVERDUE') : '') + '</span></div>' +
+      '<div class="small muted">' + T('Chủ nhiệm: ', 'Homeroom: ') + esc(n.cm || T('chưa rõ', 'unknown')) + '</div>' +
+      '<div class="book-steps"><span class="' + (st.ordered ? 'ok' : '') + '">① ' + T('Đặt in', 'Ordered') + (st.ordered ? ' ✓' + when(st.ordered) : '') + '</span>' + (st.ordered ? btn('Bỏ Đã đặt in', T('Bỏ', 'Undo'), true) : btn('Đã đặt in', '✓ ' + T('Đã đặt in', 'Ordered'))) +
+      '<span class="' + (st.received ? 'ok' : '') + '">② ' + T('Nhận sách', 'Received') + (st.received ? ' ✓' + when(st.received) : '') + '</span>' + (st.ordered ? (st.received ? btn('Bỏ Đã nhận sách', T('Bỏ', 'Undo'), true) : btn('Đã nhận sách', '✓ ' + T('Đã nhận sách', 'Received'))) : '') + '</div></div>';
+  });
+  return '<div class="part p-2"><h2>' + T('Đặt in sách', 'Book orders') + '</h2><span>' + T('chủ nhiệm đặt trước ' + BOOK_LEAD + ' ngày', 'homeroom orders ' + BOOK_LEAD + ' days ahead') + '</span></div><div class="grid">' + cards.join('') + '</div>';
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="bookTick"]');
+  if (!b) return;
+  appendMark({ day: b.dataset.d, cls: BOOK_CLS, lesson: '', start: 0 }, { row: '', name: b.dataset.n, eng: '' }, b.dataset.v);
+  render();
+});
+// The bell reminds homeroom teachers (and managers) of orders due within three days or late.
+const bellItemsBeforeBooks = bellItems;
+bellItems = function () {
+  const out = bellItemsBeforeBooks();
+  try {
+    const t = today();
+    bookNeeds().filter(n => (isManager() || isMe(n.cm)) && !bookSteps(n).ordered && Q.addDays(n.due, -3) <= t).forEach(n => out.push({ k: 'sach', icon: '📚', text: T('Đặt in sách ', 'Order books ') + n.cls + (n.book ? ' (' + n.book + ')' : '') + T(' · hạn ', ' · by ') + viDate(n.due).slice(0, 5), n: 1, hot: t > n.due, go: { view: 'lich', sec: 'sach' } }));
+  } catch (e) {}
+  return out;
+};

@@ -833,9 +833,11 @@ function viewSchedule(week) {
   if (false && owedHtml) secs.push({ k: 'baino', label: T('Bài nợ IELTS/FIGHTER', 'IELTS/FIGHTER owed'), html: owedHtml, n: count(owedHtml) });
   if (workHtml) secs.push({ k: 'lamviec', label: T('Lịch làm & trả bài', 'Rota & returns'), html: workHtml, n: count(workHtml) });
   if (taskHtml) secs.push({ k: 'task', label: 'Important Task', html: taskHtml, n: (taskHtml.match(/data-act="task"/g) || []).length });
+  const bookHtml = typeof bookBlock === 'function' ? bookBlock() : '';
+  if (bookHtml) secs.push({ k: 'sach', label: T('Đặt in sách', 'Book orders'), html: bookHtml, n: (bookHtml.match(/class="card row book todo/g) || []).length, hot: /class="card row book todo late/.test(bookHtml) });
   // Owner 08/11 ("cả app hiển thị như dash"): today stays on the page; the other parts are tiles that open in a dialog.
   const live = secs.filter(x => x.html), main = live.find(x => x.k === 'homnay'), side = live.filter(x => x.k !== 'homnay'), open = side.find(x => x.k === filters.sec);
-  const SEC_TILE = { phat: ['📞', T('cần liên hệ phụ huynh', 'parents to contact'), T('đã liên hệ đủ', 'all contacted')], lamviec: ['🗓️', T('việc trong ngày', 'today'), T('không có việc', 'nothing')], task: ['📝', T('việc cần làm', 'to do'), T('đã xong', 'done')] };
+  const SEC_TILE = { sach: ['📚', T('lớp cần đặt in sách', 'classes to order'), T('đã đặt đủ', 'all ordered')], phat: ['📞', T('cần liên hệ phụ huynh', 'parents to contact'), T('đã liên hệ đủ', 'all contacted')], lamviec: ['🗓️', T('việc trong ngày', 'today'), T('không có việc', 'nothing')], task: ['📝', T('việc cần làm', 'to do'), T('đã xong', 'done')] };
   if (side.length) h += '<div class="dash-grid mini">' + side.map(x => { const t = SEC_TILE[x.k] || ['•', '', '']; const tone = x.hot ? 'bad' : x.n ? 'warn' : 'ok'; return '<button class="dash-tile ' + tone + '" data-act="sec" data-v="' + x.k + '"><span class="dash-ico">' + t[0] + '</span><span class="dash-num">' + (x.n || 0) + '</span><span class="dash-name">' + esc(x.label) + '</span><span class="dash-sub">' + esc(x.n ? t[1] : t[2]) + '</span></button>'; }).join('') + '</div>';
   if (main) h += main.html;
   else h += '<div class="card empty">' + T('Hôm nay bạn không có lớp hay việc nào.', 'Nothing for you on this day.') + '</div>';
