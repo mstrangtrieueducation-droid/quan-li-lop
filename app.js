@@ -739,7 +739,7 @@ function myTaskBlock(week) {
   const row = t => { const real = week.data.tasks.find(x => x.row === t.row); return taskRow(Object.assign({}, real, { ta: t.ta }), week, true); };
   let h = '<div class="part p-1"><h2>' + T('Important Task của tôi', 'My important tasks') + '</h2><span>' + todo.length + T(' việc còn lại · chạm ✓ khi xong', ' to do · tap ✓ when done') + '</span></div>';
   groups.forEach((list, label) => { h += '<div class="due-label' + (label === T('Quá hạn', 'Overdue') ? ' late' : '') + '">' + esc(label) + ' · ' + list.length + '</div><div class="list">' + list.map(row).join('') + '</div>'; });
-  if (done.length) h += '<details class="done-list"><summary>' + T('Đã xong', 'Done') + ' (' + done.length + ')</summary><div class="list">' + done.map(row).join('') + '</div></details>';
+  if (done.length) h += '<details class="done-list" open><summary>' + T('Đã xong', 'Done') + ' (' + done.length + ')</summary><div class="list">' + done.map(row).join('') + '</div></details>';
   return h;
 }
 
@@ -833,10 +833,13 @@ function viewSchedule(week) {
   if (false && owedHtml) secs.push({ k: 'baino', label: T('Bài nợ IELTS/FIGHTER', 'IELTS/FIGHTER owed'), html: owedHtml, n: count(owedHtml) });
   if (workHtml) secs.push({ k: 'lamviec', label: T('Lịch làm & trả bài', 'Rota & returns'), html: workHtml, n: count(workHtml) });
   if (taskHtml) secs.push({ k: 'task', label: 'Important Task', html: taskHtml, n: (taskHtml.match(/data-act="task"/g) || []).length });
-  const live = secs.filter(x => x.html), pick = live.find(x => x.k === filters.sec) || live[0];
-  if (live.length > 1) h += '<div class="sectabs" role="tablist">' + live.map(x => '<button role="tab" class="' + (x === pick ? 'on' : '') + (x.hot ? ' hot' : '') + '" data-act="sec" data-v="' + x.k + '">' + esc(x.label) + (x.n ? '<i>' + x.n + '</i>' : '') + '</button>').join('') + '</div>';
-  if (pick && pick.html) h += pick.html;
+  // Owner 08/11 ("cả app hiển thị như dash"): today stays on the page; the other parts are tiles that open in a dialog.
+  const live = secs.filter(x => x.html), main = live.find(x => x.k === 'homnay'), side = live.filter(x => x.k !== 'homnay'), open = side.find(x => x.k === filters.sec);
+  const SEC_TILE = { phat: ['📞', T('cần liên hệ phụ huynh', 'parents to contact'), T('đã liên hệ đủ', 'all contacted')], lamviec: ['🗓️', T('việc trong ngày', 'today'), T('không có việc', 'nothing')], task: ['📝', T('việc cần làm', 'to do'), T('đã xong', 'done')] };
+  if (side.length) h += '<div class="dash-grid mini">' + side.map(x => { const t = SEC_TILE[x.k] || ['•', '', '']; const tone = x.hot ? 'bad' : x.n ? 'warn' : 'ok'; return '<button class="dash-tile ' + tone + '" data-act="sec" data-v="' + x.k + '"><span class="dash-ico">' + t[0] + '</span><span class="dash-num">' + (x.n || 0) + '</span><span class="dash-name">' + esc(x.label) + '</span><span class="dash-sub">' + esc(x.n ? t[1] : t[2]) + '</span></button>'; }).join('') + '</div>';
+  if (main) h += main.html;
   else h += '<div class="card empty">' + T('Hôm nay bạn không có lớp hay việc nào.', 'Nothing for you on this day.') + '</div>';
+  if (open) h += '<div class="dash-veil" data-act="sec" data-v="homnay"></div><div class="dash-modal" role="dialog" aria-label="' + esc(open.label) + '"><div class="dash-head"><b>' + esc((SEC_TILE[open.k] || ['•'])[0] + ' ' + open.label) + '</b><span class="spacer"></span><button class="quiet" data-act="sec" data-v="homnay" aria-label="' + T('Đóng', 'Close') + '">✕</button></div><div class="dash-body">' + open.html + '</div></div>';
   return h;
 }
 
@@ -975,7 +978,7 @@ function returnsBlock(week) {
   const sorted = list.slice().sort((a, b) => mine(b) - mine(a) || a.done - b.done);
   const done = list.filter(x => x.done).length;
   return '<div class="part p-2"><h2>' + T('Trả BTVN hôm nay', 'Homework returns today') + '</h2><span>' + done + '/' + list.length + T(' lớp đã trả', ' returned') + '</span></div>' +
-    '<div class="grid">' + sorted.map(x => '<div class="card row ret' + (mine(x) ? ' mine' : '') + '"><div class="check"><button class="' + (x.done ? 'on' : '') + '" data-act="ret" data-row="' + x.row + '" data-col="' + x.col + '" aria-pressed="' + x.done + '" aria-label="' + T('Đã trả ', 'Returned ') + esc(x.label) + '">✓</button><div><b>' + esc(x.cls) + '</b><div class="small muted">TA ' + esc(x.who) + (x.done ? T(' · đã trả', ' · returned') : '') + '</div></div></div></div>').join('') + '</div>';
+    '<div class="grid">' + sorted.map(x => '<div class="card row ret' + (mine(x) ? ' mine' : '') + (x.done ? ' done' : '') + '"><div class="check"><button class="' + (x.done ? 'on' : '') + '" data-act="ret" data-row="' + x.row + '" data-col="' + x.col + '" aria-pressed="' + x.done + '" aria-label="' + T('Đã trả ', 'Returned ') + esc(x.label) + '">✓</button><div><b>' + esc(x.cls) + '</b><div class="small muted">TA ' + esc(x.who) + (x.done ? T(' · đã trả', ' · returned') : '') + '</div></div></div></div>').join('') + '</div>';
 }
 async function tickReturn(week, item) {
   const cell = quote(week.tab) + '!' + Q.colName(item.col) + item.row, label = quote(week.tab) + '!' + Q.colName(item.col) + (item.row - 1);
