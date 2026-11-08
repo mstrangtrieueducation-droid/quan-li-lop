@@ -464,6 +464,45 @@
   .rv-gbig { min-width: 58px; padding: 8px 10px; border-radius: 12px; font-size: 22px; font-weight: 800; text-align: center; color: #fff; }
   .rv-gbig.gA { background: #2563eb; } .rv-gbig.gB { background: #c026d3; } .rv-gbig.gF { background: #dc2626; }
   .rv-gwhy { max-width: 120px; font-size: 12px; font-weight: 600; color: var(--bad); text-align: center; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Lesson summary for parents (owner 08/11): always a light sheet, made to be photographed */
+  .rv-flag.debt { background: #fee2e2; color: #b91c1c; font-size: 13px; font-weight: 700; }
+  :root[data-theme="dark"] .rv-flag.debt { background: #4c1d1d; color: #fca5a5; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .rv-flag.debt { background: #4c1d1d; color: #fca5a5; } }
+  .rv-sumbtn { min-height: 52px; font-size: 16px; white-space: nowrap; }
+  .sum-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 12px; }
+  .sum-sheet { background: #ffffff; color: #111827; border-radius: 18px; padding: 22px 24px; max-width: 1180px; margin: 0 auto 24px; box-shadow: 0 2px 14px rgba(0,0,0,.12); font-size: 17px; }
+  .sum-top { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #e5e7eb; padding-bottom: 14px; margin-bottom: 10px; }
+  .sum-top img { border-radius: 10px; flex: none; }
+  .sum-top > div:nth-child(2) { flex: 1; min-width: 0; }
+  .sum-title { font-size: 26px; font-weight: 800; color: #0b3b8c; }
+  .sum-sub { font-size: 15px; color: #4b5563; }
+  .sum-count { text-align: center; background: #ecfdf5; color: #166534; border-radius: 14px; padding: 8px 14px; flex: none; }
+  .sum-count b { display: block; font-size: 26px; line-height: 1; }
+  .sum-count span { font-size: 13px; }
+  .sum-table { width: 100%; border-collapse: collapse; }
+  .sum-table th { text-align: left; font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: #6b7280; padding: 8px 8px; border-bottom: 1px solid #e5e7eb; }
+  .sum-table td { padding: 9px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; color: #111827; }
+  .sum-table tr:nth-child(even) td { background: #fafafa; }
+  .sum-sheet .sum-table th, .sum-sheet .sum-table td { text-align: left; }
+  .sum-sheet .sum-table td.sum-rank { text-align: center; }
+  .sum-table { table-layout: auto; }
+  .sum-name { width: 18%; } .sum-debt { width: 28%; }
+  .sum-rank { width: 40px; font-size: 20px; text-align: center; color: #6b7280; }
+  .sum-name b { font-size: 18px; }
+  .sum-stars { font-weight: 800; white-space: nowrap; }
+  .sum-g { display: inline-block; min-width: 40px; text-align: center; padding: 3px 8px; border-radius: 8px; font-weight: 800; color: #fff; }
+  .sum-g.gA { background: #2563eb; } .sum-g.gB { background: #c026d3; } .sum-g.gF { background: #dc2626; }
+  .sum-why { font-size: 13px; color: #9f1239; margin-top: 2px; }
+  .sum-remind { font-size: 14px; color: #92400e; }
+  .sum-warn { color: #b91c1c; font-weight: 700; }
+  .sum-debt { font-size: 14px; color: #b91c1c; }
+  .sum-ok { color: #15803d; font-weight: 600; }
+  .sum-late { color: #b45309; font-weight: 700; }
+  .sum-off { color: #6b7280; font-weight: 600; }
+  .sum-muted { color: #9ca3af; }
+  .sum-offrow td { color: #9ca3af; }
+  .sum-note { margin-top: 12px; font-size: 14px; color: #4b5563; background: #f8fafc; border-radius: 10px; padding: 10px 12px; }
+  @media (max-width: 720px) { .sum-sheet { padding: 14px 12px; font-size: 15px; } }
 </style>
 </head>
 <body>
