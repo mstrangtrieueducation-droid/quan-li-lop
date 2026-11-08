@@ -690,7 +690,7 @@ function paintBell() {
   const b = document.getElementById('btnBell');
   if (!b || !me) return;
   const items = bellItems(), n = items.reduce((s, x) => s + x.n, 0), hot = items.some(x => x.hot);
-  b.innerHTML = '🔔' + (n ? '<i class="' + (hot ? 'hot' : '') + '">' + (n > 99 ? '99+' : n) + '</i>' : '');
+  b.innerHTML = ICON_BELL + (n ? '<i class="' + (hot ? 'hot' : '') + '">' + (n > 99 ? '99+' : n) + '</i>' : '');
   b.setAttribute('aria-label', T('Thông báo: ', 'Notifications: ') + n);
   b.classList.toggle('ring', hot);
   try { document.title = (n ? '(' + n + ') ' : '') + T('Quản lí lớp', 'Class manager'); } catch (e) {}
@@ -818,7 +818,7 @@ function renderBoard() {
   $('nav').innerHTML = '';
   const bb = document.getElementById('btnBell');
   if (bb) bb.hidden = true;
-  $('btnLang').textContent = lang === 'en' ? 'Tiếng Việt' : 'English';
+  paintLang();
   paintTheme();
   if (view !== 'lenlop') { view = 'bang'; document.body.classList.remove('lenlop'); }
   const notes = notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('');
@@ -2894,3 +2894,172 @@ function dayVisual(week) {
   const nowLine = isToday && now >= TL_FROM && now <= TL_TO ? '<div class="tl-now" style="left:calc(var(--lane) + (100% - var(--lane)) * ' + (parseFloat(pos(now)) / 100).toFixed(4) + ')"><i>' + Q.clock(now) + '</i></div>' : '';
   return '<div class="card row dayvis">' + rings + '<div class="tl"><div class="tl-axis">' + ticks + '</div><div class="tl-body">' + laneHtml + nowLine + '</div></div></div>';
 }
+
+/* ---------- Layout upgrade (owner 09/11: header, day row, quick actions, compressed timeline, compact numbers) ---------- */
+const svgI = d => '<svg viewBox="0 0 24 24" aria-hidden="true">' + d + '</svg>';
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="navMore"]');
+  if (b) { $('nav').classList.toggle('open'); b.setAttribute('aria-expanded', $('nav').classList.contains('open')); return; }
+  if (e.target.closest && e.target.closest('#nav [data-act="view"]')) $('nav').classList.remove('open');
+});
+
+// Waiting things: one short name and one line icon per kind; two kinds never share a picture.
+const QA = {
+  alert: ['Điểm danh', 'Roll call', '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M16 11l2 2 4-4"/>'],
+  lad: ['Phụ huynh', 'Parents', '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>'],
+  wait: ['Duyệt ca', 'Check-ins', '<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4L12 14l-3-3"/>'],
+  tlate: ['Task trễ', 'Late tasks', '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M5 3L2 6M22 6l-3-3"/>'],
+  ttoday: ['Task', 'Tasks', '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>'],
+  ret: ['Trả BTVN', 'Returns', '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>'],
+  pay: ['Lương', 'Pay', '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>'],
+  rp: ['Report', 'Reports', '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/>'],
+  rpall: ['Report CN', 'Homeroom reports', '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/>'],
+  print: ['In bài', 'Printing', '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>'],
+  sach: ['Đặt sách', 'Book orders', '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>'],
+  other: ['Khác', 'Other', '<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>']
+};
+const qaKind = k => ({ pleft: 'pay', pwrong: 'pay' })[k] || (QA[k] ? k : 'other');
+function quickActions() {
+  const raw = bellItems().filter(b => !['in', 'inno', 'out', 'rp'].includes(b.k));
+  const reps = isCm() && reports.rows ? reportItems(me.name).filter(r => r.state === 'over' || r.state === 'today' || r.state === 'soon') : [];
+  if (reps.length) raw.unshift({ k: 'rp', n: reps.length, hot: reps.some(r => r.state === 'over'), text: reps.length + T(' tiết cần report', ' lessons to report') });
+  const groups = [];
+  raw.forEach(b => { const k = qaKind(b.k), g = groups.find(x => x.k === k); if (g) { g.n += b.n || 1; g.hot = g.hot || b.hot; g.text.push(b.text); } else groups.push({ k, n: b.n || 1, hot: !!b.hot, text: [b.text] }); });
+  if (!groups.length) return '<div class="qa-row"><span class="qa ok">' + svgI('<path d="M20 6L9 17l-5-5"/>') + '<span class="qa-l">' + T('Không có việc nào chờ', 'Nothing waiting') + '</span></span></div>';
+  return '<div class="qa-row">' + groups.map(g => { const d = QA[g.k]; return '<button class="qa' + (g.hot ? ' hot' : '') + '" data-act="dvTodo" data-v="1" title="' + esc(g.text.join(' · ')) + '">' + svgI(d[2]) + '<span class="qa-l">' + esc(T(d[0], d[1])) + '</span><b class="qa-n">' + (g.n > 99 ? '99+' : g.n) + '</b></button>'; }).join('') + '</div>';
+}
+function progChip(label, done, total) {
+  const pct = total ? Math.min(1, done / total) : 1, r = 11, c = 2 * Math.PI * r, col = pct >= 1 ? 'var(--ok)' : pct >= 0.5 ? 'var(--k-fighter)' : 'var(--bad)';
+  return '<span class="prog"><svg viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="' + r + '" class="ring-bg"/><circle cx="14" cy="14" r="' + r + '" stroke="' + col + '" stroke-dasharray="' + (c * pct).toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(-90 14 14)" class="ring-fg"/></svg><span>' + esc(label) + '</span><b>' + done + '/' + total + '</b></span>';
+}
+
+// Rooms: short names in a fixed order; a class's colour by its kind.
+const LANES = [['Tầng 1', /^(1ST FLOOR|TANG 1\b|1F\b)/], ['Tầng 2', /^(2ND FLOOR|TANG 2\b|2F\b)/], ['Tầng 3', /^(3RD FLOOR|TANG 3\b|3F\b)/], ['Tầng 4', /^(4TH FLOOR|TANG 4\b|4F\b)/], ['Villa', /^VILLA/], ['Hàm Nghi', /^HAM NGHI/], ['Little Sun', /^LITTLE (SUN|STARS?)/], ['Meeting', /^MEETING/]];
+function laneOf(site) {
+  const k = Q.key(site), i = LANES.findIndex(([, re]) => re.test(k));
+  if (i >= 0) return { name: LANES[i][0], order: i };
+  return { name: k ? Q.clean(site).replace(/_/g, ' ') : T('Khác', 'Other'), order: k ? 50 : 99 };
+}
+function tlKind(s) {
+  const c = Q.key(s.cls), site = Q.key(s.site);
+  if (/LITTLE (SUN|STAR)/.test(site) || /^(BIRDY|PONY|KITTY)$/.test(c)) return 'ls';
+  if (/TUTOR/.test(c)) return 'tutor';
+  if (/^KIDS/.test(c)) return 'kids';
+  if (/^IELTS/.test(c)) return 'ielts';
+  if (/^FIGHTER/.test(c)) return 'fighter';
+  if (/^TA\s*\d*$/.test(c)) return 'ta';
+  return 'other';
+}
+const TL_KINDS = [['kids', 'KIDS'], ['ielts', 'IELTS'], ['fighter', 'FIGHTER'], ['ta', 'TA'], ['ls', 'Little Sun'], ['tutor', 'Tutor'], ['other', 'Khác']];
+function tlLabel(s) {
+  const c = Q.clean(s.cls), k = Q.key(c);
+  let m;
+  if ((m = k.match(/^KIDS\s*(\d+)$/))) return m[1];
+  if ((m = k.match(/^IELTS\s*(\d+(?:\.\d+)?)$/))) return m[1];
+  if ((m = k.match(/^FIGHTER\s*(\d+)$/))) return 'F' + m[1];
+  if (/TUTOR/.test(k)) {
+    const n = c.replace(/IELTS\s+TUTORING|TUTORING|TUTOR/ig, '').replace(/\bKIDS\s*\d+\b/ig, '').replace(/\bIELTS(\s*\d+)?\b/ig, '').replace(/\b(19|20)\d\d\b/g, '').replace(/\s*-\s*/g, ' · ').replace(/\s+/g, ' ').replace(/^[\s·]+|[\s·]+$/g, '');
+    return n || 'Tutor';
+  }
+  return c;
+}
+// Time axis: hours with lessons get the width; an empty stretch longer than an hour shrinks to a thin dotted strip.
+function tlScale(list) {
+  const iv = list.map(s => [Math.floor((s.start - 15) / 30) * 30, Math.ceil((s.end + 15) / 30) * 30]).sort((p, q) => p[0] - q[0]);
+  const act = [];
+  iv.forEach(([p, q]) => { const l = act[act.length - 1]; if (l && p <= l[1] + 60) l[1] = Math.max(l[1], q); else act.push([p, q]); });
+  const total = act.reduce((t, [p, q]) => t + q - p, 0), gapW = Math.max(12, total * 0.035), segs = [];
+  act.forEach(([p, q], i) => { if (i) segs.push({ a: act[i - 1][1], b: p, gap: true, w: gapW }); segs.push({ a: p, b: q, gap: false, w: q - p }); });
+  const sum = segs.reduce((t, sg) => t + sg.w, 0);
+  let off = 0;
+  segs.forEach(sg => { sg.x = off / sum; sg.f = sg.w / sum; off += sg.w; });
+  const at = m => {
+    if (m <= segs[0].a) return 0;
+    const sg = segs.find(z => m >= z.a && m <= z.b);
+    if (!sg) return 1;
+    return sg.gap ? sg.x + sg.f / 2 : sg.x + (m - sg.a) / (sg.b - sg.a) * sg.f;
+  };
+  const ticks = [];
+  segs.filter(z => !z.gap).forEach(z => { for (let m = Math.ceil(z.a / 60) * 60; m <= z.b; m += 60) if (!ticks.some(t => t.m === m)) ticks.push({ m, x: at(m) }); });
+  const dense = 60 / sum < 0.075, gapsAt = segs.filter(z => z.gap).map(z => z.x + z.f / 2);
+  // An hour label right beside the "⋯" of an empty stretch is left out, so the two never collide.
+  return { at, segs, ticks: ticks.filter(t => !gapsAt.some(g => Math.abs(g - t.x) < 0.035)), dense };
+}
+dayVisual = function (week) {
+  if (!me || isBoard() || !week) return '';
+  const centre = isManager() && filters.showAll, now = minutesNow(), isToday = day === today();
+  const mine = s => isMe(s.teacher) || isMe(s.ta) || isMe(s.video);
+  const all = week.data.sessions.filter(s => s.day === day && !s.off && s.start != null && s.end != null && (centre || mine(s)));
+  let top = '';
+  if (isToday) {
+    const begun = all.filter(s => classOf(s) && !isGroup(s) && now >= s.start + 15);
+    const taken = begun.filter(s => { try { return !Q.rollCall(s, marksOf(s), today(), now).noRollCall; } catch (e) { return false; } }).length;
+    const lastName = Q.key(me.name).split(' ').pop(), rets = (week.data.returns || []).filter(r => r.day === day && (centre || Q.key(r.who) === lastName));
+    const duty = dutyOf(week, day), prints = duty && duty.print ? duty.print.filter(p => centre || isMe(p.name)) : [];
+    const progs = (begun.length ? progChip(T('Đã điểm danh', 'Roll taken'), taken, begun.length) : '') + (rets.length ? progChip(T('Trả BTVN', 'Returns'), rets.filter(r => r.done).length, rets.length) : '') +
+      (prints.length ? progChip(T('In ấn', 'Printing'), prints.filter(p => printDone(day, p.name)).length, prints.length) : '');
+    top = quickActions() + (progs ? '<div class="progs">' + progs + '</div>' : '');
+  }
+  if (!all.length) return top ? '<div class="card row dayvis">' + top + '</div>' : '';
+  const sc = tlScale(all), pct = f => (f * 100).toFixed(2) + '%';
+  const lanes = {};
+  all.slice().sort((p, q) => p.start - q.start).forEach(s => { const l = centre ? laneOf(s.site) : { name: T('Của tôi', 'Mine'), order: 0 }; (lanes[l.name] = lanes[l.name] || { order: l.order, list: [] }).list.push(s); });
+  const ROW = 29;
+  const laneHtml = Object.entries(lanes).sort((p, q) => p[1].order - q[1].order || p[0].localeCompare(q[0])).map(([name, { list }]) => {
+    const ends = [];
+    const bars = list.map(s => {
+      // Lessons that overlap, or follow within 5 minutes, take separate rows.
+      let r = ends.findIndex(e => e + 5 <= s.start); if (r < 0) { r = ends.length; ends.push(0); } ends[r] = s.end;
+      const st = !isToday ? '' : now >= s.end ? ' past' : now >= s.start ? ' now' : '', tg = classOf(s) ? 'button' : 'div', x0 = sc.at(s.start), x1 = sc.at(s.end);
+      return '<' + tg + ' class="tl-bar k-' + tlKind(s) + st + (tg === 'div' ? ' nolink' : '') + '" style="left:' + pct(x0) + ';width:' + pct(Math.max(0.01, x1 - x0)) + ';top:' + (r * ROW) + 'px"' + (tg === 'button' ? ' data-act="open" data-row="' + s.row + '" data-day="' + s.day + '"' : '') +
+        ' data-s="' + esc(tlShort(tlLabel(s))) + '" title="' + esc(Q.clean(s.cls) + ' · ' + sessionTime(s) + (s.teacher ? ' · GV ' + s.teacher : '') + (s.site ? ' · ' + Q.clean(s.site) : '')) + '">' + esc(tlLabel(s)) + '</' + tg + '>';
+    }).join('');
+    return '<div class="tl-lane"><div class="tl-name" title="' + esc(name) + '">' + esc(name) + '</div><div class="tl-track" style="height:' + (Math.max(1, ends.length) * ROW - 3) + 'px">' + bars + '</div></div>';
+  }).join('');
+  const inBody = f => 'calc(var(--lane) + (100% - var(--lane)) * ' + f.toFixed(4) + ')';
+  const grid = sc.ticks.map(t => '<i class="tl-grid" style="left:' + inBody(t.x) + '"></i>').join('') +
+    sc.segs.filter(z => z.gap).map(z => '<i class="tl-gap" style="left:' + inBody(z.x) + ';width:calc((100% - var(--lane)) * ' + z.f.toFixed(4) + ')"></i>').join('');
+  const nowX = isToday ? sc.at(now) : -1;
+  const ticks = sc.ticks.filter(t => Math.abs(t.x - nowX) > 0.04).map((t, i) => '<span class="tl-tick' + (sc.dense && i % 2 ? ' odd' : '') + '" style="left:' + pct(t.x) + '">' + (t.m / 60) + 'h</span>').join('') +
+    sc.segs.filter(z => z.gap).map(z => '<span class="tl-tick gap" style="left:' + pct(z.x + z.f / 2) + '" title="' + esc(Q.clock(z.a) + '–' + Q.clock(z.b) + T(' không có lớp', ' no lessons')) + '">⋯</span>').join('');
+  const first = sc.segs[0].a, last = sc.segs[sc.segs.length - 1].b;
+  const nowLine = isToday && now >= first && now <= last ? '<div class="tl-now" style="left:' + inBody(sc.at(now)) + '"><i>' + Q.clock(now) + '</i></div>' : '';
+  return '<div class="card row dayvis">' + top + '<div class="tl"><div class="tl-axis">' + ticks + '</div><div class="tl-body">' + grid + laneHtml + nowLine + '</div></div></div>';
+};
+// The day's numbers as one compact strip; each dot has the colour of its bars on the timeline.
+dayStats = function (list) {
+  const on = list.filter(s => !s.off), people = new Set(on.flatMap(s => [s.teacher, s.ta, s.video]).filter(Boolean).map(Q.nameKey)), by = {};
+  on.forEach(s => { const k = tlKind(s); by[k] = (by[k] || 0) + 1; });
+  const cells = [[on.length, T('Buổi học', 'Sessions'), 'all']].concat(TL_KINDS.filter(([k]) => by[k]).map(([k, n]) => [by[k], k === 'other' ? T('Khác', 'Other') : n, k]))
+    .concat([[people.size, T('GV/TA đi làm', 'Staff on duty'), 'staff']]).concat(list.length - on.length ? [[list.length - on.length, T('Buổi nghỉ', 'Cancelled'), 'off']] : []);
+  return '<div class="kpis">' + cells.map(([n, name, k]) => '<div class="kc k-' + k + '"><i></i><b>' + n + '</b><span>' + esc(name) + '</span></div>').join('') + '</div>';
+};
+// Short forms: "TUỆ ANH · HOÀNG BÁCH" -> "TUỆ ANH"; initials when even that does not fit.
+const tlShort = l => String(l).split(' · ')[0];
+const tlInitials = l => String(l).split(/[\s·]+/).filter(Boolean).map(w => /^\d/.test(w) ? w : w[0]).join('').slice(0, 4);
+// After each drawing: a name that does not fit its bar gets smaller, then shorter, then initials; it is never cut in half.
+function fitBars() {
+  document.querySelectorAll('.tl-bar').forEach(b => {
+    if (b.dataset.fit === b.clientWidth + '') return;
+    const fits = () => b.scrollWidth <= b.clientWidth + 1;
+    b.style.fontSize = ''; b.dataset.full = b.dataset.full || b.textContent; b.textContent = b.dataset.full;
+    if (!fits()) b.style.fontSize = '10px';
+    if (!fits()) b.textContent = b.dataset.s || b.dataset.full;
+    if (!fits()) b.textContent = tlInitials(b.dataset.full);
+    if (!fits()) b.textContent = '';
+    b.dataset.fit = b.clientWidth + '';
+  });
+}
+const renderBeforeFit = render;
+render = function () { renderBeforeFit.apply(this, arguments); try { requestAnimationFrame(fitBars); } catch (e) {} };
+window.addEventListener('resize', () => { try { requestAnimationFrame(fitBars); } catch (e) {} });
+// Numbers strip, folded so a phone shows it in two short rows: staff and cancelled sit beside the sessions count; Little Sun joins "Khác" when both exist.
+dayStats = function (list) {
+  const on = list.filter(s => !s.off), people = new Set(on.flatMap(s => [s.teacher, s.ta, s.video]).filter(Boolean).map(Q.nameKey)), by = {};
+  on.forEach(s => { const k = tlKind(s); by[k] = (by[k] || 0) + 1; });
+  if (by.ls && by.other) { by.other += by.ls; delete by.ls; }
+  const off = list.length - on.length;
+  const sub = '<em>' + people.size + T(' GV/TA', ' staff') + (off ? T(' · ' + off + ' nghỉ', ' · ' + off + ' off') : '') + '</em>';
+  const cells = [[on.length, T('Buổi học', 'Sessions'), 'all', sub]].concat(TL_KINDS.filter(([k]) => by[k]).map(([k, n]) => [by[k], k === 'other' ? T('Khác', 'Other') : n, k, '']));
+  return '<div class="kpis' + (cells.length > 6 ? ' many' : '') + '">' + cells.map(([n, name, k, extra]) => '<div class="kc k-' + k + '"><i></i><b>' + n + extra + '</b><span>' + esc(name) + '</span></div>').join('') + '</div>';
+};

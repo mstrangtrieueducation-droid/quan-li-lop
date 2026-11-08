@@ -8,7 +8,12 @@ const today = () => Q.iso(new Date());
 let theme = 'light';
 try { theme = localStorage.getItem('ql-theme') === 'dark' ? 'dark' : 'light'; } catch (e) {}
 document.documentElement.dataset.theme = theme;
-function paintTheme() { const b = document.getElementById('btnTheme'); if (b) b.textContent = theme === 'dark' ? T('Nền sáng', 'Light') : T('Nền tối', 'Dark'); }
+// Header buttons are small pills: a line icon for the theme, "EN" / "VI" for the language (owner 09/11).
+const ICON_BELL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+const ICON_MOON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+const ICON_SUN = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.5v2.5M12 20v2.5M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M1.5 12h2.5M20 12h2.5M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></svg>';
+function paintTheme() { const b = document.getElementById('btnTheme'); if (!b) return; b.innerHTML = theme === 'dark' ? ICON_SUN : ICON_MOON; const l = theme === 'dark' ? T('Nền sáng', 'Light theme') : T('Nền tối', 'Dark theme'); b.setAttribute('aria-label', l); b.title = l; }
+function paintLang() { const b = document.getElementById('btnLang'); if (!b) return; b.textContent = lang === 'en' ? 'VI' : 'EN'; const l = lang === 'en' ? 'Tiếng Việt' : 'English'; b.setAttribute('aria-label', l); b.title = l; }
 const minutesNow = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); };
 const ERROR_TYPES = ['Đi muộn', 'Quên điểm danh', 'Chưa nhập A/B/F', 'Chưa mở cột', 'Chấm bài trễ hạn', 'Trả bài trễ hạn', 'Khác'];
@@ -563,6 +568,8 @@ function dayStats(list) {
     KINDS.map(([k]) => { const n = on.filter(s => kindOf(s) === k).length; return n ? cell(n, kindName(k), k) : ''; }).join('') +
     cell(people.size, T('GV / TA đi làm', 'staff on duty')) + (list.length - on.length ? cell(list.length - on.length, T('buổi nghỉ', 'cancelled'), 'off') : '') + '</div>';
 }
+const scopeSeg = () => '<div class="seg" role="group" aria-label="' + T('Phạm vi', 'Scope') + '"><button class="' + (filters.showAll ? 'on' : '') + '" data-act="scope" data-v="1" aria-pressed="' + !!filters.showAll + '"><span class="seg-l">' + T('Cả trung tâm', 'Whole centre') + '</span><span class="seg-s">' + T('Trung tâm', 'Centre') + '</span></button>' +
+  '<button class="' + (filters.showAll ? '' : 'on') + '" data-act="scope" data-v="" aria-pressed="' + !filters.showAll + '"><span class="seg-l">' + T('Lịch của tôi', 'My schedule') + '</span><span class="seg-s">' + T('Của tôi', 'Mine') + '</span></button></div>';
 const dayBar = () => '<div class="daybar"><button data-act="day" data-n="-1" aria-label="' + T('Hôm trước', 'Previous day') + '">‹</button><b>' + esc(dayLabel(day)) + '</b>' + (day !== today() ? '<button class="quiet" data-act="today">' + T('Hôm nay', 'Today') + '</button>' : '') + '<button data-act="day" data-n="1" aria-label="' + T('Hôm sau', 'Next day') + '">›</button></div>';
 
 /* ---------- People: who is who today ---------- */
@@ -803,10 +810,9 @@ function viewSchedule(week) {
   if (!week) return dayBar() + '<div class="card empty">' + T('File Schedule chưa có tuần này.', 'This week is not on the Schedule yet.') + '</div>';
   const all = week.data.sessions.filter(s => s.day === day).sort((a, b) => a.start - b.start);
   const list = isManager() && filters.showAll ? all : all.filter(teaches);
-  let h = dayBar();
+  let h = '<div class="dayrow">' + dayBar() + (isManager() ? scopeSeg() : '') + '</div>';
   // Attendance of today's classes is read in the background, at most once a minute when something is missing.
   if (day === today() && !alertLoading && Date.now() - alertTried > 60000 && alertSessions(week).some(s => !trackers[classOf(s).key])) { alertTried = Date.now(); setTimeout(() => loadAlerts().catch(() => {}), 0); }
-  if (isManager()) h += '<div class="tabs"><button class="' + (filters.showAll ? 'on' : '') + '" data-act="scope" data-v="1">' + T('Cả trung tâm', 'Whole centre') + '</button><button class="' + (filters.showAll ? '' : 'on') + '" data-act="scope" data-v="">' + T('Lịch của tôi', 'My schedule') + '</button></div>';
   h += payNoticeBlock();
   h += checkinBlock(week);
   let today_ = alertsBlock(week);
@@ -1120,10 +1126,11 @@ function render() {
   if (!me) return;
   const active = document.activeElement;
   if (active && $('main').contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName)) return;
-  const items = [['lich', T('Lịch', 'Schedule')]].concat(isManager() || myHomerooms().some(x => isMe(x.cm)) ? [['lopcn', T('Lớp chủ nhiệm', 'Homeroom')]] : []).concat(isOwner() ? [['luong', T('Lương', 'Pay')]] : [['cong', T('Công của tôi', 'My hours')], ['luong', T('Lương', 'Pay')]]).concat(isManager() ? [['dieuhanh', 'Điều hành'], ['hocphi', T('Học phí', 'Tuition')]] : []).concat(isOwner() ? [['hopdong', T('Hợp đồng', 'Contracts')], ['nguoi', 'Người dùng']] : []);
-  $('btnLang').textContent = lang === 'en' ? 'Tiếng Việt' : 'English';
+  const items = [['lich', T('Lịch', 'Schedule')]].concat(isManager() || myHomerooms().some(x => isMe(x.cm)) ? [['lopcn', T('<span class="nl">Lớp chủ nhiệm</span><span class="ns">Chủ nhiệm</span>', 'Homeroom')]] : []).concat(isOwner() ? [['luong', T('Lương', 'Pay')]] : [['cong', T('<span class="nl">Công của tôi</span><span class="ns">Công</span>', '<span class="nl">My hours</span><span class="ns">Hours</span>')], ['luong', T('Lương', 'Pay')]]).concat(isManager() ? [['dieuhanh', 'Điều hành'], ['hocphi', T('Học phí', 'Tuition')]] : []).concat(isOwner() ? [['hopdong', T('Hợp đồng', 'Contracts')], ['nguoi', 'Người dùng']] : []);
+  paintLang();
   paintTheme();
-  $('nav').innerHTML = items.map(([k, t]) => '<button class="' + (view === k ? 'on' : '') + '" data-act="view" data-v="' + k + '">' + t + '</button>').join('');
+  $('nav').innerHTML = items.map(([k, t], i) => '<button class="' + (view === k ? 'on' : '') + (i >= 5 ? ' nav-x' : '') + '" data-act="view" data-v="' + k + '">' + t + '</button>').join('') +
+    (items.length > 5 ? '<button class="nav-more' + (items.slice(5).some(([k]) => k === view) ? ' on' : '') + '" data-act="navMore" aria-label="' + T('Mục khác', 'More') + '" aria-expanded="' + $('nav').classList.contains('open') + '">⋯</button>' : '');
   const week = weeks[Q.weekTab(tabs, day)] || null;
   let h = notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('');
   if (loadError) h += '<div class="notice bad">' + esc(loadError) + '</div>';
