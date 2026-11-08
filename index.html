@@ -717,6 +717,13 @@
   /* Owner 08/11: nothing disappears when done, it fades (Important Task, finished lessons, returns, absences, penalties) */
   .done-list .list > *, .done-part > :not(summary), .card.ret.done { opacity: .55; }
   .done-list > summary, .done-part > summary { color: var(--muted); font-weight: 700; cursor: pointer; }
+  /* Book orders (owner 08/11) */
+  .book .book-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 4px; }
+  .book .book-steps span { font-weight: 700; }
+  .book .book-steps span.ok { color: var(--ok); }
+  .book.late { border-left: 4px solid #dc2626; }
+  .book.done { opacity: .55; }
+  .small.bad { color: #dc2626; font-weight: 700; } .small.warn { color: #b45309; font-weight: 700; }
 </style>
 </head>
 <body class="notranslate">
@@ -746,10 +753,10 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108P"></script>
-<script src="logic.js?v=20261108P"></script>
-<script src="app.js?v=20261108P"></script>
-<script src="qrcode.js?v=20261108P"></script>
-<script src="extra.js?v=20261108P"></script>
+<script src="config.js?v=20261108Q"></script>
+<script src="logic.js?v=20261108Q"></script>
+<script src="app.js?v=20261108Q"></script>
+<script src="qrcode.js?v=20261108Q"></script>
+<script src="extra.js?v=20261108Q"></script>
 </body>
 </html>
