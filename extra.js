@@ -2545,6 +2545,12 @@ fitClassScreen = function () {
   for (let c = 2; c <= 3 && s < 0.8; c++) { const sc = best(c); if (sc > s * 1.12) { s = sc; cols = c; } }
   list.style.gridTemplateColumns = cols > 1 ? 'repeat(' + cols + ', minmax(0, 1fr))' : '';
   list.style.width = s < 0.999 ? (100 / s) + '%' : '';
+  // Height left over (the width was the limit): lines grow taller so the pupils fill the box (owner: pupils take ~5/6 of it).
+  list.style.gridAutoRows = '';
+  list.style.width = (100 / s) + '%';
+  const per = Math.ceil(list.children.length / cols), gap = parseFloat(getComputedStyle(list).rowGap) || 0, room = avail / s - gap * (per - 1);
+  if (per && list.offsetHeight * s < avail - 4) list.style.gridAutoRows = Math.floor(room / per) + 'px';
+  if (s >= 0.999) list.style.width = '';
   if (s < 0.999) { list.style.transform = 'scale(' + s + ')'; list.style.marginBottom = -(list.offsetHeight * (1 - s)) + 'px'; }
   if (open) open.classList.add('open');
 };
