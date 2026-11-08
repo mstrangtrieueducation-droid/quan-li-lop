@@ -708,6 +708,15 @@
   .lad.done { opacity: .55; }
   .abs-done .abs-group { opacity: .7; }
   .abs-trail { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--muted); padding: 0 0 6px; }
+  /* Lịch: side parts as small tiles (owner 08/11) */
+  .dash-grid.mini { grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 10px; margin: 0 0 12px; }
+  .dash-grid.mini .dash-tile { min-height: 82px; padding: 10px 14px; border-radius: 16px; }
+  .dash-grid.mini .dash-num { font-size: 28px; }
+  .dash-grid.mini .dash-name { font-size: 14px; }
+  .dash-grid.mini .dash-sub { font-size: 12px; }
+  /* Owner 08/11: nothing disappears when done, it fades (Important Task, finished lessons, returns, absences, penalties) */
+  .done-list .list > *, .done-part > :not(summary), .card.ret.done { opacity: .55; }
+  .done-list > summary, .done-part > summary { color: var(--muted); font-weight: 700; cursor: pointer; }
 </style>
 </head>
 <body class="notranslate">
@@ -737,10 +746,10 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108N"></script>
-<script src="logic.js?v=20261108N"></script>
-<script src="app.js?v=20261108N"></script>
-<script src="qrcode.js?v=20261108N"></script>
-<script src="extra.js?v=20261108N"></script>
+<script src="config.js?v=20261108P"></script>
+<script src="logic.js?v=20261108P"></script>
+<script src="app.js?v=20261108P"></script>
+<script src="qrcode.js?v=20261108P"></script>
+<script src="extra.js?v=20261108P"></script>
 </body>
 </html>

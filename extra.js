@@ -1250,15 +1250,16 @@ ladderBlock = function (week) {
   h += '<details class="card row lad-legend"><summary>' + T('Việc từng mức · nhắn tin hôm nay: ', 'What each level means · messages today: ') + '<b>' + (isFriday(today()) ? 'THUY TRANG' : T('quản lí', 'managers')) + '</b></summary>' + [1, 2, 3, 4, 5].map(l => '<div class="small"><span class="lvl l' + l + '">M' + l + '</span> ' + esc(LADDER_ACT[l]) + (l >= 4 ? T(' Hạn 2 ngày.', ' Within 2 days.') : '') + '</div>').join('') + '</details>';
   const line = ({ x, rule, done, late }) => {
     const m = x.name.match(/^(.*?)\s*\(([^)]+)\)\s*$/), eng = m ? m[2] : '', full = m ? m[1] : x.name;
-    return '<div class="lad lv' + x.level + (late ? ' late' : '') + '"><div class="lad-line"><span class="lvl l' + x.level + '">M' + x.level + '</span><b>' + esc(eng || full) + '</b>' + (mode !== 'tat' && x.since ? '<span class="small muted">' + T('từ ', 'since ') + esc(String(x.since).slice(0, 5)) + '</span>' : '') +
-      (done ? '<span class="tag ok">✓ ' + esc(rule.action.replace('Đã ', '')) + ' · ' + esc(done.by) + '</span>' : '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Gọi', 'Call') : T('Nhắn', 'Message')) + ' · ' + esc(rule.who) + (rule.call ? ' · ' + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>') +
+    return '<div class="lad lv' + x.level + (late ? ' late' : '') + (done ? ' done' : '') + '"><div class="lad-line"><span class="lvl l' + x.level + '">M' + x.level + '</span><b>' + esc(eng || full) + '</b>' + (mode !== 'tat' && x.since ? '<span class="small muted">' + T('từ ', 'since ') + esc(String(x.since).slice(0, 5)) + '</span>' : '') +
+      (done ? '<span class="tag ok">✓ ' + esc(rule.action) + ' · ' + esc(done.by || '?') + (done.at ? ' · ' + esc(String(done.at).slice(11, 16) + ' ' + String(done.at).slice(0, 5)) : '') + '</span>' : '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + esc(rule.call ? T('Gọi', 'Call') : T('Nhắn', 'Message')) + ' · ' + esc(rule.who) + (rule.call ? ' · ' + esc(viDate(rule.due).slice(0, 5)) : '') + '</span>') +
       '<span class="spacer"></span>' + (!done && canContact(x, rule) ? '<button class="good" data-act="ladTick" data-cls="' + esc(x.cls) + '" data-name="' + esc(x.name) + '">' + esc(rule.action) + '</button>' : '') +
       (x.level === 2 ? '<button class="quiet" data-act="ladCopy" data-cls="' + esc(x.cls) + '" data-name="' + esc(eng || full) + '">' + T('Bài chép', 'Copy text') + '</button>' : '') + '</div>' +
       '<div class="small lad-do">' + esc(LADDER_ACT[x.level] || '') + '</div>' +
       '<details class="lad-more"><summary>' + esc(x.reason || T('Chi tiết', 'Details')) + '</summary><div class="small">' + esc(full) + ' · ' + T('vào mức từ ', 'since ') + esc(x.since) + '</div>' + (x.owed.length ? '<div class="small muted">' + T('Còn nợ: ', 'Owes: ') + esc(x.owed.join('; ')) + '</div>' : '') + '</details></div>';
   };
   const groups = new Map(), add = (k, title, sort, l) => { if (!groups.has(k)) groups.set(k, { title, sort, items: [] }); groups.get(k).items.push(l); };
-  const shown = mode === 'ngay' ? onDay : mode === 'can' ? list.filter(l => !l.done) : list;
+  // Owner 08/11: handled pupils stay (faded, with who and when); pending ones are sorted first.
+  const shown = mode === 'ngay' ? onDay : list;
   if (mode === 'tat') shown.forEach(l => add(l.since || '0', l.since ? T('Vào mức ngày ', 'Since ') + dayLabel(l.since) : T('Chưa rõ ngày', 'No date'), l.since || '0', l));
   else shown.forEach(l => add(l.x.cls, '<b>' + esc(l.x.cls) + '</b>' + (l.s ? '<span class="tag">' + T('học ', 'class ') + Q.clock(l.s.start) + '</span>' : ''), l.s ? String(l.s.start).padStart(5, '0') : '99999' + l.x.cls, l));
   if (!shown.length) return h + '<div class="card empty">' + (mode === 'ngay' ? T('Các lớp học ' + dayLabel(day) + ' không có học sinh nào trong danh sách phạt.', 'No pupil on the ladder in classes on this day.') : mode === 'can' ? T('Đã liên hệ phụ huynh đủ.', 'All parents contacted.') : T('Không có học sinh nào.', 'Nobody here.')) + '</div>' + (ladder.copy ? copySheet(ladder.copy) : '');
@@ -1891,7 +1892,7 @@ dayParts = function (list) {
   let out = '';
   if (live.length) out += '<div class="part p-live"><h2>● ' + T('Đang diễn ra', 'In progress') + '</h2><span>' + live.length + T(' buổi', ' sessions') + '</span></div><div class="grid">' + live.map(sessionCard).join('') + '</div>';
   if (next.length) out += (live.length ? '<div class="part p-next"><h2>' + T('Sắp tới', 'Coming up') + '</h2><span>' + next.length + T(' buổi', ' sessions') + '</span></div>' : '') + dayPartsBeforeNow(next);
-  if (done.length) out += '<details class="done-part"><summary>' + T('Đã xong hôm nay', 'Finished today') + ' · ' + done.length + T(' buổi', ' sessions') + '</summary><div class="grid">' + done.map(sessionCard).join('') + '</div></details>';
+  if (done.length) out += '<details class="done-part" open><summary>' + T('Đã xong hôm nay', 'Finished today') + ' · ' + done.length + T(' buổi', ' sessions') + '</summary><div class="grid">' + done.map(sessionCard).join('') + '</div></details>';
   return out || dayPartsBeforeNow(list);
 };
 
