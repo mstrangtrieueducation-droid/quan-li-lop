@@ -930,7 +930,7 @@ viewLenLop = function () {
       TICKS.map((t, k) => '<button class="rv-tick' + (counts[t] ? ' on' : '') + '" data-act="llTick" data-i="' + r.i + '" data-k="' + k + '" data-v="' + k + '"' + live + '>' + biText(t) + badge(counts[t]) + '</button>').join('') +
       '<button class="rv-warn' + (over ? ' hot' : '') + (warned ? ' on' : '') + '" data-act="llReason" data-i="' + r.i + '"' + live + '>⚠️ ' + T('Cảnh cáo', 'Warning') + badge(warned) + '</button>' +
       (group && !r.off ? '<button class="rv-here' + (r.here ? ' on' : '') + '" data-act="llHere" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.here + '">✓</button>' : '') +
-      '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? T('Nghỉ ✓', 'Absent ✓') : T('Nghỉ', 'Absent')) + '</button>' +
+      (r.here && !r.off ? '' : '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? T('Nghỉ ✓', 'Absent ✓') : T('Nghỉ', 'Absent')) + '</button>') +
       (histOpen ? histBox(ctx, r) : '') + '</div>';
   }).join('') + '</div>';
   const open = llReason != null ? rows.find(r => r.i === llReason) : null;
@@ -1522,8 +1522,64 @@ function pupilFlags(ctx, r) {
   const m = ctx.marks.get(r.p.name), out = [];
   if (m && m.status === 'Đến muộn') out.push('<span class="rv-flag late">⏰ ' + T('Muộn', 'Late') + '</span>');
   const owed = owedOf(ctx)[r.i] || [], miss = owed.filter(x => !x.wrong), redo = owed.filter(x => x.wrong);
-  const list = xs => xs.map(x => (x.practice ? T('Tự luyện ', 'Practice ') : 'Video ') + x.day.slice(8, 10) + '/' + x.day.slice(5, 7)).join(', ');
-  if (miss.length) out.push('<span class="rv-flag owe" title="' + esc(list(miss)) + '">🎥 ' + T('Thiếu ', 'Owes ') + miss.length + '</span>');
-  if (redo.length) out.push('<span class="rv-flag redo" title="' + esc(list(redo)) + '">↻ ' + T('Quay lại ', 'Redo ') + redo.length + '</span>');
+  const dm = d => d.slice(8, 10) + '/' + d.slice(5, 7), cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+  const what = x => x.practice ? (x.label || T('Tự luyện', 'Practice')).replace(/^Tự luyện video/i, T('Tự luyện video', 'Practice video')) : (x.lesson ? T('Video tiết ', 'Video lesson ') + Number(x.lesson) : 'Video ' + dm(x.day)) + (x.label ? ' ' + cap(x.label) : '');
+  const say = xs => xs.slice(0, 2).map(what).join(' · ') + (xs.length > 2 ? ' +' + (xs.length - 2) : '');
+  const full = xs => xs.map(x => what(x) + ' (' + dm(x.day) + ')').join('\n');
+  if (miss.length) out.push('<span class="rv-flag owe" title="' + esc(full(miss)) + '">🎥 ' + T('Chưa nộp: ', 'Not handed in: ') + esc(say(miss)) + '</span>');
+  if (redo.length) out.push('<span class="rv-flag redo" title="' + esc(full(redo)) + '">↻ ' + T('Làm lại: ', 'Redo: ') + esc(say(redo)) + '</span>');
   return out.length ? '<span class="rv-flags">' + out.join('') + '</span>' : '';
 }
+
+/* ---------- B/F reason on the class page (owner 08/11: "khi chọn thiếu bài gì thì phải chọn ở đây... cái ghi chú ấy") ----------
+ * A/B/F is graded on the class page with roll call; B or F opens the reason picker (Vietnamese with English under it),
+ * written into the BTVN cell as "B" then "Lý do: …", so every report still reads the grade. Tapping A+ again clears it. */
+let cgOpen = null, cgGrade = '';
+const gradeReason = v => gradeParts(v).why;
+function classCanEdit(s) {
+  const mine = [s.teacher, s.ta, s.video].some(n => Q.nameKey(n) === Q.nameKey(me.name));
+  return isManager() || (mine && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s));
+}
+function classGrade(ctx, pupil, grade, i) {
+  if (!ctx.block || ctx.block.grade < 0 || !classCanEdit(ctx.session)) return;
+  const raw = ctx.tracker.cell(pupil.row, ctx.block.grade), cur = gradeParts(raw);
+  if (Q.clean(raw) && !Q.gradeOf(raw)) return say(pupil.eng + T(': ô BTVN đang có ghi chú khác, vui lòng sửa trực tiếp trong sheet.', ': the homework cell holds other text, please edit it in the sheet.'), 'bad');
+  if (grade === 'A+') { gradeWrite(ctx, pupil, (cur.g === 'A+' || cur.g === 'A') && !cur.rest.length ? '' : 'A+'); cgOpen = null; render(); return; }
+  // B or F is written only together with its reason (owner 08/11: bắt buộc có lí do).
+  cgOpen = i; cgGrade = grade; delete drafts['cggrade:' + pupil.name]; render();
+}
+function classGradeBox() {
+  if (cgOpen == null || view !== 'lop' || !current) return '';
+  const ctx = classContext(current), p = ctx.tracker && ctx.tracker.pupils[cgOpen];
+  if (!p || !ctx.block || ctx.block.grade < 0) return '';
+  const cur = gradeParts(ctx.tracker.cell(p.row, ctx.block.grade)), key = 'cggrade:' + p.name, draft = drafts[key] != null ? drafts[key] : cur.why, name = p.eng || p.name, dis = classCanEdit(ctx.session) ? '' : ' disabled';
+  return '<div class="ll-veil" data-act="cgClose"></div><div class="ll-sheet rv-box" role="dialog" aria-label="BTVN ' + esc(name) + '">' +
+    '<div class="row-top"><b class="ll-sheet-name">BTVN <span class="rv-gtag g' + cgGrade[0] + '">' + esc(cgGrade) + '</span> · ' + esc(name) + '</b><span class="spacer"></span><button class="quiet" data-act="cgClose">' + T('Đóng', 'Close') + '</button></div>' +
+    '<div class="small muted">' + T('Bắt buộc có lý do cho điểm ' + cgGrade + '. Chọn hoặc gõ, rồi bấm Lưu: điểm và lý do cùng ghi vào ô BTVN của tiết này trong sheet lớp.', 'A reason is required for ' + cgGrade + '. Pick or type, then Save: grade and reason go to the homework cell together.') + '</div>' +
+    '<div class="ll-chips">' + GRADE_REASONS.map(t => '<button class="' + (draft === t ? 'on' : '') + '" data-act="cgPick" data-v="' + esc(t) + '"' + dis + '>' + biText(t) + '</button>').join('') + '</div>' +
+    '<textarea data-cg="text" rows="2" maxlength="200" placeholder="' + T('Lý do cụ thể, ví dụ: thiếu trang 50', 'Details, e.g. page 50 missing') + '"' + dis + '>' + esc(draft) + '</textarea>' +
+    '<div class="ll-sheet-row"><button class="primary" data-act="cgSave"' + dis + '>' + T('Lưu điểm ' + cgGrade + ' và lý do', 'Save ' + cgGrade + ' with reason') + '</button><button data-act="cgClear"' + dis + '>' + T('Xoá điểm', 'Clear grade') + '</button></div></div>';
+}
+const viewClassBeforeReason = viewClass;
+viewClass = function () { return viewClassBeforeReason() + classGradeBox(); };
+document.addEventListener('input', e => {
+  if (!(e.target.dataset && e.target.dataset.cg === 'text') || cgOpen == null) return;
+  const p = classContext(current).tracker.pupils[cgOpen];
+  if (p) drafts['cggrade:' + p.name] = e.target.value;
+});
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act^="cg"]');
+  if (!b || cgOpen == null) return;
+  const ctx = classContext(current), p = ctx.tracker && ctx.tracker.pupils[cgOpen], act = b.dataset.act;
+  if (act === 'cgClose' || !p) { cgOpen = null; render(); return; }
+  const key = 'cggrade:' + p.name;
+  if (act === 'cgPick') { drafts[key] = drafts[key] === b.dataset.v ? '' : b.dataset.v; render(); return; }
+  const cur = gradeParts(ctx.tracker.cell(p.row, ctx.block.grade));
+  if (act === 'cgSave') {
+    const why = Q.clean(drafts[key] != null ? drafts[key] : cur.g === cgGrade ? cur.why : '');
+    if (!why) return say(T('Điểm ' + cgGrade + ' bắt buộc có lý do: chọn một lý do hoặc gõ vào ô.', 'A ' + cgGrade + ' needs a reason: pick one or type it.'), 'bad');
+    notices = notices.filter(n => !/bắt buộc có lý do|needs a reason/.test(n.text));
+    gradeWrite(ctx, p, cgGrade, why); delete drafts[key]; cgOpen = null; render(); return;
+  }
+  if (act === 'cgClear') { gradeWrite(ctx, p, ''); delete drafts[key]; cgOpen = null; render(); }
+});
