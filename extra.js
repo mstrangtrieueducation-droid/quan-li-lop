@@ -279,7 +279,7 @@ function kpiOf(person, month, src) {
   [uniq].concat(monthTabs.map(w => ({ data: { tasks: [], returns: [], sessions: w.data.sessions.filter(s => { const k = Q.sessionKey(s); if (seenSes.has(k)) return false; seenSes.add(k); return true; }) } }))).forEach(w => {
     w.data.tasks.filter(t => sameName(t.teacher, person) && t.gradeDue && t.gradeDue.startsWith(month) && t.gradeDue <= now).forEach(t => { parts.task[1]++; if (t.done) parts.task[0]++; else detail.task.push(t.cls + ' · ' + t.what); });
     (w.data.returns || []).filter(x => x.day && x.day.startsWith(month) && x.day <= now && Q.key(x.who) === last).forEach(x => { parts.ret[1]++; if (x.done) parts.ret[0]++; else detail.ret.push(x.label + ' ' + viDate(x.day)); });
-    w.data.sessions.filter(s => s.day.startsWith(month) && !s.off && sameName(s.teacher, person) && classOf(s) && !isGroup(s) && s.day >= (classOf(s).since || '') && (s.day < now || (s.day === now && s.start + Q.ROLL_CALL_MINUTES <= minutesNow()))).forEach(s => {
+    w.data.sessions.filter(s => s.day.startsWith(month) && !s.off && sameName(rollTaker(s), person) && classOf(s) && !isGroup(s) && s.day >= (classOf(s).since || '') && (s.day < now || (s.day === now && s.start + Q.ROLL_CALL_MINUTES <= minutesNow()))).forEach(s => {
       parts.roll[1]++;
       const marks = [...marksOf(s).values()].filter(m => Q.PRESENT.includes(m.status) || Q.ABSENT.includes(m.status) || m.status === 'GV báo nghỉ');
       const first = marks.map(m => stampMinutes(m.at)).filter(Boolean).sort((a, b) => (a.day + a.min).localeCompare(b.day + b.min))[0];
@@ -1754,6 +1754,7 @@ pupilFlags = function (ctx, r) {
 const totalOwedRaw = totalOwed, totalMemo = { key: '', list: [] };
 totalOwed = function (ctx) { const k = Q.sessionKey(ctx.session) + '|' + ctx.tracker.at; if (totalMemo.key !== k) { totalMemo.key = k; totalMemo.list = totalOwedRaw(ctx); } return totalMemo.list; };
 function secButtons(ctx, r, live) {
+  return '';
   if (!isSecondary(ctx.session)) return '';
   const st = (ctx.marks.get(r.p.name) || {}).status || '';
   if (st === SEND_HOME) return '<button class="rv-send on" data-act="llUnsend" data-i="' + r.i + '"' + live.replace(' disabled', '') + '>🚪 Cho về ✓<small class="rv-en">Undo</small></button>';
@@ -1931,4 +1932,21 @@ document.addEventListener('click', e => {
   if (!link.startsWith(base)) return say(T('Link này không phải link trang học phí. Dán đúng link học phí cô Trang gửi.', 'This is not a tuition link.'), 'bad');
   view = 'hocphi'; render();
   const f = document.getElementById('hpFrame'); if (f) f.src = link;
+});
+
+/* IELTS / FIGHTER on the class page: two more choices beside roll call (owner 08/11). */
+function secClassButtons(ctx, p, i, canEdit) {
+  if (!isSecondary(ctx.session)) return '<div></div>';
+  const st = (ctx.marks.get(p.name) || {}).status || '', dis = canEdit ? '' : ' disabled';
+  const btn = (v, label, on) => '<button class="sec-mark' + (on ? ' on' : '') + '" data-act="secMark" data-i="' + i + '" data-v="' + esc(on ? 'Bỏ tick' : v) + '"' + dis + '>' + label + (on ? ' ✓' : '') + '</button>';
+  return '<div class="sec-marks">' + btn(SEND_HOME, '🚪 ' + T('Cho về · thiếu bài', 'Sent home'), st === SEND_HOME) + btn(HOME_NO_HW, '🏠 ' + T('Ở nhà · chưa làm bài', 'Stayed home'), st === HOME_NO_HW) + '</div>';
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="secMark"]');
+  if (!b || !current) return;
+  const ctx = classContext(current), pupil = ctx.tracker && ctx.tracker.pupils[Number(b.dataset.i)];
+  if (!pupil || !classCanEdit(ctx.session)) return;
+  const m = ctx.marks.get(pupil.name);
+  appendMark(ctx.session, pupil, b.dataset.v, m && m.contact, m && m.note);
+  render();
 });
