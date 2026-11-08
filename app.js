@@ -820,7 +820,6 @@ function viewSchedule(week) {
   if (isManager() && filters.showAll && all.length) {
     h += dayStats(all);
     const kinds = KINDS.filter(([k]) => all.some(s => kindOf(s) === k));
-    if (kinds.length > 1) h += '<div class="chips">' + [['', T('Tất cả', 'All')]].concat(kinds.map(([k]) => [k, kindName(k)])).map(([k, label]) => '<button class="' + ((filters.kind || '') === k ? 'on' : '') + '" data-act="kind" data-v="' + k + '">' + esc(label) + '</button>').join('') + '</div>';
   }
   const shown = isManager() && filters.showAll && filters.kind ? list.filter(s => kindOf(s) === filters.kind) : list;
   if (shown.length && isManager() && filters.showAll) today_ += dayParts(shown);
