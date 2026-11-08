@@ -485,6 +485,7 @@
   .sum-table tr:nth-child(even) td { background: #fafafa; }
   .sum-sheet .sum-table th, .sum-sheet .sum-table td { text-align: left; }
   .sum-sheet .sum-table td.sum-rank { text-align: center; }
+  .sum-sheet .sum-table td.sum-gcell, .sum-sheet .sum-table th.sum-c { text-align: center; }
   .sum-table { table-layout: auto; }
   .sum-name { width: 18%; } .sum-debt { width: 28%; }
   .sum-rank { width: 40px; font-size: 20px; text-align: center; color: #6b7280; }
@@ -503,6 +504,12 @@
   .sum-offrow td { color: #9ca3af; }
   .sum-note { margin-top: 12px; font-size: 14px; color: #4b5563; background: #f8fafc; border-radius: 10px; padding: 10px 12px; }
   @media (max-width: 720px) { .sum-sheet { padding: 14px 12px; font-size: 15px; } }
+  /* IELTS / FIGHTER marks (owner 08/11) */
+  .rv-send { min-height: 60px; padding: 0 14px; border-radius: 12px; font-size: 16px; font-weight: 700; border: 2px solid #f59e0b; color: #b45309; background: var(--card); }
+  .rv-send.on { background: #f59e0b; color: #fff; }
+  .rv-flag.sent { background: #ffedd5; color: #c2410c; }
+  :root[data-theme="dark"] .rv-flag.sent { background: #4a2a12; color: #fdba74; }
+  .sum-sent { color: #c2410c; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -532,9 +539,9 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108e"></script>
-<script src="logic.js?v=20261108e"></script>
-<script src="app.js?v=20261108e"></script>
-<script src="extra.js?v=20261108e"></script>
+<script src="config.js?v=20261108f"></script>
+<script src="logic.js?v=20261108f"></script>
+<script src="app.js?v=20261108f"></script>
+<script src="extra.js?v=20261108f"></script>
 </body>
 </html>

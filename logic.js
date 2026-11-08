@@ -299,7 +299,7 @@
   }
 
   /* ---------- Roll call ---------- */
-  const PRESENT = ['Có mặt', 'Đến muộn'], ABSENT = ['Đã báo nghỉ', 'Chưa báo nghỉ', 'Có phép', 'Không phép'];
+  const PRESENT = ['Có mặt', 'Đến muộn'], ABSENT = ['Đã báo nghỉ', 'Chưa báo nghỉ', 'Có phép', 'Không phép', 'Cho về (thiếu bài)', 'Nghỉ (chưa làm bài)'];
   // minutesNow is minutes since midnight of "today".
   function rollCall(session, marks, today, minutesNow) {
     const closeAt = session.start + ROLL_CALL_MINUTES;
