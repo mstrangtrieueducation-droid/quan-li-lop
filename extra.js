@@ -30,6 +30,8 @@ function rotaDue(week, d) {
   if (!me || isOwner()) return null;
   const x = dutyOf(week, d), mine = x && x.work.find(p => isMe(p.name));
   if (!(isManager() || mine || (!x && /^TA$/i.test(Q.clean(me.role))))) return null;
+  const sh = mine && Q.shiftOf(mine.note);
+  if (sh) return sh.start;
   const wd = new Date(d + 'T12:00:00').getDay();
   if (wd >= 1 && wd <= 5) return ROTA_DUE.week;
   const note = Q.key(mine ? mine.note : ''), pm = wd === 6 ? ROTA_DUE.sat : ROTA_DUE.sun;
@@ -1950,3 +1952,131 @@ document.addEventListener('click', e => {
   appendMark(ctx.session, pupil, b.dataset.v, m && m.contact, m && m.note);
   render();
 });
+
+/* ---------- Part-time hours by the rota (owner 08/11) ----------
+ * "họ ấn vào ca và ra ca... nếu muộn thì trừ công, còn nếu sớm là họ đến sớm; muộn hơn là họ về muộn, còn chấm công theo giờ quy định...
+ * nếu có buổi vào làm thêm ấn vào ca ra ca thì tôi duyệt". A shift on the rota ("PHUONG THANH (17.00-21.30)") is paid from its start
+ * (or the later check-in) to its end (or the earlier check-out); coming early or staying late adds nothing. A day with no shift on the
+ * rota is extra work: it counts from check-in to check-out only after a manager or the owner approves it. */
+function shiftFor(person, day) {
+  for (const w of Object.values(weeks)) {
+    const x = w.data.duty && w.data.duty.days[day];
+    if (!x) continue;
+    const p = x.work.find(q => sameName(canonStaff(q.name), person) || sameName(q.name, person));
+    return p ? Q.shiftOf(p.note) : null;
+  }
+  return undefined;
+}
+const caHoursRaw = caHours;
+caHours = function (rows, person, prefix) {
+  const base = caHoursRaw(rows, person, prefix);
+  if (!isPartTime(person)) return base;
+  let total = 0;
+  base.days.forEach(d => {
+    const a = d.in ? hm(d.in.time) : null, b = d.out ? hm(d.out.time) : null, sh = shiftFor(person, d.day);
+    d.shift = sh || null; d.extra = sh === null; d.late = sh && a != null ? Math.max(0, a - sh.start) : 0;
+    if (d.rejected || a == null) d.minutes = 0;
+    else if (sh) d.minutes = Math.max(0, Math.min(b == null ? sh.end : b, sh.end) - Math.max(a, sh.start));
+    else d.minutes = (d.inStatus === 'Đã duyệt') && b != null && b > a ? b - a : 0;
+    if (d.extra && d.inStatus !== 'Đã duyệt') d.needsApproval = true;
+    total += d.minutes;
+  });
+  base.total = total;
+  base.extraWaiting = base.days.filter(d => d.needsApproval).length;
+  return base;
+};
+
+/* ---------- Printing duty (owner 08/11: "lịch in cũng cần tick đã hoàn thành") ----------
+ * The rota row "Phụ trách in ấn" names who prints for the next lesson day; that person (or a manager) ticks it done.
+ * The tick is a row in DIEM_DANH (class "IN ẤN"), which every staff member can read and write. */
+const PRINT_CLS = 'IN ẤN';
+const printDone = (d, name) => { const rows = (logs.marks ? logs.marks.rows : []).filter(r => r.cls === PRINT_CLS && r.day === d && sameName(r.name, name)); const last = rows[rows.length - 1]; return last && last.status === 'Đã in xong' ? last : null; };
+function printCard(week) {
+  const x = dutyOf(week, day);
+  if (!x || !x.print || !x.print.length) return '';
+  if (!logs.marks) setTimeout(() => loadMarks().then(render).catch(() => {}), 0);
+  return '<div class="card row print-card"><b>🖨️ ' + T('In ấn', 'Printing') + '</b>' + x.print.map(p => {
+    const done = printDone(day, p.name), can = isMe(p.name) || isManager();
+    return '<span class="person' + (isMe(p.name) ? ' me' : '') + '">' + esc(Q.key(p.name)) + (p.note ? ' <i>' + esc(p.note) + '</i>' : '') + '</span>' +
+      (done ? '<span class="done">✓ ' + T('Đã in xong', 'Printed') + ' ' + esc(String(done.at || '').slice(11, 16)) + '</span>' + (can ? ' <button class="quiet" data-act="printTick" data-p="' + esc(p.name) + '" data-v="Bỏ in">' + T('Bỏ', 'Undo') + '</button>' : '')
+        : can ? '<button class="primary" data-act="printTick" data-p="' + esc(p.name) + '" data-v="Đã in xong">✓ ' + T('Đã in xong', 'Done printing') + '</button>' : '<span class="tag warn">' + T('Chưa in', 'Not yet') + '</span>');
+  }).join('') + '</div>';
+}
+const dutyBlockRaw = dutyBlock;
+dutyBlock = function (week) { const h = dutyBlockRaw(week); return h ? h + printCard(week) : (isTaSide(week) ? printCard(week) : ''); };
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="printTick"]');
+  if (!b) return;
+  const name = b.dataset.p;
+  if (!(isMe(name) || isManager())) return;
+  appendMark({ day, cls: PRINT_CLS, lesson: '', start: 0 }, { row: '', name, eng: '' }, b.dataset.v);
+  render();
+});
+// The bell reminds the person on printing duty today.
+const bellItemsBeforePrint = bellItems;
+bellItems = function () {
+  const out = bellItemsBeforePrint();
+  try {
+    const t = today(), x = dutyOf(weeks[Q.weekTab(tabs, t)] || null, t);
+    (x && x.print || []).filter(p => isMe(p.name) && !printDone(t, p.name)).forEach(p => out.push({ k: 'print', icon: '🖨️', text: T('Bạn in bài', 'You print') + (p.note ? ' (' + p.note + ')' : '') + T(' · chưa tick xong', ' · not ticked yet'), n: 1, hot: minutesNow() >= 18 * 60, go: { view: 'lich', sec: 'lamviec' } }));
+  } catch (e) {}
+  return out;
+};
+
+/* ---------- KIDS level 3: called out to make up the work (owner 08/11: "gọi ra học riêng làm bài chứ không phải nghỉ") ----------
+ * On the class page a pupil at level 3 or more today gets "Ra ngoài bù bài"; the mark counts as present, the class screen shows them
+ * as working outside, and "Bù xong · vào lớp" brings them back. */
+const MAKEUP = 'Bù bài (mức 3)';
+function ladderLevel(s, p) {
+  if (!ladder.rows) { if (!ladder.loading) { ladder.loading = true; loadLadder().catch(() => {}).finally(() => { ladder.loading = false; render(); }); } return 0; }
+  const k = Q.key(p.name), hits = ladder.rows.filter(r => Q.key(r.cls) === Q.key(s.cls) && Q.key(r.name).startsWith(k));
+  return hits.length ? Math.max(...hits.map(r => r.level)) : 0;
+}
+function kidsMakeup(ctx, p, i, canEdit) {
+  const s = ctx.session;
+  if (isSecondary(s) || !/^KIDS/i.test(Q.clean(s.cls))) return '';
+  const st = (ctx.marks.get(p.name) || {}).status || '', dis = canEdit ? '' : ' disabled';
+  if (st === MAKEUP) return '<button class="mk-btn on" data-act="mkMark" data-i="' + i + '" data-v="Có mặt"' + dis + '>📝 ' + T('Đang bù bài ngoài lớp · bấm khi bù xong, vào lớp', 'Making up work outside · tap when done') + '</button>';
+  const lv = ladderLevel(s, p);
+  return lv >= 3 ? '<button class="mk-btn" data-act="mkMark" data-i="' + i + '" data-v="' + MAKEUP + '"' + dis + '>📝 ' + T('Mức ' + lv + ': ra ngoài bù bài', 'Level ' + lv + ': make up work outside') + '</button>' : '';
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="mkMark"]');
+  if (!b || !current) return;
+  const ctx = classContext(current), pupil = ctx.tracker && ctx.tracker.pupils[Number(b.dataset.i)];
+  if (!pupil || !classCanEdit(ctx.session)) return;
+  const m = ctx.marks.get(pupil.name);
+  appendMark(ctx.session, pupil, b.dataset.v, m && m.contact, m && m.note);
+  render();
+});
+// Class screen and summary: show it, and keep the row looking set aside.
+const pupilFlagsBeforeMk = pupilFlags;
+pupilFlags = function (ctx, r) {
+  const st = (ctx.marks.get(r.p.name) || {}).status || '', h = pupilFlagsBeforeMk(ctx, r);
+  if (st !== MAKEUP) return h;
+  const flag = '<span class="rv-flag mk">📝 Đang bù bài ngoài lớp <i class="rv-en-i">Making up work</i></span>';
+  return h ? h.replace('<span class="rv-flags">', '<span class="rv-flags">' + flag) : '<span class="rv-flags">' + flag + '</span>';
+};
+const attendTextBeforeMk = attendText;
+attendText = function (m) { return m && m.status === MAKEUP ? '<span class="sum-sent">Bù bài ngoài lớp (mức 3)</span>' : attendTextBeforeMk(m); };
+
+/* ---------- IELTS / FIGHTER owed work, short (owner 08/11: "hiển thị thiếu bài gì bên fighter ielts còn dài dòng... ngắn gọn hơn") ---------- */
+const SKILLS = [[/writing|viết/i, 'Viết'], [/speaking|nói/i, 'Nói'], [/reading|đọc/i, 'Đọc'], [/listening|nghe/i, 'Nghe'], [/vocab|từ vựng/i, 'Từ vựng'], [/grammar|ngữ pháp/i, 'Ngữ pháp'], [/test|kiểm tra/i, 'Kiểm tra']];
+const skillOf = o => { const t = Q.clean(o.label); const hit = SKILLS.find(([re]) => re.test(t)); return hit ? hit[1] : t.split(' ').slice(0, 2).join(' '); };
+const skillSummary = owed => { const n = {}; owed.forEach(o => { const k = skillOf(o); n[k] = (n[k] || 0) + 1; }); return Object.entries(n).map(([k, c]) => k + (c > 1 ? ' ×' + c : '')).join(', '); };
+const pupilFlagsBeforeShort = pupilFlags;
+pupilFlags = function (ctx, r) {
+  const h = pupilFlagsBeforeShort(ctx, r);
+  if (!isSecondary(ctx.session)) return h;
+  return h.replace(/📚 Thiếu (\d+) bài: [^<]*?( <i class="rv-en-i">Homework owed<\/i>)/, (m0, n, tail) => { const owed = secOwedOf(ctx, r.p) || []; return '📚 Thiếu ' + n + ' bài: ' + esc(skillSummary(owed)) + tail; });
+};
+const summaryViewBeforeShort = summaryView;
+summaryView = function (ctx) {
+  const h = summaryViewBeforeShort(ctx);
+  if (!isSecondary(ctx.session)) return h;
+  const rows = ctx.tracker.pupils;
+  return h.replace(/<tr([^>]*)><td class="sum-rank">([\s\S]*?)<td class="sum-name"><b>([^<]*)<\/b>([\s\S]*?)<td class="sum-debt"><b>Thiếu (\d+) bài:<\/b> [^<]*<\/td><\/tr>/g, (m0, a1, a2, name, mid, n) => {
+    const p = rows.find(q => esc(q.eng || q.name) === name), owed = p ? secOwedOf(ctx, p) || [] : [];
+    return '<tr' + a1 + '><td class="sum-rank">' + a2 + '<td class="sum-name"><b>' + name + '</b>' + mid + '<td class="sum-debt"><b>Thiếu ' + n + ' bài:</b> ' + esc(skillSummary(owed)) + '</td></tr>';
+  });
+};

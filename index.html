@@ -545,6 +545,13 @@
   .sec-marks { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
   .sec-mark { min-height: 44px; padding: 0 12px; border-radius: 12px; border: 2px solid #f59e0b; color: #b45309; background: var(--card); font-weight: 700; font-size: 14px; }
   .sec-mark.on { background: #f59e0b; color: #fff; }
+  /* Printing duty, part-time shifts, KIDS level 3 (owner 08/11) */
+  .print-card { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .print-card .done { color: var(--ok); font-weight: 700; }
+  .mk-btn { margin-top: 6px; min-height: 40px; padding: 0 12px; border-radius: 10px; border: 2px solid #7c3aed; color: #6d28d9; background: var(--card); font-weight: 700; font-size: 14px; }
+  .mk-btn.on { background: #7c3aed; color: #fff; }
+  .rv-flag.mk { background: #ede9fe; color: #6d28d9; }
+  :root[data-theme="dark"] .rv-flag.mk { background: #3b2a63; color: #c4b5fd; }
 </style>
 </head>
 <body>
@@ -574,9 +581,9 @@
   </header>
   <main id="main"></main>
 </div>
-<script src="config.js?v=20261108o"></script>
-<script src="logic.js?v=20261108o"></script>
-<script src="app.js?v=20261108o"></script>
-<script src="extra.js?v=20261108o"></script>
+<script src="config.js?v=20261108p"></script>
+<script src="logic.js?v=20261108p"></script>
+<script src="app.js?v=20261108p"></script>
+<script src="extra.js?v=20261108p"></script>
 </body>
 </html>

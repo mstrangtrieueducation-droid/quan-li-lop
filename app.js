@@ -816,11 +816,12 @@ function viewSchedule(week) {
   if (shown.length) today_ += (isManager() && filters.showAll ? '' : '<div class="part p-1"><h2>' + T('Lớp tôi dạy', 'My classes') + '</h2><span>' + shown.length + T(' buổi', ' sessions') + '</span></div>') + dayParts(shown);
   else if (isManager() && filters.showAll) today_ += '<div class="card empty">' + T('Không có buổi nào trong ngày này.', 'No sessions on this day.') + '</div>';
   // Each tab carries its own count; a tab with nothing in it is not shown.
-  const ladderHtml = ladderBlock(week), owedHtml = owedBlock(week), workHtml = (isManager() && filters.showAll ? '' : dutyBlock(week)) + returnsBlock(week), taskHtml = myTaskBlock(week);
+  const ladderHtml = ladderBlock(week), owedHtml = '', workHtml = dutyBlock(week) + returnsBlock(week), taskHtml = myTaskBlock(week);
   const count = html => (html.match(/class="card row/g) || []).length;
   secs.push({ k: 'homnay', label: T('Hôm nay', 'Today'), html: today_, n: (today_.match(/class="card row alert/g) || []).length, hot: /class="card row alert/.test(today_) });
   if (ladderHtml) secs.push({ k: 'phat', label: T('Phạt & phụ huynh', 'Penalties & parents'), html: ladderHtml, n: typeof ladderTodo === 'function' ? ladderTodo(week) : count(ladderHtml), hot: /class="card row lad[^"]*late/.test(ladderHtml) });
-  if (owedHtml) secs.push({ k: 'baino', label: T('Bài nợ IELTS/FIGHTER', 'IELTS/FIGHTER owed'), html: owedHtml, n: count(owedHtml) });
+  // Owner 08/11: the IELTS/FIGHTER owed tab is not needed any more (owed work shows on each class).
+  if (false && owedHtml) secs.push({ k: 'baino', label: T('Bài nợ IELTS/FIGHTER', 'IELTS/FIGHTER owed'), html: owedHtml, n: count(owedHtml) });
   if (workHtml) secs.push({ k: 'lamviec', label: T('Lịch làm & trả bài', 'Rota & returns'), html: workHtml, n: count(workHtml) });
   if (taskHtml) secs.push({ k: 'task', label: 'Important Task', html: taskHtml, n: (taskHtml.match(/data-act="task"/g) || []).length });
   const live = secs.filter(x => x.html), pick = live.find(x => x.k === filters.sec) || live[0];
@@ -874,7 +875,7 @@ function viewClass() {
     const owedText = owed[i].map(o => (o.practice ? T(o.label, o.label.replace('Tự luyện video', 'Self-study video').replace('Tự luyện', 'Self-study')) : T('Tiết ', 'Lesson ') + o.lesson + (o.label ? ' ' + videoLabel(o.label) : '')) + (o.wrong ? T(' (quay sai)', ' (filmed wrong)') : '')).join(', ');
     return '<div class="pupil' + (state === 'Vắng chờ xác minh' || Q.ABSENT.includes(state) ? ' absent' : '') + '"><button class="tick' + (on ? (m.status === 'Đến muộn' ? ' late' : ' on') : '') + '" data-act="tick" data-i="' + i + '" aria-pressed="' + Boolean(on) + '" aria-label="Điểm danh ' + esc(p.eng) + '"' + (canEdit ? '' : ' disabled') + '>✓</button>' +
       '<div class="who"><b>' + esc(p.eng || p.name) + '</b><span class="small muted">' + esc(p.name) + (state && !on ? ' · ' + esc(stateText(state)) : m && m.status === 'Đến muộn' ? T(' · Đến muộn', ' · Late') : '') + (g === '/' ? T(' · Sheet ghi vắng', ' · Sheet says absent') : '') + (value && !g ? T(' · Có ghi chú', ' · Has a note') : '') + '</span></div>' + grades +
-      (gradeReason(value) ? '<div class="small muted">✎ ' + T('Lý do: ', 'Reason: ') + esc(gradeReason(value)) + '</div>' : '') +
+      (gradeReason(value) ? '<div class="small muted">✎ ' + T('Lý do: ', 'Reason: ') + esc(gradeReason(value)) + '</div>' : '') + (typeof kidsMakeup === 'function' ? kidsMakeup(ctx, p, i, canEdit) : '') +
       (owedText ? '<div class="owed">' + T('Thiếu video: ', 'Missing video: ') + esc(owedText) + '</div>' : '') + '</div>';
   }).join('') + '</div>';
   // Owner 07/11: the lesson report lives in the class sheet's BÁO CÁO tab, not here.
