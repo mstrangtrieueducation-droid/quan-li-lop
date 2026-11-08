@@ -130,10 +130,11 @@ function caPanel(week) {
   let h = dayBar();
   if (!ca.all) return h + '<div class="card empty">' + T('Đang đọc…', 'Reading…') + '</div>';
   const people = new Map();
-  (week ? week.data.sessions : []).filter(s => s.day === day && !s.off).forEach(s => Q.staffOf(s).forEach(p => { const k = Q.key(p.name); if (!people.has(k) || people.get(k).due > p.due) people.set(k, { name: p.name, due: p.due }); }));
+  (week ? week.data.sessions : []).filter(s => s.day === day && !s.off).forEach(s => Q.staffOf(s).forEach(p => { const n = canonStaff(p.name), k = Q.key(n); if (!people.has(k) || people.get(k).due > p.due) people.set(k, { name: n, due: p.due }); }));
   const duty = dutyOf(week, day);
-  if (duty) duty.work.forEach(p => { const k = Q.key(p.name); if (!people.has(k)) people.set(k, { name: p.name, due: null }); });
+  if (duty) duty.work.forEach(p => { const n = canonStaff(p.name), k = Q.key(n); if (!people.has(k)) people.set(k, { name: n, due: null }); });
   ca.all.filter(r => r.day === day).forEach(r => { const k = Q.key(r.person); if (!people.has(k)) people.set(k, { name: r.person, due: null }); });
+  ownerKeys().forEach(k => people.delete(k));
   const list = [...people.values()].map(p => ({ p, vin: caPair(ca.all, day, p.name, 'Vào ca'), vout: caPair(ca.all, day, p.name, 'Ra ca') }))
     .sort((a, b) => (a.vin ? (a.vin.status === 'Chờ duyệt' ? 0 : 2) : 1) - (b.vin ? (b.vin.status === 'Chờ duyệt' ? 0 : 2) : 1) || a.p.name.localeCompare(b.p.name, 'vi'));
   const waiting = list.filter(x => [x.vin, x.vout].some(v => v && v.status === 'Chờ duyệt')).length, missing = list.filter(x => !x.vin).length;
@@ -324,7 +325,7 @@ function kpiPanel() {
   const names = new Set();
   Q.tabsOfMonth(tabs, month).map(t => weeks[t]).filter(Boolean).forEach(w => { w.data.sessions.filter(s => s.day.startsWith(month)).forEach(s => Q.staffOf(s).forEach(p => names.add(Q.clean(p.name).toUpperCase()))); w.data.tasks.forEach(t => names.add(Q.clean(t.teacher).toUpperCase())); });
   people.forEach(p => names.add(p.name));
-  const list = [...names].filter(Boolean).map(n => kpiOf(n, month, kpi.data)).filter(k => k.score != null).sort((a, b) => a.score - b.score || a.person.localeCompare(b.person, 'vi'));
+  const list = [...names].filter(n => n && !ownerKeys().has(Q.key(n))).map(n => kpiOf(n, month, kpi.data)).filter(k => k.score != null).sort((a, b) => a.score - b.score || a.person.localeCompare(b.person, 'vi'));
   return h + '<div class="grid">' + list.map(k => kpiCard(k, true)).join('') + '</div>';
 }
 function myKpiBlock() {
@@ -1839,3 +1840,83 @@ Q.owedVideos = function (pupils, blocks, practices, cell, session, dueOf) {
   const k = classKeyOfBlocks(blocks);
   return owedVideosRaw(pupils, blocks, practices, cell, session, dueOf || (k ? b => scheduleDue(k, b.date) : null));
 };
+
+/* ---------- The owner has no hours and no KPI (owner 08/11) ---------- */
+function ownerKeys() { return new Set(people.filter(p => /chủ/i.test(p.role || '')).map(p => Q.key(p.name)).concat(me && isOwner() ? [Q.key(me.name)] : [])); }
+if (isOwner && me && isOwner() && view === 'cong') view = 'lich';
+
+/* ---------- Lesson columns: only real problems (owner 08/11: "cột tiết học sao cứ báo đang lỗi... nếu lỗi gì bạn fix đi") ----------
+ * Columns open by themselves at 6:00, two days ahead, so a later lesson without its column is not a fault; Phonics and Debate sheets
+ * have no paper-homework cell by design. Only today and the next two days are checked. */
+const AUTO_OPEN_DAYS = 2;
+const columnWarningRaw = columnWarning;
+columnWarning = function (ctx) {
+  const s = ctx.session;
+  if (s.day > Q.addDays(today(), AUTO_OPEN_DAYS)) return '';
+  if (!ctx.problem) return '';
+  return columnWarningRaw(ctx).replace(/ ?TA kiểm tra lại giúp\.| ?TA please check\./g, T(' Cần kiểm tra lại Schedule hoặc sheet lớp.', ' Please check the Schedule or the class sheet.')).replace('cho đến khi TA mở cột', 'cho đến khi cột được mở');
+};
+columnPanel = function () {
+  const rows = [], now = today(), until = Q.addDays(now, AUTO_OPEN_DAYS);
+  Object.values(weeks).forEach(w => w.data.sessions.filter(s => classOf(s) && !s.off && s.day >= now && s.day <= until).forEach(s => { const ctx = classContext(s); if (ctx.tracker && ctx.tracker.blocks.length) rows.push(ctx); }));
+  rows.sort((a, b) => a.session.day.localeCompare(b.session.day) || a.session.start - b.session.start);
+  const note = '<p class="small muted">' + T('Cột tiết học tự mở lúc 6:00 sáng, trước buổi học 2 ngày. Ở đây chỉ kiểm tra hôm nay và 2 ngày tới; lớp Phonics, Debate không có ô bài tập giấy là đúng.', 'Columns open by themselves at 6:00, two days ahead. Only today and the next two days are checked.') + '</p>';
+  if (!rows.length) return note + '<div class="card empty">' + T('Chưa có buổi nào trong 3 ngày tới, hoặc đang đọc sheet lớp…', 'No lessons in the next 3 days yet, or still reading.') + '</div>';
+  const bad = rows.filter(c => columnWarning(c));
+  return note + '<div class="count"><span>' + (bad.length ? bad.length + T(' buổi cần kiểm tra', ' to check') : T('Đủ cột cho hôm nay và 2 ngày tới', 'All columns in place')) + '</span></div><div class="list">' + (bad.length ? bad : rows).map(c => {
+    const warn = columnWarning(c);
+    return '<div class="card row"><div class="row-top"><b>' + esc(c.session.cls) + ' · ' + T('Tiết ', 'Lesson ') + esc(c.session.lesson) + '</b><span class="muted">' + esc(Q.dayText(c.session.day, lang)) + '</span><span class="tag ' + (warn ? 'bad' : 'ok') + '">' + (warn ? T('Cần kiểm tra', 'Check') : T('Đủ cột', 'OK')) + '</span>' +
+      '<span class="spacer"></span><a class="small" target="_blank" rel="noopener" href="https://docs.google.com/spreadsheets/d/' + esc(c.cls.tracker) + '/edit">' + T('Mở sheet lớp', 'Open sheet') + ' ↗</a></div>' + (warn ? '<div class="small">' + esc(warn) + '</div>' : '') + '</div>';
+  }).join('') + '</div>';
+};
+
+/* ---------- Schedule: whole centre first, the lesson running now first (owner 08/11) ---------- */
+let scopeInit = false;
+const renderBeforeScope = render;
+render = function () { if (me && !scopeInit) { scopeInit = true; if (isManager()) filters.showAll = true; } renderBeforeScope(); hocPhiFrame(); };
+// Today: what is running now on top, then what is still to come (morning, afternoon, evening), and finished lessons folded at the bottom.
+const dayPartsBeforeNow = dayParts;
+dayParts = function (list) {
+  if (day !== today()) return dayPartsBeforeNow(list);
+  const now = minutesNow(), live = list.filter(s => !s.off && s.start <= now && now < s.end), next = list.filter(s => s.start > now), done = list.filter(s => s.start <= now && !(live.includes(s)));
+  let out = '';
+  if (live.length) out += '<div class="part p-live"><h2>● ' + T('Đang diễn ra', 'In progress') + '</h2><span>' + live.length + T(' buổi', ' sessions') + '</span></div><div class="grid">' + live.map(sessionCard).join('') + '</div>';
+  if (next.length) out += (live.length ? '<div class="part p-next"><h2>' + T('Sắp tới', 'Coming up') + '</h2><span>' + next.length + T(' buổi', ' sessions') + '</span></div>' : '') + dayPartsBeforeNow(next);
+  if (done.length) out += '<details class="done-part"><summary>' + T('Đã xong hôm nay', 'Finished today') + ' · ' + done.length + T(' buổi', ' sessions') + '</summary><div class="grid">' + done.map(sessionCard).join('') + '</div></details>';
+  return out || dayPartsBeforeNow(list);
+};
+
+/* ---------- Tuition (Học phí) inside this app, for managers and the owner ----------
+ * The tuition app is shown in a frame that stays alive while you move around, so it is not reloaded every time this page redraws.
+ * It keeps its own sign-in on this device (the personal tuition link); nothing of it passes through this app. */
+const HOC_PHI_URL = '../hoc-phi/';
+function viewHocPhi() {
+  return '<div class="hp-bar"><b>💰 ' + T('Học phí', 'Tuition') + '</b><span class="small muted">' + T('Lần đầu trên máy này: dán link học phí cá nhân của bạn vào ô đăng nhập bên dưới.', 'First time on this device: paste your personal tuition link below.') + '</span><span class="spacer"></span><a class="small" href="' + HOC_PHI_URL + '" target="_blank" rel="noopener">' + T('Mở riêng', 'Open separately') + ' ↗</a></div>';
+}
+function hocPhiFrame() {
+  let f = document.getElementById('hpFrame');
+  const show = view === 'hocphi' && me && isManager() && !isBoard();
+  if (!show) { if (f) f.hidden = true; return; }
+  if (!f) { f = document.createElement('iframe'); f.id = 'hpFrame'; f.title = 'Học phí'; f.src = HOC_PHI_URL; f.setAttribute('allow', 'clipboard-write'); document.body.appendChild(f); }
+  f.hidden = false;
+}
+
+/* ---------- One person, one name (owner 08/11) ---------- */
+// A short name from the rota (SON) is the staff member whose name ends with it (VAN SON), when exactly one does.
+function canonStaff(name) {
+  const k = Q.key(name);
+  if (!k || people.some(p => Q.key(p.name) === k)) return name;
+  const hits = people.filter(p => { const pk = Q.key(p.name); return pk.endsWith(' ' + k) || pk.split(' ')[0] === k; });
+  return hits.length === 1 ? hits[0].name : name;
+}
+/* ---------- Important Task: a TA sees the return date, not the teacher's grading date ---------- */
+let taskTaView = false;
+const taskStateRaw = Q.taskState;
+Q.taskState = function (t, d) {
+  if (!taskTaView || t.done || !isMe(t.ta) || isMe(t.teacher)) return taskStateRaw(t, d);
+  if (t.returnDue && t.returnDue < d) return { state: 'quahan', text: 'Quá hạn trả' };
+  if (t.returnDue === d) return { state: 'homnay', text: 'Hạn trả hôm nay' };
+  return { state: 'sap', text: 'Chưa đến hạn trả' };
+};
+const taskRowRaw = taskRow;
+taskRow = function (t, week, canTick) { taskTaView = true; try { return taskRowRaw(t, week, canTick); } finally { taskTaView = false; } };
