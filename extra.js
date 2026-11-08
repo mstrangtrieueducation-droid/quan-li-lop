@@ -2185,11 +2185,11 @@ const COMMENT_LINES = {
 };
 function lessonComment(counts, m) {
   const x = n => n > 1 ? ' (' + n + ' lần)' : '', out = [];
-  if (m && m.status === 'Đến muộn') out.push('⏰ Con đến muộn.');
   if (counts[CANH_CAO]) out.push('⛔ Bị cảnh cáo' + x(counts[CANH_CAO]) + ' trong buổi học.');
   Object.entries(counts).forEach(([k, n]) => { if (k === CANH_CAO || k === PRAISE) return; out.push('⚠️ ' + k + x(n) + ': ' + (COMMENT_LINES[k] || 'con cần cố gắng hơn.')); });
   if (counts[PRAISE]) out.push('👍 Con phát biểu tốt' + x(counts[PRAISE]) + '.');
-  if (!out.length || out.every(l => l.startsWith('👍') || l.startsWith('⏰'))) out.push('✓ Con tập trung, giữ trật tự tốt.');
+  // Lateness stays in the attendance column only (a roll taken late would mark the whole class late in every comment).
+  if (!out.length || out.every(l => l.startsWith('👍'))) out.push('✓ Con tập trung, giữ trật tự tốt.');
   return out;
 }
 function writeLessonComments(ctx) {
