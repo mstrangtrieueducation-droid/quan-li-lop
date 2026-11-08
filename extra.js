@@ -1630,7 +1630,7 @@ function summaryView(ctx) {
       (noStars ? '' : '<td class="sum-stars">' + (r.off ? '' : '⭐ ' + r.stars) + '</td>') +
       (noGrade ? '' : '<td class="sum-gcell">' + (g && g !== '/' ? '<span class="sum-g g' + g[0] + '">' + esc(g) + '</span>' + (gp.why && g !== 'A+' ? '<div class="sum-why">' + esc(gp.why) + '</div>' : '') : '') + '</td>') +
       '<td class="sum-remind">' + (warned ? '<span class="sum-warn">⚠️ Cảnh cáo' + (warned > 1 ? ' ×' + warned : '') + '</span>' + (remind ? '<br>' : '') : '') + remind + (!warned && !remind && !r.off ? '<span class="sum-ok">Tốt ✓</span>' : '') + '</td>' +
-      '<td class="sum-debt">' + (debt.length ? '<b>Thiếu ' + debt.length + ' video:</b> ' + esc(debt.join(', ')) : '<span class="sum-ok">Không thiếu ✓</span>') + '</td></tr>';
+      '<td class="sum-debt">' + (debt.length ? '<b>Thiếu ' + debt.length + ' video:</b> ' + esc(kidsKinds(owed[r.i] || [])) : '<span class="sum-ok">Không thiếu ✓</span>') + '</td></tr>';
   }).join('');
   const head = '<tr><th></th><th>Học sinh</th><th>Điểm danh</th>' + (noStars ? '' : '<th>Sao</th>') + (noGrade ? '' : '<th class="sum-c">Bài tập sách giấy</th>') + '<th>Nhắc nhở</th><th>Video còn thiếu</th></tr>';
   return chotBar(s) + '<div class="sum-bar"><button class="quiet" data-act="llSumClose">‹ ' + T('Quay lại màn hình lớp', 'Back to the class screen') + '</button><span class="spacer"></span>' +
@@ -1753,7 +1753,7 @@ pupilFlags = function (ctx, r) {
   } else {
     const owed = totalOwed(ctx)[r.i] || [], dm = d => d.slice(8, 10) + '/' + d.slice(5, 7);
     const what = x => (x.practice ? (x.label || 'Tự luyện').replace(/^Tự luyện video/i, 'Tự luyện') : (x.lesson ? 'Tiết ' + Number(x.lesson) : dm(x.day)) + (x.label ? ' ' + x.label.toLowerCase() : '')) + (x.wrong ? ' (quay sai)' : '');
-    if (owed.length) out.push('<span class="rv-flag debt" title="' + esc(owed.map(x => what(x) + ' · ' + dm(x.day)).join('\n')) + '">🎥 Thiếu ' + owed.length + ' video: ' + esc(owed.slice(0, 2).map(what).join(', ') + (owed.length > 2 ? ' +' + (owed.length - 2) : '')) + ' <i class="rv-en-i">Missing video</i></span>');
+    if (owed.length) out.push('<span class="rv-flag debt" title="' + esc(owed.map(x => what(x) + ' · ' + dm(x.day)).join('\n')) + '">🎥 Thiếu ' + owed.length + ' video: ' + esc(kidsKinds(owed)) + ' <i class="rv-en-i">Missing video</i></span>');
   }
   return out.length ? '<span class="rv-flags">' + out.join('') + '</span>' : '';
 };
@@ -2622,5 +2622,46 @@ kidsMakeup = function (ctx, p, i, canEdit) {
   let all = owedOnPage.get(ctx.tracker);
   if (!all) { all = totalOwed(ctx); owedOnPage.set(ctx.tracker, all); }
   const list = (all[i] || []).map(x => (x.practice ? (x.label || 'Tự luyện').replace(/^Tự luyện video/i, 'Tự luyện') : (x.lesson ? 'Tiết ' + Number(x.lesson) : viDate(x.day).slice(0, 5)) + (x.label ? ' ' + x.label.toLowerCase() : '')) + (x.wrong ? ' (quay sai)' : ''));
-  return list.length ? base + '<div class="owed">🎥 ' + T('Thiếu ', 'Missing ') + list.length + ' video: ' + esc(list.join(', ')) + '</div>' : base;
+  return list.length ? base + '<div class="owed" title="' + esc(list.join('\n')) + '">🎥 ' + T('Thiếu ', 'Missing ') + list.length + ' video: ' + esc(kidsKinds(all[i] || [])) + '</div>' : base;
+};
+
+/* ---------- KIDS owed work in short, like IELTS (owner 08/11: "theo logic kids đã chốt, chỉ là hiển thị cũng vậy") ----------
+ * Same items as before (overdue only, HẠN from the Schedule); shown by kind: "Ngữ pháp ×2, Từ vựng, Tự luyện, Quay lại". */
+function kidsKinds(items) {
+  const n = {}, order = [];
+  (items || []).forEach(x => {
+    let k = x.wrong ? 'Quay lại' : x.practice ? 'Tự luyện' : x.label ? String(x.label).trim().toLowerCase().split(/\s+/).slice(0, 3).join(' ') : 'Video bài học';
+    k = k.charAt(0).toUpperCase() + k.slice(1);
+    if (!(k in n)) { n[k] = 0; order.push(k); }
+    n[k]++;
+  });
+  return order.map(k => k + (n[k] > 1 ? ' ×' + n[k] : '')).join(', ');
+}
+
+/* ---------- Owed work read fresh at the close (owner 08/11: "cập nhật ngay lúc chốt... cả kids nữa") ----------
+ * When the review-and-close sheet opens (by itself at the end of the lesson, or by the button) and on "↻ Đọc lại sheet":
+ * KIDS re-read the class sheet, IELTS / FIGHTER ask the server for a new owed list instead of its 10-minute copy. */
+const owedFreshAt = {};
+function refreshOwedNow(s) {
+  const c = s && classOf(s);
+  if (!c) return;
+  const key = c.tracker + '|' + s.day;
+  if (Date.now() - (owedFreshAt[key] || 0) < 30000) return;
+  owedFreshAt[key] = Date.now();
+  if (isSecondary(s)) {
+    secLoading.add(key);
+    call('baino', { file: c.tracker, day: s.day, fresh: true }).then(data => { owedCache[key] = { at: Date.now(), data }; }).catch(() => {}).finally(() => { secLoading.delete(key); render(); });
+  } else guarded(() => Promise.all([loadTracker(c, true), loadMarks(true), loadBehave(true).catch(() => {})]));
+}
+const llActionBeforeFresh = llAction;
+llAction = function (act, i, v) {
+  const r = llActionBeforeFresh(act, i, v);
+  if (current && (act === 'llSumOpen' || act === 'llChotPopGo' || act === 'llSumRefresh')) { if (act === 'llSumRefresh') owedFreshAt[(classOf(current) || {}).tracker + '|' + current.day] = 0; refreshOwedNow(current); }
+  return r;
+};
+const sumSeen = new Set();
+const renderBeforeFresh = render;
+render = function () {
+  renderBeforeFresh();
+  if (view === 'lenlop' && current && document.querySelector('.sum-sheet')) { const k = Q.sessionKey(current); if (!sumSeen.has(k)) { sumSeen.add(k); refreshOwedNow(current); } }
 };
