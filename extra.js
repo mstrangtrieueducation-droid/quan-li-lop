@@ -1891,7 +1891,8 @@ dayParts = function (list) {
  * It keeps its own sign-in on this device (the personal tuition link); nothing of it passes through this app. */
 const HOC_PHI_URL = '../hoc-phi/';
 function viewHocPhi() {
-  return '<div class="hp-bar"><b>💰 ' + T('Học phí', 'Tuition') + '</b><span class="small muted">' + T('Lần đầu trên máy này: dán link học phí cá nhân của bạn vào ô đăng nhập bên dưới.', 'First time on this device: paste your personal tuition link below.') + '</span><span class="spacer"></span><a class="small" href="' + HOC_PHI_URL + '" target="_blank" rel="noopener">' + T('Mở riêng', 'Open separately') + ' ↗</a></div>';
+  return '<div class="hp-bar"><b>💰 ' + T('Học phí', 'Tuition') + '</b><span class="small muted">' + T('Lần đầu trên máy này: dán link học phí riêng của bạn vào ô bên cạnh rồi bấm Mở. Máy sẽ nhớ, lần sau không cần dán.', 'First time on this device: paste your personal tuition link and press Open; it is remembered.') + '</span>' +
+    '<input id="hpPaste" type="password" autocomplete="off" placeholder="' + T('Dán link học phí…', 'Paste the tuition link…') + '"><button class="primary" data-act="hpOpen">' + T('Mở', 'Open') + '</button><span class="spacer"></span><a class="small" href="' + HOC_PHI_URL + '" target="_blank" rel="noopener">' + T('Mở riêng', 'Open separately') + ' ↗</a></div>';
 }
 function hocPhiFrame() {
   let f = document.getElementById('hpFrame');
@@ -1920,3 +1921,14 @@ Q.taskState = function (t, d) {
 };
 const taskRowRaw = taskRow;
 taskRow = function (t, week, canTick) { taskTaView = true; try { return taskRowRaw(t, week, canTick); } finally { taskTaView = false; } };
+
+// The pasted link goes straight into the tuition frame (which keeps it on this device); this app never stores it.
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="hpOpen"]');
+  if (!b) return;
+  const box = document.getElementById('hpPaste'), link = String(box && box.value || '').trim(), base = new URL(HOC_PHI_URL, location.href).href;
+  if (box) box.value = '';
+  if (!link.startsWith(base)) return say(T('Link này không phải link trang học phí. Dán đúng link học phí cô Trang gửi.', 'This is not a tuition link.'), 'bad');
+  view = 'hocphi'; render();
+  const f = document.getElementById('hpFrame'); if (f) f.src = link;
+});
