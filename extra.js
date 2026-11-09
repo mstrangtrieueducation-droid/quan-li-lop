@@ -2014,7 +2014,8 @@ document.addEventListener('click', e => {
 function secClassButtons(ctx, p, i, canEdit) {
   if (!isSecondary(ctx.session)) return '<div></div>';
   const st = (ctx.marks.get(p.name) || {}).status || '', dis = canEdit ? '' : ' disabled';
-  const btn = (v, label, on) => '<button class="sec-mark' + (on ? ' on' : '') + '" data-act="secMark" data-i="' + i + '" data-v="' + esc(on ? 'Bỏ tick' : v) + '"' + dis + '>' + label + (on ? ' ✓' : '') + '</button>';
+  // Icon and words apart, so the tiled roll call can show the icon alone (owner 09/11: "biểu tượng như đã chốt"), with a legend above.
+  const btn = (v, label, on) => { const sp = label.indexOf(' '), ic = label.slice(0, sp), tx = label.slice(sp + 1); return '<button class="sec-mark' + (on ? ' on' : '') + '" data-act="secMark" data-i="' + i + '" data-v="' + esc(on ? 'Bỏ tick' : v) + '" title="' + esc(tx) + (on ? ' ✓' : '') + '" aria-label="' + esc(tx) + '"' + dis + '><span class="sm-ic">' + ic + '</span><span class="sm-t"> ' + tx + '</span>' + (on ? '<span class="sm-ok"> ✓</span>' : '') + '</button>'; };
   return '<div class="sec-marks">' + btn(SEND_HOME, '🚪 ' + T('Cho về · thiếu bài', 'Sent home'), st === SEND_HOME) + btn(HOME_NO_HW, '🏠 ' + T('Ở nhà · chưa làm bài', 'Stayed home'), st === HOME_NO_HW) +
     // Owner 09/11: "IELTS FIGHTER cũng cần có nút ở ngoài bù bài không được học... cùng với sent home".
     btn(OUT_MAKEUP, '📝 ' + T('Ra ngoài bù bài · không vào học', 'Makes up work outside'), st === OUT_MAKEUP) + '</div>';
@@ -4120,7 +4121,8 @@ viewClass = function () {
   // The back button joins the bar under the header instead of taking its own line.
   const back = (h.match(/^<div>(<button class="quiet" data-act="back">[\s\S]*?<\/button>)<\/div>/) || [])[1] || '';
   if (back && /<button class="primary ll-open"/.test(h)) h = h.slice(back.length + 11);
-  return h.replace(/<div class="card">(<div class="pupil)/, '<div class="card roll-fit">$1')
+  const legend = current && isSecondary(current) ? '<div class="roll-legend">' + [['🚪', T('Cho về · thiếu bài', 'Sent home')], ['🏠', T('Ở nhà · chưa làm bài', 'Stayed home')], ['📝', T('Ra ngoài bù bài · không vào học', 'Making up work outside')]].map(([i, t]) => '<span><b>' + i + '</b> ' + t + '</span>').join('') + '</div>' : '';
+  return h.replace(/<div class="card">(<div class="pupil)/, () => legend + '<div class="card roll-fit"><div class="pupil')
     .replace(/(<button class="primary ll-open"[^>]*>[\s\S]*?<\/button>)(<div class="count">[\s\S]*?<\/div>)/, (m0, a, b) => '<div class="roll-bar">' + back + a + b + '</div>');
 };
 function fitRoll() {
@@ -4138,7 +4140,9 @@ function fitRoll() {
   // fits at full size wins; otherwise the few layouts that need the least shrinking are scaled to the largest size that still fits
   // and the biggest wins (owner 09/11, board photo: names must be readable, so the list fills the window). Measured once per window
   // size and class; a tap only re-checks that the kept answer still fits.
-  const fits = () => list.getBoundingClientRect().bottom <= innerHeight - 8;
+  // A layout also has to keep every button of a tile inside it (no icon cut off at the tile edge).
+  const wide = () => [...list.querySelectorAll(':scope > .pupil')].slice(0, 4).every(p => p.scrollWidth <= p.clientWidth + 1);
+  const fits = () => list.getBoundingClientRect().bottom <= innerHeight - 8 && wide();
   const key = innerWidth + 'x' + innerHeight + '|' + n + '|' + Math.round(list.getBoundingClientRect().top + scrollY);
   const apply = b => { set(b.c, b.narrow); list.style.zoom = b.z < 0.999 ? b.z : ''; };
   if (fitRollLast.key === key && fitRollLast.best) { apply(fitRollLast.best); if (fits()) return; }
@@ -4149,7 +4153,8 @@ function fitRoll() {
     for (let c = 1; c <= most; c++) {
       set(c, narrow); list.style.zoom = '';
       const h = list.getBoundingClientRect().height;
-      if (h <= room || c >= n) { best = { c, narrow, z: 1 }; break search; }
+      if ((h <= room || c >= n) && wide()) { best = { c, narrow, z: 1 }; break search; }
+      if (!wide()) { tries.push({ c, narrow, guess: Math.min(1, room / h) * 0.6 }); continue; }
       tries.push({ c, narrow, guess: room / h });
     }
   }
