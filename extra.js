@@ -559,6 +559,29 @@ function ageGroupOf(cls) {
 const ladder = { rows: null, contacts: null, at: 0, tried: 0, copy: null, stamp: '', fresh: false };
 const viToIso = s => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : ''; };
 const contactOf = r => ({ at: r[0], cls: Q.clean(r[1]), name: Q.clean(r[2]), level: Number(r[3]) || 0, since: Q.clean(r[4]), action: Q.clean(r[5]), note: r[6] || '', by: r[7] || '' });
+// Today's column of the week tab's penalty list (header "Thứ Hai 09.11", the list under it), read word for word.
+async function readScheduleLadderList() {
+  const t = today(), tab = Q.weekTab(tabs, t);
+  if (!tab) return null;
+  const [cells] = await batchGet(CONFIG.scheduleId, [quote(tab) + '!G26:M34']);
+  const dm = t.slice(8, 10) + '.' + t.slice(5, 7);
+  let body = null;
+  for (let r = 0; r < cells.length && body == null; r++) {
+    const row = cells[r] || [], c = row.findIndex(v => /^(Thứ|Chủ)/.test(String(v || '')) && String(v).split('\n')[0].includes(dm));
+    if (c >= 0) body = String(((cells[r + 1] || [])[c]) || '');
+  }
+  if (body == null) return null;
+  const map = new Map();
+  let cls = '', line = '', level = 0;
+  body.split('\n').forEach(raw => {
+    const l = raw.trim();
+    let m;
+    if ((m = l.match(/^([A-ZĐ]+\s*\d+(?:\.\d+)?)\s*·/))) { cls = m[1]; return; }
+    if ((m = l.match(/^Mức\s*(\d)\s*—/))) { level = Number(m[1]); line = l; return; }
+    if ((m = l.match(/^•\s*(.+?)\s*↗?$/)) && cls && level) map.set(Q.key(cls) + '|' + Q.key(m[1]), { level, line });
+  });
+  return map;
+}
 async function loadLadder(force) {
   if (!force && ladder.rows && Date.now() - ladder.at < 300000) return;
   const [[rows, stamp = []], [contacts]] = await Promise.all([batchGet(CONFIG.scheduleId, ["'AUTO_KIDS_MUC_PHAT'!A2:M400", "'AUTO_KIDS_MUC_PHAT'!Q1"]), batchGet(CONFIG.diemDanhId, ['LIEN_HE_PH!A2:H'])]);
@@ -567,6 +590,10 @@ async function loadLadder(force) {
   ladder.rows = rows.map(r => ({ checked: Q.clean(r[0]), cls: Q.clean(r[1]), name: Q.clean(r[2]), level: Number(r[3]) || 0, since: Q.clean(r[4]), reason: Q.clean(r[5]), owed: String(r[6] || '').split('\n').map(Q.clean).filter(Boolean) })).filter(x => x.level >= 1 && x.cls && x.name);
   ladder.contacts = contacts.map(contactOf);
   outbox.filter(x => x.kind === 'append' && x.tab === 'LIEN_HE_PH').forEach(x => ladder.contacts.push(contactOf(x.row)));
+  // Owner 09/11: "hiển thị từ schedule ra": today's list on the week tab ("KIDS 39 · 19:30 · 3 HS / Mức 1 — thiếu video 02.11 /
+  // • VĂN KHÁNH NHẬT (BRAVE)") is read as it stands; each pupil on it shows that exact level and line. Nothing is worked out here.
+  try { ladder.list = await readScheduleLadderList(); } catch (e) { /* the state tab alone still shows */ }
+  if (ladder.list) ladder.rows.forEach(x => { const hit = ladder.list.get(Q.key(x.cls) + '|' + Q.key(x.name)); if (hit) { x.level = hit.level; x.line = hit.line; x.reason = hit.line; } });
   ladder.at = Date.now();
 }
 // Ticks began on 07/11: a level entered earlier may have been handled outside the app, so it is never shown as overdue.
@@ -4097,33 +4124,50 @@ viewClass = function () {
 function fitRoll() {
   const list = document.querySelector('.roll-fit');
   if (!list) return;
+  // A pupil with no English name (IELTS / FIGHTER sheets) shows the last two words big; the full name stays on the small line.
+  list.querySelectorAll('.pupil .who b').forEach(n => { if (n.dataset.short) return; const full = n.textContent.trim(), w = full.split(/\s+/), small = n.parentElement.querySelector('.small'); if (w.length > 2 && small && small.textContent.trim().startsWith(full)) { n.dataset.short = '1'; n.title = full; n.textContent = w.slice(-2).join(' '); } });
   // Owner 09/11: also when the laptop window is split in half or a third. Only a real phone (touch, small screen) is treated as a
   // phone; a narrow window on a computer gets more, smaller tiles and, if that is still too tall, the whole list is scaled down.
   const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
   list.style.zoom = '';
   const width = list.clientWidth, n = list.querySelectorAll(':scope > .pupil').length;
-  const room = () => innerHeight - (list.getBoundingClientRect().top + scrollY) - 12;
   const set = (c, narrow) => { list.style.setProperty('--roll-cols', c); list.classList.toggle('multi', c > 1); list.classList.toggle('narrow', !!narrow && c > 1); };
-  // Every layout is tried (tiles with the grade buttons beside the name, then smaller tiles with them underneath); the first that fits
-  // wins, otherwise the shortest one is kept and scaled.
-  let last = [1, false], best = Infinity;
-  for (const [minCol, narrow] of [[290, false], [230, false], [150, true], [118, true]]) {
+  // Every layout is tried (tiles with the grade buttons beside the name, then smaller tiles with them underneath). The first one that
+  // fits at full size wins; otherwise the few layouts that need the least shrinking are scaled to the largest size that still fits
+  // and the biggest wins (owner 09/11, board photo: names must be readable, so the list fills the window). Measured once per window
+  // size and class; a tap only re-checks that the kept answer still fits.
+  const fits = () => list.getBoundingClientRect().bottom <= innerHeight - 8;
+  const key = innerWidth + 'x' + innerHeight + '|' + n + '|' + Math.round(list.getBoundingClientRect().top + scrollY);
+  const apply = b => { set(b.c, b.narrow); list.style.zoom = b.z < 0.999 ? b.z : ''; };
+  if (fitRollLast.key === key && fitRollLast.best) { apply(fitRollLast.best); if (fits()) return; }
+  const top = list.getBoundingClientRect().top, room = innerHeight - 8 - top, tries = [];
+  let best = null;
+  search: for (const [minCol, narrow] of [[400, false], [290, false], [230, false], [150, true], [118, true]]) {
     const most = Math.max(1, Math.min(6, Math.floor(width / minCol)));
     for (let c = 1; c <= most; c++) {
-      set(c, narrow);
-      const h = list.scrollHeight;
-      if (h <= room() || c >= n) return;
-      if (h < best) { best = h; last = [c, narrow]; }
+      set(c, narrow); list.style.zoom = '';
+      const h = list.getBoundingClientRect().height;
+      if (h <= room || c >= n) { best = { c, narrow, z: 1 }; break search; }
+      tries.push({ c, narrow, guess: room / h });
     }
   }
-  // Nothing fits: a phone goes back to one tidy column (easier to scroll than tiny tiles); a computer keeps the densest layout and
-  // shrinks it to fit (not below 50%).
-  if (phone) { set(1, false); return; }
-  set(last[0], last[1]);
-  let z = Math.max(0.5, Math.min(1, room() / list.scrollHeight));
-  list.style.zoom = z;
-  for (let k = 0; k < 6 && z > 0.5 && list.getBoundingClientRect().bottom > innerHeight - 8; k++) { z = Math.max(0.5, z - 0.04); list.style.zoom = z; }
+  if (!best && tries.length) {
+    tries.sort((a, b) => b.guess - a.guess);
+    for (const t of tries.slice(0, 3)) {
+      set(t.c, t.narrow);
+      let lo = 0.5, hi = 1;
+      list.style.zoom = lo;
+      if (!fits()) { if (!best) best = { c: t.c, narrow: t.narrow, z: 0.5 }; continue; }
+      for (let k = 0; k < 5; k++) { const mid = (lo + hi) / 2; list.style.zoom = mid; if (fits()) lo = mid; else hi = mid; }
+      if (!best || lo > best.z) best = { c: t.c, narrow: t.narrow, z: lo };
+    }
+  }
+  // A phone that cannot show everything at full size goes back to one tidy column (easier to scroll than tiny tiles).
+  if (phone && best && best.z < 1) best = { c: 1, narrow: false, z: 1 };
+  fitRollLast = { key, best: best || { c: 1, narrow: false, z: 1 } };
+  apply(fitRollLast.best);
 }
+let fitRollLast = { key: '', best: null };
 const renderBeforeRollFit = render;
 render = function () { renderBeforeRollFit(); try { fitRoll(); } catch (e) {} };
 let fitRollTimer = 0;

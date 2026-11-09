@@ -1192,13 +1192,21 @@
   .kt-total { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-weight: 700; }
   /* Roll call fits the screen (owner 09/11: "màn hình điểm danh cần vừa khung hình k phải kéo"): pupils flow into as many columns as
      the height needs (set by fitRoll in extra.js), rows are tighter and the lesson header sits in two columns on wide screens. */
-  main:has(.roll-fit) { padding-bottom: 12px; }
+  main:has(.roll-fit) { padding-bottom: 12px; max-width: none; }
   .roll-fit { display: grid; grid-template-columns: repeat(var(--roll-cols, 1), minmax(0, 1fr)); overflow: hidden; }
   .roll-fit .pupil { padding: 6px 10px; gap: 4px 8px; grid-template-columns: 40px minmax(0, 1fr) auto; align-content: start; border-top: 0; border-bottom: 1px solid var(--line); }
   .roll-fit.multi .pupil { border-right: 1px solid var(--line); }
   .roll-fit .tick { width: 40px; height: 40px; border-radius: 10px; font-size: 19px; }
   .roll-fit .grades button { width: 38px; min-height: 38px; height: 38px; }
   .roll-fit .who { min-width: 0; }
+  /* Owner 09/11 (board photo, IELTS 50): names were squeezed to "N…" by the Cho về / Ở nhà buttons: the name keeps its room, those
+     buttons, the owed line and the gate flag go on their own line under it. */
+  .roll-fit .pupil { grid-template-columns: 40px minmax(120px, 1fr) auto; }
+  .roll-fit .pupil > :not(.tick):not(.who):not(.grades):not(.sec-marks) { grid-column: 2 / -1; }
+  .roll-fit .pupil > .sec-marks { justify-content: flex-end; gap: 4px; }
+  .roll-fit .sec-mark { min-height: 30px; padding: 0 8px; font-size: 12px; border-width: 1.5px; }
+  .roll-fit .who b { font-size: 16px; font-weight: 700; }
+  .roll-fit.narrow .pupil > .sec-marks { grid-column: 1 / -1; justify-content: flex-start; }
   .roll-fit .who b, .roll-fit .who .small { display: block; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .roll-fit .who .small { font-size: 12px; }
   .roll-fit .owed { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1273,10 +1281,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109AG"></script>
-<script src="logic.js?v=20261109AG"></script>
-<script src="app.js?v=20261109AG"></script>
-<script src="qrcode.js?v=20261109AG"></script>
-<script src="extra.js?v=20261109AG"></script>
+<script src="config.js?v=20261109AH"></script>
+<script src="logic.js?v=20261109AH"></script>
+<script src="app.js?v=20261109AH"></script>
+<script src="qrcode.js?v=20261109AH"></script>
+<script src="extra.js?v=20261109AH"></script>
 </body>
 </html>
