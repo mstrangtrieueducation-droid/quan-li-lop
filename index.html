@@ -12,7 +12,6 @@
 <link rel="icon" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #e8eef6; --card: #ffffff; --head: #0b3d6e; --head-ink: #ffffff; --head-muted: #b9cde3; --head-on: #ffffff; --head-on-ink: #0b3d6e; --ink: #18212f; --muted: #5d6b7e; --line: #e2e7ee; --soft: #eef2f7;
@@ -1127,6 +1126,13 @@
     .pay-row .chip { display: none; } .pay-net { grid-column: 2; grid-row: 1; } .pay-st { grid-column: 1; } .pay-btns { grid-column: 2; }
     .hd-row { grid-template-columns: 10px minmax(0, 1fr) auto; } .hd-dates { grid-column: 2; grid-row: 2; } .hd-row .tag { grid-column: 3; grid-row: 1; } .hd-row button { grid-column: 3; grid-row: 2; }
   }
+  /* First paint: frame + placeholder while the scripts start (owner 09/11) */
+  .sk-wrap { display: grid; gap: 12px; }
+  .sk { border-radius: 14px; background: linear-gradient(90deg, var(--soft) 0%, color-mix(in srgb, var(--soft) 40%, var(--card)) 50%, var(--soft) 100%); background-size: 200% 100%; animation: skMove 1.2s linear infinite; min-height: 96px; }
+  .sk-row { min-height: 40px; max-width: 420px; } .sk-big { min-height: 200px; }
+  .sk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px; } .sk-grid .sk { min-height: 140px; }
+  @keyframes skMove { from { background-position: 200% 0; } to { background-position: 0 0; } }
+  @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
 </style>
 </head>
 <body class="notranslate">
@@ -1141,7 +1147,7 @@
     <button id="btnLangLogin" class="quiet">English</button>
   </div>
 </div>
-<div id="app" hidden>
+<div id="app">
   <header>
     <div class="bar">
       <img class="mark" src="logo.png" alt="Ms. Trang Trieu Education" width="30" height="30">
@@ -1154,12 +1160,12 @@
       <button id="btnLang" class="quiet hpill" aria-label="English">EN</button>
     </div>
   </header>
-  <main id="main"></main>
+  <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109K"></script>
-<script src="logic.js?v=20261109K"></script>
-<script src="app.js?v=20261109K"></script>
-<script src="qrcode.js?v=20261109K"></script>
-<script src="extra.js?v=20261109K"></script>
+<script src="config.js?v=20261109L"></script>
+<script src="logic.js?v=20261109L"></script>
+<script src="app.js?v=20261109L"></script>
+<script src="qrcode.js?v=20261109L"></script>
+<script src="extra.js?v=20261109L"></script>
 </body>
 </html>
