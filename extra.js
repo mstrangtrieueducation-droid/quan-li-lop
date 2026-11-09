@@ -4452,6 +4452,8 @@ function docItems(s) {
   const d = docPlain(s.detail || ''), out = [];
   let m;
   if ((m = d.match(/WRITTEN TEST (\d+)/))) out.push('WRITTEN TEST ' + m[1]);
+  // Family and Friends tests are named by their units ("Test - Unit 4,5,6"); the Schedule writes "U4,5,6" or "UNIT 4+5+6".
+  if (/WRITTEN TEST|\bTEST\b/.test(d) && (m = Q.key(s.detail || '').match(/\bU(?:NITS?)?\s*(\d+(?:\s*[,+&]\s*\d+)+)/))) out.push('UNIT ' + m[1].split(/\s*[,+&]\s*/).join(' '));
   if ((m = d.match(/\bTEST (\d+ \d+)/))) out.push('TEST ' + m[1]);
   if ((m = d.match(/INTERVIEW (\d+)/))) out.push('INTERVIEW ' + m[1]);
   // "REVIEW 4" on its own (not "REVIEW (15-20 MINS)").
@@ -4471,6 +4473,13 @@ function docsFor(s) {
   const inBook = printDocs.list.filter(e => books.some(b => e.keyFull.includes(b)));
   for (const item of items) {
     const it = ' ' + item + ' ';
+    // "FLUENCY TIME 4": the 4th template in the book's "Fluency Time Project Templates" folder ("4. Food Plate.pdf").
+    const ft = item.match(/^FLUENCY TIME (\d+)$/);
+    if (ft) {
+      const tpl = inBook.filter(e => e.kind === 'file' && e.keyPath.includes(' FLUENCY TIME ') && e.keyName.startsWith(' ' + ft[1] + ' ')).slice(0, 3);
+      if (tpl.length) return tpl.map(f => ({ name: f.name, link: f.link, note: f.full }));
+      continue;
+    }
     // A folder named after the item ("Written Test 3"): its link and the files directly in it.
     const folder = inBook.find(e => e.kind === 'folder' && e.keyName.trim() === item) || inBook.find(e => e.kind === 'folder' && e.keyName.includes(it));
     if (folder) {
