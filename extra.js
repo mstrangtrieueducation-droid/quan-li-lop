@@ -1784,7 +1784,7 @@ function totalOwed(ctx) {
  * IELTS / FIGHTER: no stars; the homework still owed for this lesson comes from the class sheet (server 'baino', kept 10 minutes);
  * two extra marks: "Cho về (thiếu bài)" for a pupil who came without the homework, "Nghỉ (chưa làm bài)" for one who stayed home. */
 const SEND_HOME = 'Cho về (thiếu bài)', HOME_NO_HW = 'Nghỉ (chưa làm bài)';
-const secStatus = r => { const st = current ? ((marksOf(current).get(r.p.name)) || {}).status : ''; return st === SEND_HOME || st === HOME_NO_HW ? st : ''; };
+const secStatus = r => { const st = current ? ((marksOf(current).get(r.p.name)) || {}).status : ''; return st === SEND_HOME || st === HOME_NO_HW || st === OUT_MAKEUP ? st : ''; };
 const secLoading = new Set();
 function secOwedFor(s) {
   const c = classOf(s);
@@ -2015,7 +2015,9 @@ function secClassButtons(ctx, p, i, canEdit) {
   if (!isSecondary(ctx.session)) return '<div></div>';
   const st = (ctx.marks.get(p.name) || {}).status || '', dis = canEdit ? '' : ' disabled';
   const btn = (v, label, on) => '<button class="sec-mark' + (on ? ' on' : '') + '" data-act="secMark" data-i="' + i + '" data-v="' + esc(on ? 'Bỏ tick' : v) + '"' + dis + '>' + label + (on ? ' ✓' : '') + '</button>';
-  return '<div class="sec-marks">' + btn(SEND_HOME, '🚪 ' + T('Cho về · thiếu bài', 'Sent home'), st === SEND_HOME) + btn(HOME_NO_HW, '🏠 ' + T('Ở nhà · chưa làm bài', 'Stayed home'), st === HOME_NO_HW) + '</div>';
+  return '<div class="sec-marks">' + btn(SEND_HOME, '🚪 ' + T('Cho về · thiếu bài', 'Sent home'), st === SEND_HOME) + btn(HOME_NO_HW, '🏠 ' + T('Ở nhà · chưa làm bài', 'Stayed home'), st === HOME_NO_HW) +
+    // Owner 09/11: "IELTS FIGHTER cũng cần có nút ở ngoài bù bài không được học... cùng với sent home".
+    btn(OUT_MAKEUP, '📝 ' + T('Ra ngoài bù bài · không vào học', 'Makes up work outside'), st === OUT_MAKEUP) + '</div>';
 }
 document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-act="secMark"]');
@@ -3777,7 +3779,7 @@ viewClass = function () {
   const ctx = classContext(current);
   if (!ctx.tracker) return out;
   const list = ctx.tracker.pupils.map(p => ({ p, g: gateOf(ctx, p) })).filter(z => z.g);
-  const note = list.length ? '<div class="notice bad gate-top">⛔ ' + list.length + T(' em chưa làm bài buổi trước, theo luật không được vào lớp: ', ' pupils have not done the last homework and may not come in: ') + esc(list.map(z => z.p.eng || z.p.name).join(', ')) + T('. Cô/thầy chọn Có mặt hay "Cho về · thiếu bài".', '. Choose present or "Sent home".') + '</div>'
+  const note = list.length ? '<div class="notice bad gate-top">⛔ ' + list.length + T(' em chưa làm bài buổi trước, theo luật không được vào lớp: ', ' pupils have not done the last homework and may not come in: ') + esc(list.map(z => z.p.eng || z.p.name).join(', ')) + T('. Cô/thầy chọn Có mặt, "Cho về · thiếu bài" hay "Ra ngoài bù bài".', '. Choose present, "Sent home" or "Make up outside".') + '</div>'
     : !gateChecked(current) ? '<div class="notice gate-top">' + T('Danh sách không vào lớp của buổi này chưa quét (Schedule quét khoảng 1 tiếng trước giờ học).', 'The not-allowed-in list for this lesson is not ready yet (about an hour before class).') + '</div>' : '';
   const at = out.indexOf('<div class="card"><div class="pupil');
   return note && at >= 0 ? out.slice(0, at) + note + out.slice(at) : out + note;
@@ -4010,7 +4012,7 @@ function sentHomeList(week) {
   const t = today(), back = Q.addDays(t, -7), from = back > SENT_START ? back : SENT_START, last = new Map();
   logs.marks.rows.forEach(m => { if (m.day >= from && m.day <= t) last.set(markKey(m), m); });
   const mine = cls => isManager() || isTaSide(week) || isMe(homeroom[Q.key(cls)] || '') || isMe(homeroom[Q.key(String(cls).replace(/\.\d+$/, ''))] || '');
-  return [...last.values()].filter(m => m.status === SEND_HOME && mine(m.cls)).map(m => {
+  return [...last.values()].filter(m => (m.status === SEND_HOME || m.status === OUT_MAKEUP) && mine(m.cls)).map(m => {
     const x = { m, cls: Q.clean(m.cls), name: Q.clean(m.name), eng: Q.clean(m.eng), day: m.day, since: viDate(m.day), level: 0 };
     x.done = (ladder.contacts || []).filter(c => sameName(c.cls, x.cls) && c.name === x.name && c.since === x.since && c.action === SENT_ACT).pop() || null;
     return x;
@@ -4035,13 +4037,13 @@ function sentMessage(x) {
   const owed = sentOwed(x), who = x.eng ? x.eng + ' (' + x.name + ')' : x.name;
   const what = owed && owed.length ? ' chưa hoàn thành ' + owed.length + ' bài tập về nhà (' + skillSummary(owed) + ')' : ' chưa hoàn thành bài tập về nhà';
   return 'Phúc Hưng Edu xin thông báo: buổi học ngày ' + x.since + ' của lớp ' + x.cls + ', con ' + who + what +
-    ' nên con đã bị cho về để hoàn thành bài, theo nội quy về ý thức học tập của lớp. Kính mong phụ huynh nhắc con làm đủ bài và nộp trước buổi học sau ạ. Trân trọng cảm ơn!';
+    (x.m.status === OUT_MAKEUP ? ' nên con phải ra ngoài làm bù bài và không được vào học buổi này, theo nội quy về ý thức học tập của lớp.' : ' nên con đã bị cho về để hoàn thành bài, theo nội quy về ý thức học tập của lớp.') + ' Kính mong phụ huynh nhắc con làm đủ bài và nộp trước buổi học sau ạ. Trân trọng cảm ơn!';
 }
 function sentHomeBlock(week) {
   const list = sentHomeList(week);
   if (!list.length) return '';
   const todo = list.filter(x => !x.done).length;
-  let h = '<div class="part p-alert"><h2>' + T('Cho về · cần nhắn phụ huynh', 'Sent home · message the parents') + '</h2><span>' + (todo ? todo + T(' chưa nhắn', ' to message') : T('Đã nhắn đủ', 'All messaged')) + '</span></div>';
+  let h = '<div class="part p-alert"><h2>' + T('Cho về / ra ngoài bù bài · cần nhắn phụ huynh', 'Sent home or making up outside · message the parents') + '</h2><span>' + (todo ? todo + T(' chưa nhắn', ' to message') : T('Đã nhắn đủ', 'All messaged')) + '</span></div>';
   h += '<div class="small muted sent-who">' + T('Người nhắn hôm nay: ', 'Messages today: ') + '<b>' + (isFriday(today()) ? 'THUY TRANG' : T('quản lí', 'managers')) + '</b></div>';
   h += '<div class="grid">' + list.map((x, i) => {
     const owed = sentOwed(x), late = !x.done && today() > x.day;
@@ -4342,3 +4344,17 @@ paintStrip = function () {
   if (legend && !legend.querySelector('.lg-arrive')) legend.insertAdjacentHTML('afterbegin', '<span class="lg-arrive">🙋 ' + T('Có mặt / đến muộn', 'Arrived') + '<small class="rv-en">Arrived</small></span>');
   if (added) fitClassScreen();
 };
+
+/* IELTS / FIGHTER "Ra ngoài bù bài · không vào học" (owner 09/11): at the centre (counts as present, like KIDS level 3) but not in the
+ * lesson; the class screen and the close sheet say so, and the parents get the same message job as "Cho về". */
+const OUT_MAKEUP = 'Bù bài ngoài lớp';
+if (!Q.PRESENT.includes(OUT_MAKEUP)) Q.PRESENT.push(OUT_MAKEUP);
+const pupilFlagsBeforeOut = pupilFlags;
+pupilFlags = function (ctx, r) {
+  const st = (ctx.marks.get(r.p.name) || {}).status || '', h = pupilFlagsBeforeOut(ctx, r);
+  if (st !== OUT_MAKEUP) return h;
+  const flag = '<span class="rv-flag mk">📝 Ra ngoài bù bài · không vào học <i class="rv-en-i">Making up work outside</i></span>';
+  return h ? h.replace('<span class="rv-flags">', '<span class="rv-flags">' + flag) : '<span class="rv-flags">' + flag + '</span>';
+};
+const attendTextBeforeOut = attendText;
+attendText = function (m) { return m && m.status === OUT_MAKEUP ? '<span class="sum-sent">Ra ngoài bù bài · không vào học</span>' : attendTextBeforeOut(m); };
