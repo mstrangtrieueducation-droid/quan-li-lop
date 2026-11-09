@@ -2221,6 +2221,14 @@ const COMMENT_LINES = {
 };
 function lessonComment(counts, m, extra) {
   const x = n => n > 1 ? ' (' + n + ' lần)' : '', out = [];
+  // Owner 09/11: IELTS / FIGHTER comments name the reminders only, as on the close sheet ("không phải phiên ra như KIDS").
+  if (extra && extra.short) {
+    if (counts[CANH_CAO]) out.push('⛔ Cảnh cáo' + x(counts[CANH_CAO]));
+    Object.entries(counts).forEach(([k, n]) => { if (k !== CANH_CAO && k !== PRAISE) out.push('⚠️ ' + k + x(n)); });
+    if (counts[PRAISE]) out.push('👍 ' + PRAISE + x(counts[PRAISE]));
+    if (!out.length) out.push('✓ Tốt');
+    return out;
+  }
   if (counts[CANH_CAO]) out.push('⛔ Bị cảnh cáo' + x(counts[CANH_CAO]) + ' trong buổi học.');
   Object.entries(counts).forEach(([k, n]) => { if (k === CANH_CAO || k === PRAISE) return; out.push('⚠️ ' + k + x(n) + ': ' + (COMMENT_LINES[k] || 'con cần cố gắng hơn.')); });
   if (counts[PRAISE]) out.push('👍 Con phát biểu tốt' + x(counts[PRAISE]) + '.');
@@ -2241,7 +2249,7 @@ function writeLessonComments(ctx) {
     const m = ctx.marks.get(p.name);
     if (!m || !Q.PRESENT.includes(m.status)) return;
     const b = behave.get(p.name), st = block.stars >= 0 ? starsOf(ctx, p) : 0, rank = st ? scores.indexOf(st) + 1 : 0;
-    const auto = lessonComment(tagCounts(b ? b.tags : []), m, { stars: st, rank: rank && rank <= 3 ? rank : 0, seed: p.name + '|' + session.day });
+    const auto = lessonComment(tagCounts(b ? b.tags : []), m, { stars: st, rank: rank && rank <= 3 ? rank : 0, seed: p.name + '|' + session.day, short: /^(IELTS|FIGHTER)/.test(Q.key(session.cls)) });
     const now = String(tracker.cell(p.row, block.comment) || ''), mine = now.split('\n').filter(l => l.trim() && !AUTO_LINE.test(l.trim()));
     let value = auto.concat(mine).join('\n');
     if (value.length > 200) value = auto.join('\n').slice(0, 200);
@@ -2362,7 +2370,9 @@ function fitClassScreen() {
   // full-screen layout (one row per pupil, rv-desk turns off the phone rules) and is scaled to fit. Only a real phone scrolls.
   const realPhone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
   list.classList.toggle('rv-desk', !realPhone);
-  if (realPhone || document.querySelector('.ll-sheet')) return;
+  if (realPhone) return;
+  // Owner 09/11: a box (warning, homework reason) opening must not blow the class up behind it: keep the last fitted size.
+  if (document.querySelector('.ll-sheet')) { if (fitLast.key) apply(fitLast.c, fitLast.s); return; }
   const top = list.getBoundingClientRect().top + window.scrollY, avail = window.innerHeight - top - 10;
   if (avail < 150) return;
   const n = list.children.length, wide = list.parentElement.clientWidth;
@@ -4252,7 +4262,7 @@ llAction = function (act, i, v) {
 /* Owner 09/11: "ielts fighter thêm cho tôi lỗi là lười suy nghĩ": one more reminder button for every IELTS and FIGHTER lesson. */
 const LAZY_TICK = 'Lười suy nghĩ';
 Object.assign(BEHAVIOUR_EN, { [LAZY_TICK]: 'Not thinking' });
-COMMENT_LINES[LAZY_TICK] = 'con còn lười suy nghĩ, cần chủ động động não, tự tìm câu trả lời trước khi hỏi.';
+COMMENT_LINES[LAZY_TICK] = 'con còn lười suy nghĩ.';
 TICK_ICON[LAZY_TICK] = '🧠';
 [FIGHTER_TICKS, IELTS_WRITING_TICKS, IELTS_SPEAKING_TICKS, TEEN_TICKS].forEach(list => { if (list.includes(LAZY_TICK)) return; const p = list.indexOf(PRAISE); if (p >= 0) list.splice(p, 0, LAZY_TICK); else list.push(LAZY_TICK); });
 if (!BEHAVIOURS.includes(LAZY_TICK)) BEHAVIOURS.push(LAZY_TICK);
