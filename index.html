@@ -257,6 +257,17 @@
   .ll-sheet-row button { min-height: 52px; padding: 0 16px; font-size: 16px; font-weight: 700; border-radius: 12px; }
   .ll-sheet-row button.low { color: var(--bad); border-color: var(--bad); } .ll-sheet-row button.good { color: var(--ok); border-color: var(--ok); }
   .ll-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  /* Owner 09/11: "màn hình cảnh cáo box chọn đang bị to đùng" in small windows: the box never grows past the window and gets compact. */
+  .ll-sheet { max-height: calc(100vh - 8px); overflow-y: auto; }
+  @media (max-width: 899px), (max-height: 620px) {
+    .ll-sheet { padding: 10px 12px 12px; gap: 6px; border-radius: 14px 14px 0 0; }
+    .ll-sheet .ll-sheet-name { font-size: 16px; }
+    .ll-sheet .ll-chips { gap: 5px; }
+    .ll-sheet .ll-chips button { min-height: 34px; padding: 2px 10px; font-size: 13px; line-height: 1.15; }
+    .ll-sheet .ll-chips .rv-en { font-size: 10px; }
+    .ll-sheet textarea { font-size: 14px; padding: 6px 8px; min-height: 0; height: 44px; }
+    .ll-sheet .rv-give, .ll-sheet .ll-sheet-row button { min-height: 42px; font-size: 15px; padding: 0 14px; }
+  }
   .ll-chips button { min-height: 46px; padding: 0 14px; border-radius: 999px; font-size: 15px; }
   .ll-chips button.on { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); font-weight: 700; }
   .ll-sheet textarea { width: 100%; font-size: 16px; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
@@ -1262,10 +1273,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109AE"></script>
-<script src="logic.js?v=20261109AE"></script>
-<script src="app.js?v=20261109AE"></script>
-<script src="qrcode.js?v=20261109AE"></script>
-<script src="extra.js?v=20261109AE"></script>
+<script src="config.js?v=20261109AF"></script>
+<script src="logic.js?v=20261109AF"></script>
+<script src="app.js?v=20261109AF"></script>
+<script src="qrcode.js?v=20261109AF"></script>
+<script src="extra.js?v=20261109AF"></script>
 </body>
 </html>
