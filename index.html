@@ -555,7 +555,7 @@
   /* Phone layout (owner 08/11: màn hình điện thoại hiển thị hơi lộn xộn) */
   @media (max-width: 640px) {
     header { position: static; }
-    header .bar { display: grid; grid-template-columns: auto 1fr auto auto auto; align-items: center; gap: 4px 6px; padding: 6px 10px; }
+    header .bar { display: grid; grid-template-columns: auto 1fr auto auto auto auto; align-items: center; gap: 4px 6px; padding: 6px 10px; }
     header .brand { font-size: 16px; white-space: nowrap; }
     header #saveState { display: none; }
     header #btnTheme, header #btnLang { min-height: 36px; padding: 4px 8px; font-size: 13px; white-space: nowrap; }
@@ -1276,6 +1276,9 @@
   .doc-card { gap: 6px; }
   .doc-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 0; border-top: 1px solid var(--line); }
   .doc-when { font-size: 12px; font-weight: 700; color: var(--muted); min-width: 92px; }
+  /* Phone top bar (owner 09/11: "EN rơi xuống"): the search button made six items for five slots; one more slot, tighter buttons. */
+  @media (max-width: 640px) { header #btnFind, header #btnBell { min-width: 36px; min-height: 36px; padding: 4px 6px; } }
+  @media (max-width: 360px) { header .brand { font-size: 14px; } header .bar { gap: 4px 4px; padding: 6px 8px; } }
 </style>
 </head>
 <body class="notranslate">
@@ -1305,10 +1308,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109AV"></script>
-<script src="logic.js?v=20261109AV"></script>
-<script src="app.js?v=20261109AV"></script>
-<script src="qrcode.js?v=20261109AV"></script>
-<script src="extra.js?v=20261109AV"></script>
+<script src="config.js?v=20261109AW"></script>
+<script src="logic.js?v=20261109AW"></script>
+<script src="app.js?v=20261109AW"></script>
+<script src="qrcode.js?v=20261109AW"></script>
+<script src="extra.js?v=20261109AW"></script>
 </body>
 </html>
