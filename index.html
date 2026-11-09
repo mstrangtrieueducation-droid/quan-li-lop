@@ -1147,6 +1147,10 @@
   .dw-none { padding: 4px 2px 8px; }
   .dw-row .lvl { justify-self: start; }
   @media (max-width: 760px) { .hr-ov { grid-template-columns: 10px auto minmax(0, 1fr) 16px; } .hr-ov .hr-cm, .hr-ov .hr-next { display: none; } .hr-ov .hr-chips { grid-column: 2 / 4; grid-row: 2; } .hr-ov .hr-go-ic { grid-column: 4; grid-row: 1; } }
+  /* Paper-test chips (owner 09/11) */
+  .chip.kt-ok { background: var(--ok-soft); color: var(--ok); font-weight: 800; } .chip.kt-warn { background: var(--warn-soft); color: var(--warn); font-weight: 800; } .chip.kt-bad { background: var(--bad-soft); color: var(--bad); font-weight: 800; }
+  .kt-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 6px 4px; border-top: 1px solid var(--line); font-size: 13px; }
+  .kt-row b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .kt-row > span:first-of-type { font-variant-numeric: tabular-nums; font-weight: 700; }
 </style>
 </head>
 <body class="notranslate">
@@ -1176,10 +1180,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109N"></script>
-<script src="logic.js?v=20261109N"></script>
-<script src="app.js?v=20261109N"></script>
-<script src="qrcode.js?v=20261109N"></script>
-<script src="extra.js?v=20261109N"></script>
+<script src="config.js?v=20261109O"></script>
+<script src="logic.js?v=20261109O"></script>
+<script src="app.js?v=20261109O"></script>
+<script src="qrcode.js?v=20261109O"></script>
+<script src="extra.js?v=20261109O"></script>
 </body>
 </html>

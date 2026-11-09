@@ -3589,6 +3589,7 @@ viewHomerooms = function () {
   const list = myHomerooms();
   if (!buBai.rows && !buBai.loading) setTimeout(() => loadBuBai().then(render).catch(() => {}), 0);
   if (!list.length) return '<div class="card empty">' + (cnLoading ? T('Đang đọc…', 'Reading…') : T('Bạn chưa chủ nhiệm lớp nào trong tuần này.', 'No homeroom class this week.')) + '</div>' + (isManager() || isCm() ? reportSection() : '');
+  ktQueue(list.map(z => z.cls));
   const all = list.map(x => ({ x, s: classSummary(x) }));
   const pupils = all.reduce((n, z) => n + (z.s.size || 0), 0), owing = all.reduce((n, z) => n + z.s.owed.length, 0);
   const act = all.reduce((n, z) => n + z.s.reps.length + z.s.lad.filter(r => r.level >= 3).length, 0);
@@ -3604,7 +3605,7 @@ viewHomerooms = function () {
       '<span class="hr-cm">' + esc(isManager() ? titleCase(x.cm) : next) + '</span>' +
       '<span class="hr-chips"><span class="chip" title="' + T('Sĩ số theo điểm danh buổi gần nhất', 'Pupils at the last roll call') + '">' + ico('users') + (s.size || '—') + '</span>' +
       (s.kids ? (s.owed.length ? '<span class="chip warn">' + T('Nợ bài ', 'Owe ') + s.owed.length + '</span>' : buBai.rows ? '<span class="chip ok-chip" title="' + T('Không em nào trong danh sách bù bài của Schedule', 'Nobody on the Schedule makeup list') + '">' + T('Nợ 0', 'Owe 0') + '</span>' : '') : '') +
-      levels + (s.absent.length ? '<span class="chip">' + T('Vắng ', 'Absent ') + s.absent.length + '</span>' : '') + (s.reps.length ? '<span class="chip warn">' + T('Report ', 'Report ') + s.reps.length + '</span>' : '') + '</span>' +
+      ktChip(x.cls.key) + levels + (s.absent.length ? '<span class="chip">' + T('Vắng ', 'Absent ') + s.absent.length + '</span>' : '') + (s.reps.length ? '<span class="chip warn">' + T('Report ', 'Report ') + s.reps.length + '</span>' : '') + '</span>' +
       '<span class="hr-next">' + esc(isManager() ? next : '') + '</span><span class="hr-go-ic">›</span></button>';
   }).join('') + '</div>';
   h += isManager() || isCm() ? reportSection() : '';
@@ -3622,9 +3623,57 @@ function hrOverviewDrawer(x) {
   if (x.next) body += '<div class="pls">' + pill('cal', dayLabel(x.next.day) + ' ' + Q.clock(x.next.start)) + (x.next.book ? pill('book', Q.clean(x.next.book) + (x.next.lesson ? ' · ' + T('Tiết ', 'L') + x.next.lesson : '')) : '') + '</div>';
   body += s.kids ? sec(T('Nợ bài', 'Homework owed'), s.owed.length + (s.scanned ? T(' · quét ', ' · checked ') + esc(s.scanned.slice(0, 5)) : ''),
     s.owed.length ? s.owed.map(r => '<div class="dw-row"><span class="dw-n">!</span><div><b>' + esc(r.name) + '</b><small>' + esc(r.reason) + '</small>' + (r.items ? '<div class="dw-chips">' + r.items.split(/,\s*|;\s*/).filter(Boolean).slice(0, 6).map(i => '<span class="chip">' + esc(i) + '</span>').join('') + '</div>' : '') + '</div></div>').join('') : none(buBai.rows ? T('Không em nào trong danh sách nợ bài.', 'Nobody on the list.') : T('Đang đọc…', 'Reading…'))) : '';
+  body += ktSection(x.cls.key);
   body += sec(T('Mức phạt', 'Penalty levels'), s.lad.length, s.lad.length ? s.lad.map(r => '<div class="dw-row"><span class="lvl l' + r.level + '">M' + r.level + '</span><div><b>' + esc(r.name) + '</b><small>' + esc(r.reason) + (r.since ? T(' · từ ', ' · since ') + esc(r.since.slice(0, 5)) : '') + '</small></div></div>').join('') : none(T('Không em nào.', 'Nobody.')));
   body += sec(T('Vắng 14 ngày', 'Absent, 14 days'), s.absent.length, byPupil.size ? [...byPupil.entries()].sort((a, b) => b[1].length - a[1].length).map(([n, days]) => '<div class="dw-row"><span class="dw-n">' + days.length + '</span><div><b>' + esc(n) + '</b><small>' + esc(days.join(', ')) + '</small></div></div>').join('') : none(T('Không vắng buổi nào.', 'No absences.')));
   if (s.reps.length) body += sec(T('Report cần làm', 'Reports due'), s.reps.length, s.reps.map(r => '<div class="dw-row"><span class="dw-n">' + esc(r.s.lesson) + '</span><div><b>' + T('Tiết ', 'Lesson ') + esc(r.s.lesson) + '</b><small>' + esc(dayLabel(r.s.day)) + (r.state === 'over' ? T(' · quá hạn', ' · overdue') : T(' · hạn hôm nay', ' · due today')) + '</small></div></div>').join(''));
   return '<div class="dw-veil" data-act="hrClose"></div><aside class="drawer" role="dialog" aria-label="' + esc(x.cls.name) + '"><div class="dw-head">' + clsBadge(x.cls.name) + '<b>' + esc(titleCase(x.cm)) + '</b><span class="spacer"></span>' +
     (x.next ? '<button class="quiet" data-act="open" data-row="' + x.next.row + '" data-day="' + x.next.day + '">' + T('Mở lớp', 'Open') + '</button>' : '') + '<button class="quiet" data-act="hrClose" aria-label="' + T('Đóng', 'Close') + '">✕</button></div><div class="dw-body">' + body + '</div></aside>';
+}
+
+/* ---------- Paper-test scores in the homeroom overview (owner 09/11: "điểm số học sinh nữa") ----------
+ * The server reads only the "KIỂM TRA GIẤY ĐỊNH KÌ" columns of a class and keeps them 6 hours for everyone; the page keeps its copy on
+ * this device too, so the overview shows at once and asks again at most hourly, two classes at a time. */
+const ktData = {}, ktWait = [];
+let ktBusy = 0;
+function ktQueue(classes) {
+  classes.forEach(c => {
+    const have = ktData[c.key] || (saved.get('kt:' + c.key) ? (ktData[c.key] = saved.get('kt:' + c.key)) : null);
+    if ((have && Date.now() - have.at < 3600000) || ktWait.some(z => z.key === c.key) || (have && have.loading)) return;
+    ktWait.push(c);
+  });
+  while (ktBusy < 2 && ktWait.length) {
+    const c = ktWait.shift();
+    ktBusy++;
+    const old = ktData[c.key];
+    ktData[c.key] = Object.assign({}, old || {}, { loading: true });
+    call('diemlop', { cls: c.name }).then(d => { ktData[c.key] = { data: d, at: Date.now() }; keep('kt:' + c.key, ktData[c.key]); })
+      .catch(() => { ktData[c.key] = Object.assign({}, old || { data: null }, { at: Date.now() - 3000000, loading: false }); })
+      .finally(() => { ktBusy--; render(); if (ktWait.length) ktQueue([]); });
+  }
+}
+const ktTone = p => p >= 85 ? 'ok' : p >= 65 ? 'warn' : 'bad';
+function ktLatest(key) {
+  const d = ktData[key] && ktData[key].data;
+  const t = d && d.tests && d.tests.find(z => Object.values(z.scores).some(v => typeof v === 'number'));
+  if (!t) return null;
+  const vals = Object.values(t.scores).filter(v => typeof v === 'number');
+  const avg = vals.reduce((n, v) => n + v, 0) / vals.length;
+  return { t, avg, pct: Math.round(avg / t.total * 100), marked: vals.length };
+}
+function ktChip(key) {
+  const k = ktLatest(key);
+  if (!k) return '';
+  return '<span class="chip kt-' + ktTone(k.pct) + '" title="' + esc(k.t.title + (k.t.date ? ' · ' + viDate(k.t.date) : '') + ' · ' + k.marked + T(' em', ' pupils')) + '">' + T('KT ', 'Test ') + k.pct + '%</span>';
+}
+function ktSection(key) {
+  const d = ktData[key];
+  if (!d || !d.data) return '<div class="dw-sec"><div class="dw-sec-h"><b>' + T('Kiểm tra giấy', 'Paper tests') + '</b><span>…</span></div><div class="small muted dw-none">' + T('Đang đọc điểm…', 'Reading scores…') + '</div></div>';
+  const k = ktLatest(key);
+  if (!k) return '<div class="dw-sec"><div class="dw-sec-h"><b>' + T('Kiểm tra giấy', 'Paper tests') + '</b><span>0</span></div><div class="small muted dw-none">' + T('Chưa có điểm kiểm tra giấy.', 'No paper-test score yet.') + '</div></div>';
+  const rows = Object.entries(k.t.scores).sort((a, b) => (typeof a[1] === 'number' ? a[1] : 999) - (typeof b[1] === 'number' ? b[1] : 999));
+  const older = d.data.tests.filter(z => z !== k.t).slice(0, 4).map(z => { const v = Object.values(z.scores).filter(n => typeof n === 'number'); return v.length ? '<div class="small muted">' + esc(z.title) + (z.date ? ' · ' + esc(viDate(z.date).slice(0, 5)) : '') + T(' · TB ', ' · avg ') + Math.round(v.reduce((n, a) => n + a, 0) / v.length / z.total * 100) + '%</div>' : ''; }).join('');
+  return '<div class="dw-sec"><div class="dw-sec-h"><b>' + T('Kiểm tra giấy', 'Paper tests') + ' · ' + esc(k.t.title) + '</b><span class="chip kt-' + ktTone(k.pct) + '">' + T('TB ', 'Avg ') + k.pct + '%</span></div>' +
+    '<div class="small muted">' + (k.t.date ? T('Ngày kiểm tra ', 'Test date ') + esc(viDate(k.t.date)) + ' · ' : '') + T('tổng ', 'out of ') + k.t.total + '</div>' +
+    rows.map(([n, v]) => { const p = typeof v === 'number' ? Math.round(v / k.t.total * 100) : null; return '<div class="kt-row"><b>' + esc(n) + '</b><span>' + (p == null ? esc(v) : v + '/' + k.t.total) + '</span>' + (p == null ? '<span class="chip">' + T('vắng', 'absent') + '</span>' : '<span class="chip kt-' + ktTone(p) + '">' + p + '%</span>') + '</div>'; }).join('') + older + '</div>';
 }
