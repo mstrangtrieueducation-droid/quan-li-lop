@@ -79,18 +79,35 @@ function checkinBlock(week) {
   if (!ca.centres) h += '<div class="small muted">' + T('Cô Trang chưa đặt vị trí trung tâm, tạm thời quản lí chấm công như cũ.', 'The centre location is not set yet.') + '</div>';
   return h + '</div>';
 }
-const position = () => new Promise((res, rej) => navigator.geolocation ? navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }) : rej(new Error(T('máy không có định vị', 'no location on this device'))));
+// Owner 09/11 (Hannah's check-in at 08:37 had no location): one precise GPS request of 15 s often fails indoors in the morning.
+// Now the phone is listened to for up to 12 s and the best fix is kept (stopping early at about 60 m); with nothing from GPS,
+// the quicker Wi-Fi / network position (up to 5 minutes old) is used. A failure says why, and the reason goes into the note.
+const GEO_WHY = { 1: ['bị chặn quyền định vị', 'location permission blocked'], 2: ['không có tín hiệu vị trí', 'no location signal'], 3: ['hết thời gian chờ GPS', 'GPS timed out'] };
+const geoError = e => { const w = GEO_WHY[e && e.code] || ['không rõ lỗi định vị', 'unknown location error']; const err = new Error(T(w[0], w[1])); err.why = 'GPS: ' + w[0]; return err; };
+const position = () => new Promise((res, rej) => {
+  if (!navigator.geolocation) { const err = new Error(T('máy không có định vị', 'no location on this device')); err.why = 'GPS: máy không có định vị'; return rej(err); }
+  let best = null, done = false, watch = null, timer = null;
+  const finish = (pos, err) => { if (done) return; done = true; clearTimeout(timer); if (watch != null) try { navigator.geolocation.clearWatch(watch); } catch (e) {} if (pos) res(pos); else rej(err); };
+  const fallback = lastErr => navigator.geolocation.getCurrentPosition(p => finish(p), e => finish(null, geoError(lastErr && lastErr.code === 1 ? lastErr : e)), { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+  let lastErr = null;
+  timer = setTimeout(() => { if (best) finish(best); else { if (watch != null) try { navigator.geolocation.clearWatch(watch); } catch (e) {} watch = null; fallback(lastErr); } }, 12000);
+  try {
+    watch = navigator.geolocation.watchPosition(p => { if (!best || p.coords.accuracy < best.coords.accuracy) best = p; if (p.coords.accuracy <= 60) finish(best); },
+      e => { lastErr = e; if (e.code === 1) finish(null, geoError(e)); }, { enableHighAccuracy: true, maximumAge: 60000, timeout: 12000 });
+  } catch (e) { clearTimeout(timer); fallback(null); }
+});
 async function caPress(kind) {
   if (ca.busy) return;
   ca.busy = true; render();
-  let pos = null;
+  let pos = null, posWhy = '';
   try { pos = await position(); }
   catch (e) {
+    posWhy = e.why || '';
     if (!window.confirm(T('Không lấy được vị trí (' + (e.message || 'bị chặn') + '). Bạn bật định vị cho trình duyệt rồi bấm lại. Hay vẫn ghi giờ và chờ quản lí duyệt?', 'Could not get your location. Record the time anyway and wait for a manager?'))) { ca.busy = false; render(); return; }
   }
   try {
     const week = weeks[Q.weekTab(tabs, today())], due = myDue(week, today());
-    const r = await call('vaoca', { kind, lat: pos ? pos.coords.latitude : '', lng: pos ? pos.coords.longitude : '', acc: pos ? Math.round(pos.coords.accuracy) : '', due: due !== null ? Q.clock(due) : '' }, 1);
+    const r = await call('vaoca', { kind, lat: pos ? pos.coords.latitude : '', lng: pos ? pos.coords.longitude : '', acc: pos ? Math.round(pos.coords.accuracy) : '', due: due !== null ? Q.clock(due) : '', note: posWhy }, 1);
     say((kind === 'ra' ? T('Đã ra ca lúc ', 'Out at ') : T('Đã vào ca lúc ', 'In at ')) + r.time + ' · ' + r.status + (r.note ? ' (' + r.note + ')' : ''), r.status === 'Tự duyệt' ? '' : 'bad');
     await loadCa(true);
   } catch (e) { say(T('Chưa chấm được: ', 'Not recorded: ') + e.message, 'bad'); }
