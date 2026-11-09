@@ -95,9 +95,22 @@ const dayLabel = s => Q.dayText(s, lang);
 function say(text, kind) { notices = notices.filter(n => n.text !== text); notices.push({ text, kind: kind || '' }); render(); }
 
 /* ---------- Reading ---------- */
+// Owner 09/11: a new week tab once kept last week's dates in its rota header ("Thứ 2 02.11" in the 09.11 tab), so every staff member
+// looked off duty. When the header dates fall outside the tab's own week, the days are placed by column order (Thứ 2 first) instead.
+function fixDutyDates(data, tab) {
+  const m = String(tab).match(/^(\d\d)\.(\d\d)\.(\d{4})/);
+  if (!m || !data.duty || !data.duty.days) return;
+  const start = m[3] + '-' + m[2] + '-' + m[1], end = Q.addDays(start, 6), keys = Object.keys(data.duty.days).sort();
+  if (!keys.length || keys.every(k => k >= start && k <= end)) return;
+  const fixed = {};
+  keys.slice(0, 7).forEach((k, i) => { fixed[Q.addDays(start, i)] = data.duty.days[k]; });
+  data.duty.days = fixed; data.duty.stale = keys[0];
+}
 function setWeek(tab, rows) {
   keep('week:' + tab, { rows, at: Date.now() });
-  return (weeks[tab] = { data: Q.parseWeek(rows), pay: Q.parsePay(rows, tab), at: Date.now(), tab });
+  const data = Q.parseWeek(rows);
+  try { fixDutyDates(data, tab); } catch (e) {}
+  return (weeks[tab] = { data, pay: Q.parsePay(rows, tab), at: Date.now(), tab });
 }
 // A saved copy shows at once; an old one refreshes quietly and redraws.
 function weekOf(target, force) {

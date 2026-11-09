@@ -3517,3 +3517,12 @@ fitBars = function () {
     if (b.textContent !== txt) b.textContent = txt;
   });
 };
+
+// Managers see when a week tab's rota header carries the wrong dates (the app has placed the days by column order meanwhile).
+const viewScheduleBeforeStale = viewSchedule;
+viewSchedule = function (week) {
+  const h = viewScheduleBeforeStale(week);
+  if (!week || !isManager() || !week.data.duty || !week.data.duty.stale) return h;
+  const note = '<div class="notice bad">' + T('Tab ' + esc(week.tab) + ': hàng ngày ở LỊCH LÀM VIỆC TA đang ghi sai ngày (bắt đầu ' + esc(viDate(week.data.duty.stale).slice(0, 5)) + '). App tạm xếp theo thứ; sửa hàng ngày trong Schedule giúp.', 'The rota header of ' + esc(week.tab) + ' has wrong dates; days are placed by column for now.') + '</div>';
+  return note + h;
+};
