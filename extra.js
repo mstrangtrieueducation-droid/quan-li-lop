@@ -4398,7 +4398,9 @@ async function loadPrintDocs(force) {
   if (printDocs.loading || (!force && printDocs.map && Date.now() - printDocs.at < 600000)) return;
   printDocs.loading = true;
   try {
-    const [[rows]] = [await batchGet(CONFIG.tailieuId || 'tailieu', ["'TAI_LIEU_IN'!A2:E1000"])];
+    // Owner 09/11: "đừng dùng file riêng... mò vào các sách tìm file in": the separate sheet is gone; the file index will come from the
+    // Schedule (a tab filled by scanning CLASS RESOURCES) once the owner allows that install. Until then nothing is read.
+    const rows = [];
     const map = new Map();
     rows.forEach(r => {
       const book = docBook(r[0]), link = Q.clean(r[3]);
@@ -4433,7 +4435,7 @@ printCard = function (week) {
   days.forEach(d => { const w = weeks[Q.weekTab(tabs, d)]; (w ? w.data.sessions : []).filter(s => s.day === d && !s.off).sort((a, b) => a.start - b.start).forEach(s => { const list = docsFor(s), need = /PRINT/.test(Q.key(s.note || '')); if (list.length || need) items.push({ s, list, need }); }); });
   if (!items.length) return h;
   const lines = items.map(({ s, list }) => '<div class="doc-line"><span class="doc-when">' + esc(dayLabel(s.day).replace(/,.*$/, '')) + ' ' + Q.clock(s.start) + '</span><b>' + esc(s.cls) + '</b><span class="muted small">' + esc(Q.clean(s.book)) + (s.lesson ? T(' · tiết ', ' · lesson ') + esc(s.lesson) : '') + '</span>' +
-    (list.length ? docButtons(list) : '<span class="tag warn">' + T('Cần in · chưa có link trong TÀI LIỆU IN', 'Printing needed · no link yet') + '</span>') + '</div>').join('');
+    (list.length ? docButtons(list) : '<span class="tag warn">' + T('Cần in · chưa tìm thấy file', 'Printing needed · file not found yet') + '</span>') + '</div>').join('');
   const box = '<div class="card row doc-card"><b>🖨️ ' + T('Tài liệu cần in (hôm nay và 2 ngày tới)', 'Documents to print (today and next 2 days)') + '</b>' + lines + '</div>';
   return (h || '') + box;
 };
