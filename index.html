@@ -506,6 +506,12 @@
   .sum-sheet .sum-table td.sum-rank { text-align: center; }
   .sum-sheet .sum-table td.sum-gcell, .sum-sheet .sum-table th.sum-c { text-align: center; }
   .sum-table { table-layout: auto; }
+  /* Owner 09/11: "màn hình chốt... bị tràn": the app-wide `td { white-space: nowrap }` made long reminders and owed lists push the table
+     past the sheet. Cells of the close sheet wrap; only stars and test scores stay on one line. */
+  .sum-sheet { max-width: min(1180px, 100%); box-sizing: border-box; overflow-x: hidden; }
+  .sum-sheet .sum-table th, .sum-sheet .sum-table td { white-space: normal; overflow-wrap: anywhere; }
+  .sum-sheet .sum-table td.sum-stars, .sum-sheet .sum-table td.sum-kt, .sum-sheet .sum-table td.sum-rank { white-space: nowrap; }
+  .sum-sheet .sum-tick { display: inline-block; margin: 1px 2px; }
   .sum-name { width: 18%; } .sum-debt { width: 28%; }
   .sum-rank { width: 40px; font-size: 20px; text-align: center; color: #6b7280; }
   .sum-name b { font-size: 18px; }
@@ -1281,10 +1287,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109AI"></script>
-<script src="logic.js?v=20261109AI"></script>
-<script src="app.js?v=20261109AI"></script>
-<script src="qrcode.js?v=20261109AI"></script>
-<script src="extra.js?v=20261109AI"></script>
+<script src="config.js?v=20261109AJ"></script>
+<script src="logic.js?v=20261109AJ"></script>
+<script src="app.js?v=20261109AJ"></script>
+<script src="qrcode.js?v=20261109AJ"></script>
+<script src="extra.js?v=20261109AJ"></script>
 </body>
 </html>
