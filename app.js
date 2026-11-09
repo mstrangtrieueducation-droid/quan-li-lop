@@ -1252,14 +1252,32 @@ document.addEventListener('input', e => {
 window.addEventListener('online', flush);
 
 /* ---------- Start ---------- */
+// The last answer of 'boot' is kept on this device (for this link only): the page draws from it at once, like the parent dashboards,
+// and the fresh answer replaces it a moment later.
+const keyTag = k => { let n = 0; String(k || '').split('').forEach(c => { n = (n * 31 + c.charCodeAt(0)) >>> 0; }); return n.toString(36); };
+function applyBoot(b) {
+  people = b.people;
+  classList = b.classes.map(c => ({ name: c.name, key: Q.key(c.name), tracker: c.tracker, since: c.since }));
+  tabs = b.tabs;
+  me = b.me;
+}
+function forget(k) { saved.delete(k); try { if (dbHandle) dbHandle.transaction('kv', 'readwrite').objectStore('kv').delete(k); } catch (e) {} }
+// Week copies older than three weeks are dropped, so opening the page never has to read months of old rows.
+function pruneWeeks() {
+  const cut = Q.addDays(today(), -21);
+  [...saved.keys()].filter(k => /^week:/.test(k)).forEach(k => { const m = k.match(/(\d\d)\.(\d\d)\.(\d{4})$/); if (m && m[3] + '-' + m[2] + '-' + m[1] < cut) forget(k); });
+}
 async function enter() {
   $('login').hidden = true; $('app').hidden = false;
+  const tag = keyTag(accessKey), copy = saved.get('boot');
+  if (copy && copy.tag === tag && copy.b) {
+    try { applyBoot(copy.b); outbox = saved.get('outbox') || []; render(); weekOf(day).then(render).catch(() => {}); } catch (e) { /* the fresh answer below still comes */ }
+  }
   try {
     const b = await call('boot', {});
-    people = b.people;
-    classList = b.classes.map(c => ({ name: c.name, key: Q.key(c.name), tracker: c.tracker, since: c.since }));
-    tabs = b.tabs;
-    me = b.me;
+    applyBoot(b);
+    keep('boot', { tag, b, at: Date.now() });
+    try { pruneWeeks(); } catch (e) {}
     outbox = saved.get('outbox') || [];
     render();
     await guarded(() => weekOf(day));
@@ -1269,7 +1287,7 @@ async function enter() {
     if (view === 'lich') loadAlerts().catch(() => {});
     weekOf(Q.addDays(today(), 7)).catch(() => {});
   } catch (e) {
-    if (e.status === 401) return;
+    if (e.status === 401) { forget('boot'); return; }
     me = me || { name: '', role: '' };
     loadError = T('Chưa mở được: ', 'Could not open: ') + e.message;
     $('main').innerHTML = '<div class="notice bad">' + esc(loadError) + '</div>';

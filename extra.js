@@ -3503,3 +3503,17 @@ viewNguoi = function () {
   }).join('') + '</div>').join('');
   return out.slice(0, at) + '<div class="card"><h3>Đang có link · ' + nguoi.people.length + '</h3>' + cards + '</div>';
 };
+
+fitBars = function () {
+  const track = document.querySelector('.tl-track');
+  if (!track) return;
+  const tw = track.clientWidth, base = innerWidth < 641 ? 11 : 12;
+  document.querySelectorAll('.tl-bar').forEach(b => {
+    const full = b.dataset.full || (b.dataset.full = b.textContent), w = parseFloat(b.style.width) / 100 * tw - 8;
+    const fits = (t, px) => String(t).length * px * 0.66 <= w;
+    let txt = full, fs = '';
+    if (!fits(full, base)) { fs = '10px'; if (!fits(full, 10)) { txt = b.dataset.s || full; if (!fits(txt, 10)) { txt = tlInitials(full); if (!fits(txt, 10)) txt = ''; } } }
+    if (b.style.fontSize !== fs) b.style.fontSize = fs;
+    if (b.textContent !== txt) b.textContent = txt;
+  });
+};
