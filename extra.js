@@ -2014,7 +2014,10 @@ function hocPhiFrame() {
   f.hidden = false;
   const bar = document.querySelector('header');
   f.classList.add('hp-full');
-  f.style.top = (bar ? Math.round(bar.getBoundingClientRect().bottom) : 0) + 'px';
+  // An iframe does not stretch between top and bottom like a box does, so its height is set too (owner 09/11 photo: it stayed 150px).
+  const top = bar ? Math.max(0, Math.round(bar.getBoundingClientRect().bottom)) : 0;
+  f.style.top = top + 'px';
+  f.style.height = Math.max(320, innerHeight - top) + 'px';
 }
 addEventListener('resize', () => { try { if (view === 'hocphi') hocPhiFrame(); } catch (e) {} });
 
