@@ -2844,7 +2844,9 @@ function pickLine(list, seed) {
  * new book (reminded from 10 days before, red after). Steps "Đã đặt in" then "Đã nhận sách", each kept with who and when in DIEM_DANH
  * (class "ĐẶT SÁCH"); a finished order stays, faded. */
 const BOOK_CLS = 'ĐẶT SÁCH', BOOK_LEAD = 7, BOOK_WARN = 10;
-const bookKeyOf = b => Q.key(b).replace(/^SACH\s*:?\s*/, '').replace(/\bOXFORD\s+/, '').replace(/\s+/g, ' ').trim();
+// Owner 09/11: "phonics 1-2 là 1 sách và phonics 3-4 là 1 sách": moving from Phonics 1 to 2 (or 3 to 4) needs no new book.
+const bookKeyOf = b => Q.key(b).replace(/^SACH\s*:?\s*/, '').replace(/\bOXFORD\s+/, '').replace(/\s+/g, ' ').trim()
+  .replace(/^PHONICS\s*[-_ ]?\s*[12]\b.*$/, 'PHONICS 1-2').replace(/^PHONICS\s*[-_ ]?\s*[34]\b.*$/, 'PHONICS 3-4');
 const bookPending = b => /CHECK PROGRAM|CHO XAC NHAN/.test(Q.key(b));
 let bookWeeksAsked = 0;
 function bookNeeds() {
