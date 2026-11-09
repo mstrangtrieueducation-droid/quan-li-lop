@@ -1171,6 +1171,52 @@
   .kt-row b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .kt-row input, .kt-total input { width: 4.5em; padding: 6px; font-size: 18px; font-weight: 800; text-align: center; border-radius: 8px; }
   .kt-total { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-weight: 700; }
+  /* Roll call fits the screen (owner 09/11: "màn hình điểm danh cần vừa khung hình k phải kéo"): pupils flow into as many columns as
+     the height needs (set by fitRoll in extra.js), rows are tighter and the lesson header sits in two columns on wide screens. */
+  main:has(.roll-fit) { padding-bottom: 12px; }
+  .roll-fit { display: grid; grid-template-columns: repeat(var(--roll-cols, 1), minmax(0, 1fr)); overflow: hidden; }
+  .roll-fit .pupil { padding: 6px 10px; gap: 4px 8px; grid-template-columns: 40px minmax(0, 1fr) auto; align-content: start; border-top: 0; border-bottom: 1px solid var(--line); }
+  .roll-fit.multi .pupil { border-right: 1px solid var(--line); }
+  .roll-fit .tick { width: 40px; height: 40px; border-radius: 10px; font-size: 19px; }
+  .roll-fit .grades button { width: 38px; min-height: 38px; height: 38px; }
+  .roll-fit .who { min-width: 0; }
+  .roll-fit .who b, .roll-fit .who .small { display: block; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .roll-fit .who .small { font-size: 12px; }
+  .roll-fit .owed { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .roll-fit .pupil > .mk-btn, .roll-fit .pupil .mk-btn { min-height: 28px; padding: 2px 10px; font-size: 12px; }
+  .roll-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .roll-bar .ll-open { min-height: 42px; padding: 8px 16px; }
+  .roll-fit .owed, .roll-fit .pupil > .small { font-size: 12px; line-height: 1.25; }
+  .roll-fit.narrow .pupil { grid-template-columns: 36px minmax(0, 1fr); padding: 6px 8px; }
+  .roll-fit.narrow .tick { width: 36px; height: 36px; }
+  .roll-fit.narrow .pupil > .grades, .roll-fit.narrow .pupil > .sec-marks { grid-column: 1 / -1; justify-content: flex-start; }
+  .roll-fit.narrow .grades button { flex: 1; width: auto; }
+  @media (min-width: 900px) {
+    .class-head.fit-head { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 18px; padding: 10px 14px; }
+    .class-head.fit-head > * { grid-column: 1; }
+    .class-head.fit-head > .detail { grid-column: 2; grid-row: 1 / span 5; align-self: center; font-size: 13px; }
+    .class-head.fit-head h1 { font-size: 18px; }
+  }
+  /* Search box (09/11) */
+  #btnFind svg { width: 20px; height: 20px; flex: none; }
+  .fd-modal { top: 72px; transform: translateX(-50%); width: min(680px, calc(100% - 24px)); max-height: calc(100vh - 100px); }
+  .fd-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .fd-bar > svg { width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; flex: none; }
+  .fd-bar input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 17px; padding: 6px 0; color: inherit; }
+  .fd-body { padding: 8px 10px 14px; overflow: auto; }
+  .fd-hint { color: var(--muted); font-size: 14px; padding: 14px 8px; }
+  .fd-group + .fd-group { margin-top: 8px; }
+  .fd-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 8px 8px 4px; }
+  .fd-head span { font-weight: 600; opacity: .8; }
+  .fd-row { display: grid; gap: 2px; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; min-height: 0; }
+  .fd-row:hover, .fd-row:focus-visible { background: var(--brand-soft, rgba(79,70,229,.08)); }
+  .fd-row.fd-static { cursor: default; }
+  .fd-row b { font-weight: 600; }
+  .fd-row small { color: var(--muted); font-size: 12.5px; line-height: 1.35; overflow-wrap: anywhere; }
+  .fd-row mark { background: #fde68a; color: inherit; border-radius: 3px; padding: 0 1px; }
+  .fd-flash { animation: fdFlash 1.8s ease-out 1; }
+  @keyframes fdFlash { 0%, 30% { box-shadow: 0 0 0 3px #f59e0b; background-color: rgba(245,158,11,.15); } 100% { box-shadow: 0 0 0 0 transparent; } }
+  @media (max-width: 640px) { .fd-modal { top: 0; transform: none; } }
 </style>
 </head>
 <body class="notranslate">
@@ -1200,10 +1246,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109AC"></script>
-<script src="logic.js?v=20261109AC"></script>
-<script src="app.js?v=20261109AC"></script>
-<script src="qrcode.js?v=20261109AC"></script>
-<script src="extra.js?v=20261109AC"></script>
+<script src="config.js?v=20261109AD"></script>
+<script src="logic.js?v=20261109AD"></script>
+<script src="app.js?v=20261109AD"></script>
+<script src="qrcode.js?v=20261109AD"></script>
+<script src="extra.js?v=20261109AD"></script>
 </body>
 </html>

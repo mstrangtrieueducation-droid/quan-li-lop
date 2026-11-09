@@ -3944,3 +3944,268 @@ if (!BEHAVIOURS.includes(KT_TICK)) BEHAVIOURS.push(KT_TICK);
 const isTestLesson = s => { if (!s || !isSecondary(s)) return false; if (!ktG.any) { loadKtGuide(); return false; } return !!ktG.any[ktBookKey(s.book) + '|' + Q.clean(s.lesson)]; };
 const tickSetOfBeforeKt = tickSetOf;
 tickSetOf = function (s) { const list = tickSetOfBeforeKt(s); return isTestLesson(s) && !list.includes(KT_TICK) ? list.concat([KT_TICK]) : list; };
+
+/* ---------- Sent home → message the parents (owner 09/11: "fighter vs ielts... nếu tôi ấn nút sent home là bị phạt về ý thì thông báo cho
+ * nhân sự là nhắn tin cho bố mẹ là con bị phạt về") ----------
+ * Every pupil marked "Cho về (thiếu bài)" becomes one "Nhắn PH" job on the penalty page, in the bell and in the to-do dialog, for the
+ * same people who send the ladder messages (Fridays THUY TRANG, other days managers; managers, TA side and the homeroom see it).
+ * A ready message (what is owed, read from the class sheet) can be copied for Zalo. The tick writes a LIEN_HE_PH row (level 0,
+ * action SENT_ACT), so everyone sees who sent it. Undoing the mark removes the job. Counted from 09/11, at most the last 7 days. */
+const SENT_ACT = 'Đã nhắn PH (cho về)', SENT_START = '2026-11-09';
+const sentHome = { tried: 0 };
+function sentClass(cls) { const k = Q.key(cls); return classList.find(c => c.key === k) || classList.find(c => c.key === Q.key(String(cls).replace(/\.\d+$/, ''))); }
+function sentHomeList(week) {
+  if (!logs.marks) { if (Date.now() - sentHome.tried > 60000) { sentHome.tried = Date.now(); setTimeout(() => loadMarks().then(render).catch(() => {}), 0); } return []; }
+  const t = today(), back = Q.addDays(t, -7), from = back > SENT_START ? back : SENT_START, last = new Map();
+  logs.marks.rows.forEach(m => { if (m.day >= from && m.day <= t) last.set(markKey(m), m); });
+  const mine = cls => isManager() || isTaSide(week) || isMe(homeroom[Q.key(cls)] || '') || isMe(homeroom[Q.key(String(cls).replace(/\.\d+$/, ''))] || '');
+  return [...last.values()].filter(m => m.status === SEND_HOME && mine(m.cls)).map(m => {
+    const x = { m, cls: Q.clean(m.cls), name: Q.clean(m.name), eng: Q.clean(m.eng), day: m.day, since: viDate(m.day), level: 0 };
+    x.done = (ladder.contacts || []).filter(c => sameName(c.cls, x.cls) && c.name === x.name && c.since === x.since && c.action === SENT_ACT).pop() || null;
+    return x;
+  }).sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || b.day.localeCompare(a.day) || a.cls.localeCompare(b.cls, 'vi', { numeric: true }));
+}
+const canSentTick = () => isManager() || (isFriday(today()) && isMe('THUY TRANG'));
+// What the pupil owed that day, from the server's copy of the class sheet (asked for once, kept 10 minutes like the class screen).
+function sentOwed(x) {
+  const c = sentClass(x.cls);
+  if (!c || !c.tracker) return [];
+  const key = c.tracker + '|' + x.day, hit = owedCache[key];
+  if ((!hit || Date.now() - hit.at > 600000) && !secLoading.has(key)) {
+    secLoading.add(key);
+    call('baino', { file: c.tracker, day: x.day }).then(data => { owedCache[key] = { at: Date.now(), data }; }).catch(e => { owedCache[key] = { at: Date.now(), data: null, error: e.message }; }).finally(() => { secLoading.delete(key); render(); });
+  }
+  if (!hit) return null;
+  if (!hit.data) return [];
+  const p = hit.data.pupils.find(q => Q.key(q.name) === Q.key(x.name));
+  return p ? p.owed.filter(o => o.due && o.due <= x.day) : [];
+}
+function sentMessage(x) {
+  const owed = sentOwed(x), who = x.eng ? x.eng + ' (' + x.name + ')' : x.name;
+  const what = owed && owed.length ? ' chưa hoàn thành ' + owed.length + ' bài tập về nhà (' + skillSummary(owed) + ')' : ' chưa hoàn thành bài tập về nhà';
+  return 'Phúc Hưng Edu xin thông báo: buổi học ngày ' + x.since + ' của lớp ' + x.cls + ', con ' + who + what +
+    ' nên con đã bị cho về để hoàn thành bài, theo nội quy về ý thức học tập của lớp. Kính mong phụ huynh nhắc con làm đủ bài và nộp trước buổi học sau ạ. Trân trọng cảm ơn!';
+}
+function sentHomeBlock(week) {
+  const list = sentHomeList(week);
+  if (!list.length) return '';
+  const todo = list.filter(x => !x.done).length;
+  let h = '<div class="part p-alert"><h2>' + T('Cho về · cần nhắn phụ huynh', 'Sent home · message the parents') + '</h2><span>' + (todo ? todo + T(' chưa nhắn', ' to message') : T('Đã nhắn đủ', 'All messaged')) + '</span></div>';
+  h += '<div class="small muted sent-who">' + T('Người nhắn hôm nay: ', 'Messages today: ') + '<b>' + (isFriday(today()) ? 'THUY TRANG' : T('quản lí', 'managers')) + '</b></div>';
+  h += '<div class="grid">' + list.map((x, i) => {
+    const owed = sentOwed(x), late = !x.done && today() > x.day;
+    return '<div class="card row lad sent-job' + (x.done ? ' done' : '') + (late ? ' late' : '') + '"><div class="lad-line"><span class="lvl l2">🚪</span><b>' + esc(x.eng || x.name) + '</b><span class="tag">' + esc(x.cls) + ' · ' + esc(x.since.slice(0, 5)) + '</span>' +
+      (x.done ? '<span class="tag ok">✓ ' + esc(SENT_ACT) + ' · ' + esc(x.done.by || '?') + (x.done.at ? ' · ' + esc(String(x.done.at).slice(11, 16) + ' ' + String(x.done.at).slice(0, 5)) : '') + '</span>' : '<span class="tag ' + (late ? 'bad' : 'warn') + '">' + T('Nhắn PH', 'Message') + '</span>') +
+      '<span class="spacer"></span><button class="quiet" data-act="sentCopy" data-i="' + i + '">' + T('Chép tin nhắn', 'Copy message') + '</button>' +
+      (!x.done && canSentTick() ? '<button class="good" data-act="sentTick" data-i="' + i + '">' + T('Đã nhắn PH', 'Messaged') + '</button>' : '') + '</div>' +
+      '<details class="lad-more"><summary>' + (owed == null ? T('Đang đọc bài thiếu…', 'Reading owed work…') : owed.length ? T('Thiếu ', 'Owes ') + owed.length + T(' bài: ', ': ') + esc(skillSummary(owed)) : T('Lí do: thiếu bài', 'Reason: homework')) + '</summary><div class="small sent-msg">' + esc(sentMessage(x)) + '</div>' +
+      '<div class="small muted">' + esc(x.name) + T(' · cho về bởi ', ' · sent home by ') + esc(x.m.by || '?') + '</div></details></div>';
+  }).join('') + '</div>';
+  return h;
+}
+const ladderBlockBeforeSent = ladderBlock;
+ladderBlock = function (week) { const a = sentHomeBlock(week), b = ladderBlockBeforeSent(week); return a + (b || ''); };
+const ladderTodoBeforeSent = ladderTodo;
+ladderTodo = function (week) { return ladderTodoBeforeSent(week) + sentHomeList(week).filter(x => !x.done).length; };
+// Bell: one line for the parents of pupils sent home.
+const bellItemsBeforeSent = bellItems;
+bellItems = function () {
+  const out = bellItemsBeforeSent();
+  try {
+    if (me) {
+      const week = weeks[Q.weekTab(tabs, today())] || null, todo = sentHomeList(week).filter(x => !x.done);
+      if (todo.length) out.push({ k: 'lad', icon: '🚪', text: todo.length + T(' HS bị cho về · cần nhắn phụ huynh', ' pupils sent home · message parents'), n: todo.length, hot: todo.some(x => today() > x.day), go: { view: 'lich', sec: 'phat' } });
+    }
+  } catch (e) { /* the bell never breaks the page */ }
+  return out;
+};
+// The to-do dialog ("Phạt & phụ huynh" list) gets the same jobs.
+const qaRowsBeforeSent = qaRows;
+qaRows = function (kind) {
+  const out = qaRowsBeforeSent(kind);
+  if (kind !== 'lad') return out;
+  try {
+    const week = weeks[Q.weekTab(tabs, today())] || null;
+    sentHomeList(week).forEach((x, i) => { if (!x.done) out.unshift({ key: 'lad|sent|' + x.cls + x.name + x.day, cls: x.cls, who: x.eng || x.name, reason: T('Cho về · nhắn PH', 'Sent home · message'), btn: canSentTick() ? '<button class="good" data-act="sentTick" data-i="' + i + '">' + ico('check') + '</button>' : '', hot: today() > x.day }); });
+  } catch (e) {}
+  return out;
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act="sentTick"],[data-act="sentCopy"]');
+  if (!b) return;
+  const week = weeks[Q.weekTab(tabs, today())] || null, x = sentHomeList(week)[Number(b.dataset.i)];
+  if (!x) return;
+  if (b.dataset.act === 'sentCopy') {
+    navigator.clipboard.writeText(sentMessage(x)).then(() => say(T('Đã copy tin nhắn, dán vào Zalo phụ huynh.', 'Copied.')), () => say(T('Không copy được, mở "Thiếu bài" để bôi đen.', 'Could not copy.'), 'bad'));
+    return;
+  }
+  if (x.done || !canSentTick()) return;
+  const row = [stamp(), x.cls, x.name, '0', x.since, SENT_ACT, 'Cho về ' + x.since, me.name];
+  if (!ladder.contacts) ladder.contacts = [];
+  ladder.contacts.push(contactOf(row));
+  queue({ kind: 'append', file: CONFIG.diemDanhId, tab: 'LIEN_HE_PH', row });
+  render();
+});
+
+/* ---------- Roll call fits the screen (owner 09/11: "màn hình điểm danh cần vừa khung hình k phải kéo... kéo lên kéo xuống bất tiện") ----------
+ * The pupil list takes as many columns as needed for all pupils to fit under the header without scrolling (up to what the width
+ * allows: columns of at least 250px, or 165px on a phone, where the grade buttons move under the name). If even the most columns
+ * cannot fit (a very small phone with a big class), the page scrolls as before. */
+const viewClassBeforeFit = viewClass;
+viewClass = function () {
+  let h = viewClassBeforeFit().replace('<div class="card class-head">', '<div class="card class-head fit-head">');
+  if (!/<div class="card">(<div class="pupil)/.test(h)) return h;
+  // The back button joins the bar under the header instead of taking its own line.
+  const back = (h.match(/^<div>(<button class="quiet" data-act="back">[\s\S]*?<\/button>)<\/div>/) || [])[1] || '';
+  if (back && /<button class="primary ll-open"/.test(h)) h = h.slice(back.length + 11);
+  return h.replace(/<div class="card">(<div class="pupil)/, '<div class="card roll-fit">$1')
+    .replace(/(<button class="primary ll-open"[^>]*>[\s\S]*?<\/button>)(<div class="count">[\s\S]*?<\/div>)/, (m0, a, b) => '<div class="roll-bar">' + back + a + b + '</div>');
+};
+function fitRoll() {
+  const list = document.querySelector('.roll-fit');
+  if (!list) return;
+  const width = list.clientWidth, phone = innerWidth < 700, minCol = phone ? 165 : 290, most = Math.max(1, Math.min(6, Math.floor(width / minCol)));
+  const room = innerHeight - (list.getBoundingClientRect().top + scrollY) - 12, n = list.querySelectorAll(':scope > .pupil').length;
+  let cols = 1;
+  for (; cols <= most; cols++) {
+    list.style.setProperty('--roll-cols', cols);
+    list.classList.toggle('multi', cols > 1);
+    list.classList.toggle('narrow', phone && cols > 1);
+    if (list.scrollHeight <= room || cols >= n) break;
+  }
+  // Nothing fits: a computer keeps the most columns (least scrolling); a phone goes back to one tidy column, easier to scroll than two.
+  if (cols > most) { cols = phone ? 1 : most; list.style.setProperty('--roll-cols', cols); list.classList.toggle('multi', cols > 1); list.classList.toggle('narrow', phone && cols > 1); }
+}
+const renderBeforeRollFit = render;
+render = function () { renderBeforeRollFit(); try { fitRoll(); } catch (e) {} };
+let fitRollTimer = 0;
+addEventListener('resize', () => { clearTimeout(fitRollTimer); fitRollTimer = setTimeout(() => { try { fitRoll(); } catch (e) {} }, 120); });
+
+/* ---------- Search (staff via owner 09/11: "cái thanh tìm kiếm... để em tìm các thứ ở trong đó mà không cần tìm. Ví dụ em tìm Arthur thì
+ * nó sẽ ra Arthur trong danh mục phạt") ----------
+ * A magnifier in the top bar (or Ctrl+K, or "/") opens one box. Typing a pupil, class or staff name lists every place the app already
+ * knows it from: penalty ladder, sent home, KIDS homework owed, pupils of class sheets already read, classes, staff. Each person only
+ * finds what their own pages show them. A tap goes to that place and the line flashes there. Accents and case do not matter. */
+const finder = { open: false, q: '', focus: '' };
+const fold = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/\s+/g, ' ').trim();
+const FIND_GROUPS = [['phat', '⚠️', 'Danh sách phạt', 'Penalty ladder'], ['sent', '🚪', 'Cho về · nhắn phụ huynh', 'Sent home'], ['no', '📚', 'Nợ bài (KIDS)', 'Homework owed'],
+  ['hs', '🧒', 'Học sinh', 'Pupils'], ['lop', '🏫', 'Lớp', 'Classes'], ['nguoi', '👤', 'Nhân sự', 'Staff']];
+// The class's session to open: today's first, else the next one, else the latest, in the weeks already read.
+function finderSession(key) {
+  const all = Object.values(weeks).flatMap(w => (w && w.data ? w.data.sessions : [])).filter(s => !s.off && (s.classKey === key || Q.key(String(s.cls).replace(/\.\d+$/, '')) === key));
+  const t = today();
+  return all.filter(s => s.day >= t).sort((a, b) => a.day.localeCompare(b.day) || a.start - b.start)[0] || all.sort((a, b) => b.day.localeCompare(a.day))[0] || null;
+}
+function finderResults(q) {
+  const k = fold(q);
+  if (k.length < 2) return [];
+  const hit = (...xs) => xs.some(x => fold(x).includes(k)), t = today(), week = weeks[Q.weekTab(tabs, t)] || null, out = [];
+  const add = (group, title, sub, go) => out.push({ group, title, sub, go });
+  const seeLadder = x => isManager() || isTaSide(week) || isMe(homeroom[Q.key(x.cls)] || '');
+  (ladder.rows || []).filter(seeLadder).forEach(x => {
+    if (!hit(x.name, x.cls)) return;
+    const m = x.name.match(/^(.*?)\s*\(([^)]+)\)\s*$/), eng = m ? m[2] : '', full = m ? m[1] : x.name;
+    add('phat', (eng ? eng + ' · ' : '') + full, 'M' + x.level + ' · ' + x.cls + (x.since ? T(' · từ ', ' · since ') + String(x.since).slice(0, 5) : '') + (x.reason ? ' · ' + x.reason : ''), { view: 'lich', sec: 'phat', lad: 'tat', focus: eng || full });
+  });
+  try { sentHomeList(week).forEach(x => { if (hit(x.name, x.eng, x.cls)) add('sent', (x.eng ? x.eng + ' · ' : '') + x.name, x.cls + ' · ' + x.since.slice(0, 5) + (x.done ? T(' · đã nhắn PH', ' · parents told') : T(' · chưa nhắn PH', ' · not told yet')), { view: 'lich', sec: 'phat', focus: x.eng || x.name }); }); } catch (e) {}
+  (buBai.rows || []).forEach(x => { if (hit(x.name, x.cls)) add('no', x.name, x.cls + (x.reason ? ' · ' + x.reason : '') + (x.items ? ' · ' + x.items.split('\n')[0].slice(0, 80) : ''), { view: 'lopcn', focus: x.name }); });
+  Object.entries(trackers).forEach(([key, tr]) => {
+    const c = classList.find(z => z.key === key);
+    (tr && tr.pupils || []).forEach(p => { if (hit(p.name, p.eng)) add('hs', (p.eng ? p.eng + ' · ' : '') + p.name, c ? c.name : key, { cls: key }); });
+  });
+  classList.forEach(c => { if (!hit(c.name)) return; const s = finderSession(c.key); add('lop', c.name, s ? (s.day === t ? T('Hôm nay ', 'Today ') : dayLabel(s.day) + ' ') + Q.clock(s.start) + (s.lesson ? T(' · tiết ', ' · lesson ') + s.lesson : '') : T('Chưa có buổi trong các tuần đã mở', 'No session in the weeks read'), { cls: c.key }); });
+  (people || []).forEach(p => { if (hit(p.name)) add('nguoi', p.name, p.role || '', null); });
+  return out;
+}
+function finderHtml() {
+  if (!finder.open) return '';
+  const res = finderResults(finder.q), k = fold(finder.q);
+  const mark = s => { const f = fold(s), i = k ? f.indexOf(k) : -1; return i < 0 || f.length !== String(s).length ? esc(s) : esc(String(s).slice(0, i)) + '<mark>' + esc(String(s).slice(i, i + k.length)) + '</mark>' + esc(String(s).slice(i + k.length)); };
+  let body;
+  if (k.length < 2) body = '<div class="fd-hint">' + T('Gõ tên học sinh (tiếng Anh hoặc tiếng Việt, không cần dấu), tên lớp hoặc tên nhân sự.', 'Type a pupil, class or staff name.') + '</div>';
+  else if (!res.length) body = '<div class="fd-hint">' + T('Không thấy "', 'Nothing for "') + esc(finder.q) + T('" trong những gì app đang có.', '".') + '</div>';
+  else body = FIND_GROUPS.map(([g, icon, vi, en]) => {
+    const list = res.map((r, i) => Object.assign({ i }, r)).filter(r => r.group === g);
+    if (!list.length) return '';
+    return '<div class="fd-group"><div class="fd-head">' + icon + ' ' + T(vi, en) + ' <span>' + list.length + '</span></div>' + list.slice(0, 30).map(r =>
+      '<button class="fd-row' + (r.go ? '' : ' fd-static') + '" data-act="finderGo" data-i="' + r.i + '"><b>' + mark(r.title) + '</b><small>' + mark(r.sub) + '</small></button>').join('') + (list.length > 30 ? '<div class="fd-hint">+' + (list.length - 30) + '</div>' : '') + '</div>';
+  }).join('');
+  return '<div class="dash-veil" data-act="finderClose"></div><div class="dash-modal fd-modal" role="dialog" aria-label="' + T('Tìm kiếm', 'Search') + '"><div class="fd-bar">' + svgI(ICO_FIND) +
+    '<input id="finderInput" type="search" autocomplete="off" spellcheck="false" placeholder="' + T('Tìm học sinh, lớp, nhân sự…', 'Find a pupil, class, staff…') + '" value="' + esc(finder.q) + '">' +
+    '<button class="quiet" data-act="finderClose" aria-label="' + T('Đóng', 'Close') + '">✕</button></div><div class="dash-body fd-body">' + body + '</div></div>';
+}
+const ICO_FIND = '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>';
+function paintFinder() {
+  let host = document.getElementById('finderHost');
+  if (!host) { host = document.createElement('div'); host.id = 'finderHost'; document.body.appendChild(host); }
+  if (!finder.open) { host.innerHTML = ''; return; }
+  const input = document.getElementById('finderInput');
+  if (input) { const body = host.querySelector('.fd-body'), fresh = document.createElement('div'); fresh.innerHTML = finderHtml(); const nb = fresh.querySelector('.fd-body'); if (body && nb) body.innerHTML = nb.innerHTML; return; }
+  host.innerHTML = finderHtml();
+  const el = document.getElementById('finderInput');
+  if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+}
+function openFinder() {
+  finder.open = true; paintFinder();
+  // What the search reads: the ladder, the KIDS owed list and the marks (each is kept a few minutes, so this is usually instant).
+  Promise.all([loadLadder(), loadBuBai(), loadMarks(), loadHomeroom()].map(p => Promise.resolve(p).catch(() => null))).then(() => { if (finder.open) paintFinder(); });
+}
+function closeFinder() { finder.open = false; paintFinder(); }
+function finderButton() {
+  const bar = document.querySelector('header .bar'), bellBtn = document.getElementById('btnBell');
+  if (!bar || !bellBtn || document.getElementById('btnFind') || !me) return;
+  const b = document.createElement('button');
+  b.id = 'btnFind'; b.className = 'quiet bell'; b.dataset.act = 'finder'; b.title = T('Tìm kiếm (Ctrl+K)', 'Search (Ctrl+K)'); b.setAttribute('aria-label', T('Tìm kiếm', 'Search'));
+  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICO_FIND + '</svg>';
+  bar.insertBefore(b, bellBtn);
+}
+// After a jump, the matching line is scrolled to and flashes (tried a few times while the page fills in).
+function finderFlash() {
+  const want = fold(finder.focus);
+  if (!want) return;
+  const tryOnce = () => {
+    const el = [...document.querySelectorAll('.lad b, .sent-job b, .dw-row b, .cn-card b, .pupil .who b, .rv-name, b')].find(x => fold(x.textContent) === want || fold(x.textContent).includes(want));
+    if (!el) return false;
+    const box = el.closest('.lad, .sent-job, .dw-row, .card, .pupil') || el;
+    box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    box.classList.remove('fd-flash'); void box.offsetWidth; box.classList.add('fd-flash');
+    return true;
+  };
+  [250, 900, 2200].forEach(ms => setTimeout(() => { if (finder.focus && tryOnce()) finder.focus = ''; }, ms));
+}
+function finderGo(r) {
+  if (!r || !r.go) return;
+  closeFinder();
+  const g = r.go;
+  if (g.cls) {
+    const s = finderSession(g.cls);
+    if (s && classOf(s)) { openClass(s); return; }
+    view = 'lopcn'; render(); return;
+  }
+  day = today(); view = g.view;
+  if (g.sec) filters.sec = g.sec;
+  if (g.lad) filters.lad = g.lad;
+  if (view === 'lich' && isManager()) filters.showAll = false;
+  finder.focus = g.focus || '';
+  render(); window.scrollTo(0, 0);
+  if (view === 'lich') guarded(() => weekOf(day)); else if (view === 'lopcn' && typeof loadHomerooms === 'function') loadHomerooms();
+  finderFlash();
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  if (b.dataset.act === 'finder') openFinder();
+  if (b.dataset.act === 'finderClose') closeFinder();
+  if (b.dataset.act === 'finderGo') finderGo(finderResults(finder.q)[Number(b.dataset.i)]);
+});
+document.addEventListener('input', e => { if (e.target && e.target.id === 'finderInput') { finder.q = e.target.value; paintFinder(); } });
+document.addEventListener('keydown', e => {
+  if (!me) return;
+  const typing = /INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || '') || (e.target && e.target.isContentEditable);
+  if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); finder.open ? closeFinder() : openFinder(); return; }
+  if (e.key === '/' && !typing && !finder.open) { e.preventDefault(); openFinder(); return; }
+  if (e.key === 'Escape' && finder.open) { closeFinder(); return; }
+  if (e.key === 'Enter' && finder.open && e.target && e.target.id === 'finderInput') { const r = finderResults(finder.q).find(x => x.go); if (r) finderGo(r); }
+});
+const renderBeforeFinder = render;
+render = function () { renderBeforeFinder(); try { finderButton(); } catch (e) {} };
