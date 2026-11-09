@@ -2,7 +2,23 @@
 <html lang="vi" data-theme="light" translate="no">
 <head>
 <meta charset="utf-8">
-<style id="first-frame">html{background:#F1F5F9}html[data-theme=dark]{background:#0f141b}</style>
+<style id="first-frame">html{background:#F1F5F9}html[data-theme=dark]{background:#0f141b}  /* Nhân sự & lương (owner 10/11: gọn như MISA) */
+  .ns-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 10px; }
+  .ns-bar input[type=search] { flex: 1 1 200px; max-width: 320px; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 15px; }
+  .ns-bar .chip, .ns-kinds .chip { height: 30px; padding: 0 12px; font-size: 13px; cursor: pointer; border: 1px solid var(--line); }
+  .ns-bar .chip.on, .ns-kinds .chip.on { background: var(--accent, #1d4ed8); color: #fff; border-color: transparent; }
+  .ns-kinds { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+  .ns-table table { width: 100%; border-collapse: collapse; }
+  .ns-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 2px solid var(--line); white-space: nowrap; }
+  .ns-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .ns-table tbody tr { cursor: pointer; } .ns-table tbody tr:hover { background: var(--soft); }
+  .ns-table .num { text-align: right; white-space: nowrap; }
+  .ns-form h4 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .ns-sec { margin: 10px 0; }
+  .ns-save { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 10px 0 2px; background: var(--card); border-top: 1px solid var(--line); margin-top: 12px; }
+  .ns-due { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+  @media (max-width: 640px) { .ns-table th:nth-child(2), .ns-table td:nth-child(2), .ns-table th:nth-child(4), .ns-table td:nth-child(4) { display: none; } }
+</style>
 <!-- The app has its own English; a browser translation turns pupils' names into words (TONY became TODAY, 08/11). -->
 <meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1311,10 +1327,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109AX"></script>
-<script src="logic.js?v=20261109AX"></script>
-<script src="app.js?v=20261109AX"></script>
-<script src="qrcode.js?v=20261109AX"></script>
-<script src="extra.js?v=20261109AX"></script>
+<script src="config.js?v=20261110A"></script>
+<script src="logic.js?v=20261110A"></script>
+<script src="app.js?v=20261110A"></script>
+<script src="qrcode.js?v=20261110A"></script>
+<script src="extra.js?v=20261110A"></script>
 </body>
 </html>

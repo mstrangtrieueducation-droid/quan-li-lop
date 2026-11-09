@@ -4589,3 +4589,502 @@ viewClass = function () {
   const add = (cp ? '<span class="doc-copies">🧾 ' + T('Cần in ', 'Print ') + '<b>' + cp.total + '</b>' + T(' bản', ' copies') + ' <small>(' + cp.n + ' HS + ' + cp.spare + ')</small></span>' : '') + (done ? '<span class="tag ok">✓ ' + T('Đã in', 'Printed') + ' · ' + esc(done.by || '?') + '</span>' : '');
   return h.replace(/(<div class="doc-row">[\s\S]*?)(<\/div>)/, (m0, a, b) => a + add + b);
 };
+
+/* ---------- Nhân sự & lương trong Điều hành (owner 10/11/2026: "từ giờ tôi muốn chỉ thao tác ở webapp phần điều hành, còn sheet lưu
+ * lại... thêm nhân viên mới rồi 1 tháng thử việc") ----------
+ * Owner only. Staff records are rows of quanli NHAN_VIEN (newest row per person wins; a change is a new row, the old ones stay as
+ * history). From them and the Schedule counts the app lays out the month's payroll draft in the payroll workbook, the owner types
+ * the yellow cells (thưởng thêm, trừ khác, tạm ứng, tỷ giá) on the Lương page, and "Chốt" hands it to staff.
+ * Probation: at least 85% of the pay (BLLĐ 2019 art. 26), at most 60 days (art. 25); the result is due when it ends (art. 27). */
+const NS_STATUS = ['Thử việc', 'Chính thức', 'Tạm dừng', 'Đã nghỉ'];
+const NS_KINDS = ['KIDS', 'KINDER', 'FIGHTER', 'JUNIOR', 'TA', 'TUTOR', 'IELTS TUTOR', 'IELTS', 'CLASS KHÁC'];
+const NS_POS = ['Giáo viên', 'Trợ giảng', 'Trợ giảng part-time', 'Gia sư', 'Chấm, chữa bài', 'Quản lí', 'Giáo viên nước ngoài', 'Bảo vệ', 'Tạp vụ', 'Nhân viên văn phòng'];
+const ns = { rows: null, hd: null, err: '', busy: '', form: null, month: '', fx: '', msg: '' };
+const nsJson = t => { try { const o = JSON.parse(t || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } };
+const nsRow = r => ({ at: r[0], name: Q.key(r[1]), full: Q.clean(r[2]), group: Q.clean(r[3]) === 'GVNN' ? 'GVNN' : 'NVVN', pos: Q.clean(r[4]), status: Q.clean(r[5]) || 'Chính thức',
+  start: Q.clean(r[6]), trial: Q.clean(r[7]), pct: Number(r[8]) || 100, sum: Q.clean(r[9]), rate: nsJson(r[10]), note: Q.clean(r[11]), id: nsJson(r[12]), by: Q.clean(r[13]) });
+const nsMoney = n => n === '' || n == null || isNaN(Number(n)) ? '' : Number(n).toLocaleString('vi-VN');
+const nsNum = v => { const s = String(v == null ? '' : v).replace(/[^\d,.\-]/g, ''); if (!s) return ''; const n = Number(/,\d{1,2}$/.test(s) ? s.replace(/\./g, '').replace(',', '.') : s.replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.')); return isFinite(n) ? n : ''; };
+const nsAddMonths = (iso, n) => { const d = Q.fromIso(iso); const want = d.getMonth() + n; d.setMonth(want); if (d.getMonth() !== ((want % 12) + 12) % 12) d.setDate(0); return Q.iso(d); };
+function nsLatest() { const m = new Map(); (ns.rows || []).forEach(r => { if (r.name) m.set(r.name, r); }); return m; }
+function nsActive() { return [...nsLatest().values()].filter(r => r.status !== 'Đã nghỉ'); }
+async function loadNs() {
+  const [rows, hdRows] = await batchGet(CONFIG.quanLiId, ['NHAN_VIEN!A2:N', 'HOP_DONG!A2:K']);
+  ns.rows = rows.map(nsRow); ns.hd = hdRows.map(hdRow); hd.rows = ns.hd;
+  if (!nguoi) call('nguoi', {}).then(r => { nguoi = r; render(); }).catch(() => {});
+}
+// One line of money rules, written into the record so the sheet stays readable on its own.
+function nsSummary(g, r) {
+  const p = [], m = n => nsMoney(n) + ' đ', u = n => n + '$';
+  if (g === 'GVNN') {
+    if (r.base) p.push('Lương cơ bản ' + m(r.base) + ' = ' + (r.baseH || 0) + ' giờ đầu');
+    if (r.r) p.push((r.usd ? u(r.r) + ' × tỷ giá' : m(r.r)) + '/giờ');
+    if (r.r101) p.push('từ giờ 101: ' + (r.usd ? u(r.r101) + ' × tỷ giá' : m(r.r101)));
+    if (r.ielts) p.push('lớp IELTS ' + (r.usd ? u(r.ielts) + ' × tỷ giá' : m(r.ielts)) + '/giờ');
+    if (r.bonus) p.push('thưởng ' + m(r.bonus) + '/tháng');
+    if (r.nha) p.push('nhà ở ' + (r.nhaUsd ? u(r.nha) + ' × tỷ giá' : m(r.nha)) + (r.nhaFree ? ' (không tính thuế)' : ''));
+  } else {
+    if (r.c) p.push('lương cố định ' + m(r.c));
+    if (r.d) p.push('thưởng ' + m(r.d));
+    if (r.gs) p.push('gia sư ' + m(r.gs) + '/công (' + (r.gsK || ['TUTOR']).join(', ').replace('CHAM', 'bảng chấm bài') + ')');
+    if (r.dl) p.push('dạy-đứng lớp ' + m(r.dl) + '/công (' + (r.dlK || []).join(', ') + ')');
+    if (r.tg) p.push('trợ giảng ' + m(r.tg) + '/giờ');
+    if (r.ch) p.push('chấm bài ' + m(r.ch) + '/bài');
+    if (r.npt) p.push(r.npt + ' người phụ thuộc');
+  }
+  p.push(r.bh ? 'đóng BH ' + String(r.bhRate || 10.5).replace('.', ',') + '% trên ' + m(r.bh) : 'không đóng BH');
+  if (r.thue) p.push((NS_TAX_MODES.find(x => x[0] === r.thue) || ['', ''])[1].split(' (')[0]);
+  return p.join(' · ');
+}
+function nsState(r) {
+  const t = today();
+  if (r.status === 'Thử việc' && r.trial) {
+    const left = Math.round((Q.fromIso(r.trial) - Q.fromIso(t)) / 864e5);
+    return left < 0 ? ['bad', 'Hết thử việc ' + viDate(r.trial) + ' · chưa đánh giá'] : left <= 7 ? ['warn', 'Thử việc đến ' + viDate(r.trial) + ' · còn ' + left + ' ngày'] : ['warn', 'Thử việc ' + r.pct + '% đến ' + viDate(r.trial)];
+  }
+  return r.status === 'Tạm dừng' ? ['', 'Tạm dừng'] : r.status === 'Đã nghỉ' ? ['', 'Đã nghỉ'] : ['ok', 'Chính thức'];
+}
+function nsContract(r) {
+  const c = [...(ns.hd || [])].reverse().find(x => Q.key(x.person) === r.name && x.status !== 'Đã xoá');
+  if (!c) return '<span class="tag bad">Chưa có hợp đồng</span>';
+  const t = today(), end = c.end;
+  return '<span class="tag ' + (end && end < t ? 'bad' : end && end <= Q.addDays(t, 30) ? 'warn' : 'ok') + '">' + esc(c.type) + (end ? ' · đến ' + viDate(end) : '') + '</span>';
+}
+function nsPanel() {
+  if (!isOwner()) return '<div class="card empty">Chỉ cô Trang xem phần này.</div>';
+  let h = '<p class="small muted">Sửa ở đây, app tự lưu vào sheet (tab NHAN_VIEN của file quản lí, bảng lương tháng ở file BẢNG LƯƠNG THÁNG). Không cần mở sheet.</p>';
+  if (ns.err) h += '<div class="notice bad">' + esc(ns.err) + '</div>';
+  if (ns.msg) h += '<div class="notice">' + esc(ns.msg) + '</div>';
+  if (!ns.rows) return h + '<div class="card empty">Đang đọc danh sách nhân sự…</div>';
+  const list = nsActive();
+  const due = list.filter(r => r.status === 'Thử việc' && r.trial && r.trial <= Q.addDays(today(), 7));
+  due.forEach(r => {
+    h += '<div class="card row ns-due"><div class="row-top"><b>⏳ ' + esc(r.full || r.name) + '</b><span class="tag ' + nsState(r)[0] + '">' + esc(nsState(r)[1]) + '</span></div>' +
+      '<div class="small">Hết thử việc phải báo kết quả cho người lao động (Điều 27 BLLĐ). Đạt thì ký hợp đồng chính thức, lương từ ' + viDate(Q.addDays(r.trial, 1)) + ' tính 100%.</div>' +
+      '<div class="choices"><button class="good" data-act="nsPass" data-n="' + esc(r.name) + '">✓ Đạt, chuyển chính thức</button><button class="low" data-act="nsFail" data-n="' + esc(r.name) + '">Không đạt, nghỉ từ ' + viDate(Q.addDays(r.trial, 1)) + '</button></div></div>';
+  });
+  h += '<div class="choices"><button class="primary" data-act="nsNew">+ Thêm nhân viên mới</button></div>';
+  if (ns.form) h += nsFormHtml();
+  h += nsPayCard();
+  ['NVVN', 'GVNN'].forEach(g => {
+    const part = list.filter(r => r.group === g).sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+    if (!part.length) return;
+    h += '<h2>' + (g === 'NVVN' ? 'Nhân viên, giáo viên Việt Nam' : 'Giáo viên nước ngoài') + ' <span class="muted small">(' + part.length + ')</span></h2><div class="list">' +
+      part.map(r => { const [tone, text] = nsState(r), hasLink = nguoi && nguoi.people.some(p => Q.key(p.name) === r.name);
+        return '<div class="card row"><div class="row-top"><b>' + esc(r.full || r.name) + '</b><span class="muted small">' + esc(r.name) + (r.pos ? ' · ' + esc(r.pos) : '') + '</span><span class="spacer"></span><button class="quiet" data-act="nsEdit" data-n="' + esc(r.name) + '">Sửa</button></div>' +
+          '<div><span class="tag ' + tone + '">' + esc(text) + '</span> ' + nsContract(r) + (nguoi ? ' <span class="tag' + (hasLink ? ' ok' : '') + '">' + (hasLink ? 'Có link app' : 'Chưa có link app') + '</span>' : '') + '</div>' +
+          '<div class="small muted">' + esc(r.sum || nsSummary(r.group, r.rate)) + '</div></div>'; }).join('') + '</div>';
+  });
+  const gone = [...nsLatest().values()].filter(r => r.status === 'Đã nghỉ');
+  if (gone.length) h += '<details class="card row"><summary>Đã nghỉ (' + gone.length + ')</summary>' + gone.map(r => '<div class="row-top small faded"><span>' + esc(r.full || r.name) + '</span><span class="spacer"></span><button class="quiet" data-act="nsEdit" data-n="' + esc(r.name) + '">Xem / đi làm lại</button></div>').join('') + '</details>';
+  return h;
+}
+
+/* The add / edit form. */
+function nsBlank() { return { id: {}, isNew: true, group: 'NVVN', status: 'Thử việc', start: today(), trialMode: '1', trial: Q.addDays(nsAddMonths(today(), 1), -1), pct: 85, app: 'GV', hdOn: true, rate: { gsK: ['TUTOR'], dlK: ['KIDS', 'FIGHTER', 'TA', 'IELTS TUTOR'] } }; }
+function nsFormFrom(r) { return { isNew: false, name: r.name, full: r.full, group: r.group, pos: r.pos, status: r.status, start: r.start, trialMode: r.trial ? 'date' : '0', trial: r.trial, pct: r.pct, note: r.note, rate: JSON.parse(JSON.stringify(r.rate || {})), id: Object.assign({}, r.id || {}), app: '', hdOn: false }; }
+function nsFormHtml() {
+  const f = ns.form, r = f.rate, g = f.group;
+  const inp = (k, label, val, extra) => '<label>' + label + '<input data-act="nsF" data-k="' + k + '" value="' + esc(val == null ? '' : val) + '"' + (extra || '') + '></label>';
+  const money = (k, label) => inp('r.' + k, label, nsMoney(r[k]), ' inputmode="numeric"');
+  const kinds = (k, label) => '<div class="ns-kinds"><span class="small muted">' + label + '</span>' + NS_KINDS.concat(k === 'gsK' ? ['CHAM'] : []).map(x => '<button class="chip' + ((r[k] || []).includes(x) ? ' on' : '') + '" data-act="nsKind" data-k="' + k + '" data-v="' + esc(x) + '">' + esc(x === 'CHAM' ? 'Bảng chấm bài' : x) + '</button>').join('') + '</div>';
+  const names = nguoiChoices().map(x => x.name).concat([...nsLatest().keys()]);
+  let h = '<div class="card ns-form"><h3>' + (f.isNew ? 'Thêm nhân viên mới' : 'Sửa: ' + esc(f.full || f.name)) + '</h3><div class="form-grid">' +
+    (f.isNew ? inp('name', 'Tên trên Schedule (để app đếm công)', f.name, ' list="nsNames" placeholder="VD: MAI ANH"') + '<datalist id="nsNames">' + [...new Set(names)].map(n => '<option value="' + esc(n) + '">').join('') + '</datalist>' : '') +
+    inp('full', 'Họ tên đầy đủ', f.full, ' placeholder="Như trên CCCD"') +
+    '<label>Nhóm<select data-act="nsF" data-k="group"><option value="NVVN"' + (g === 'NVVN' ? ' selected' : '') + '>Việt Nam</option><option value="GVNN"' + (g === 'GVNN' ? ' selected' : '') + '>Nước ngoài</option></select></label>' +
+    inp('pos', 'Vị trí', f.pos, ' list="nsPos"') + '<datalist id="nsPos">' + NS_POS.map(p => '<option value="' + esc(p) + '">').join('') + '</datalist>' +
+    inp('start', 'Ngày vào làm', f.start, ' type="date"') +
+    (f.isNew ? '' : '<label>Trạng thái<select data-act="nsF" data-k="status">' + NS_STATUS.map(s => '<option' + (f.status === s ? ' selected' : '') + '>' + s + '</option>').join('') + '</select></label>') +
+    '<label>Thử việc<select data-act="nsF" data-k="trialMode">' + [['0', 'Không thử việc'], ['1', '1 tháng'], ['2', '2 tháng (tối đa 60 ngày)'], ['date', 'Đến ngày…']].map(([v, t]) => '<option value="' + v + '"' + (String(f.trialMode) === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select></label>' +
+    (f.trialMode !== '0' ? inp('trial', 'Thử việc đến hết ngày', f.trial, ' type="date"') + inp('pct', 'Lương thử việc (% lương chính thức, ít nhất 85)', f.pct, ' type="number" min="85" max="100"') : '') +
+    (f.status === 'Đã nghỉ' ? inp('r.het', 'Làm đến hết ngày', r.het || '', ' type="date"') : '') +
+    '</div><h4>Lương</h4><div class="form-grid">';
+  if (g === 'NVVN') {
+    h += money('c', 'Lương cố định / tháng (đ)') + money('d', 'Thưởng hoàn thành CV / tháng (đ)') + money('gs', 'Gia sư (đ/công)') + money('dl', 'Dạy - đứng lớp (đ/công)') + money('tg', 'Trợ giảng theo giờ (đ/giờ)') + money('ch', 'Chấm, chữa bài (đ/bài)') +
+      money('bh', 'Đóng bảo hiểm trên mức (đ, để trống = không đóng)') + inp('r.npt', 'Người phụ thuộc', r.npt || '', ' type="number" min="0" max="9"') + '</div>' +
+      (r.gs ? kinds('gsK', 'Gia sư tính các buổi:') : '') + (r.dl ? kinds('dlK', 'Dạy - đứng lớp tính các buổi:') : '') +
+      (r.tg ? '<p class="small muted">Giờ trợ giảng lấy từ ô chấm công part-time của Schedule (app ghi từ Vào ca / Ra ca).</p>' : '') + (r.ch ? '<p class="small muted">Số bài lấy từ bảng chấm bài (CHẤM CÔNG TỔNG HỢP, cột R:W).</p>' : '');
+  } else {
+    h += '<label>Tính lương theo<select data-act="nsF" data-k="r.usd"><option value=""' + (r.usd ? '' : ' selected') + '>Tiền Việt (đ)</option><option value="1"' + (r.usd ? ' selected' : '') + '>Đô la × tỷ giá tháng</option></select></label>' +
+      inp('r.r', 'Đơn giá giờ (' + (r.usd ? '$' : 'đ') + ')', r.usd ? r.r || '' : nsMoney(r.r)) + inp('r.r101', 'Đơn giá từ giờ 101 (' + (r.usd ? '$' : 'đ') + ', trống = giữ nguyên)', r.usd ? r.r101 || '' : nsMoney(r.r101)) +
+      inp('r.ielts', 'Lớp IELTS (' + (r.usd ? '$' : 'đ') + '/giờ, trống = như giờ thường)', r.usd ? r.ielts || '' : nsMoney(r.ielts)) +
+      money('base', 'Lương cơ bản (đ, gói giờ đầu)') + inp('r.baseH', 'Số giờ trong lương cơ bản', r.baseH || '', ' type="number" min="0"') + money('bonus', 'Thưởng / tháng (đ)') +
+      inp('r.nha', 'Trợ cấp nhà ở (' + (r.nhaUsd ? '$' : 'đ') + ')', r.nhaUsd ? r.nha || '' : nsMoney(r.nha)) +
+      '<label>Nhà ở tính bằng<select data-act="nsF" data-k="r.nhaUsd"><option value="">đ</option><option value="1"' + (r.nhaUsd ? ' selected' : '') + '>$ × tỷ giá</option></select></label>' +
+      '<label>Nhà ở chịu thuế?<select data-act="nsF" data-k="r.nhaFree"><option value="">Có tính thuế</option><option value="1"' + (r.nhaFree ? ' selected' : '') + '>Không tính thuế</option></select></label>' +
+      (r.usd ? '' : inp('r.fx', 'Tỷ giá cố định ghi trong hợp đồng (nếu có)', r.fx || '')) + money('bh', 'Đóng bảo hiểm trên mức (đ, trống = không)') + '</div>';
+  }
+  const id = f.id || (f.id = {});
+  h += '<h4>Bảo hiểm và thuế</h4><div class="form-grid">' +
+    '<label>Tỷ lệ người lao động đóng BH<select data-act="nsF" data-k="r.bhRate">' + [['', '10,5% (BHXH 8% + BHYT 1,5% + BHTN 1%)'], ['9.5', '9,5% (không có BHTN, VD người nước ngoài)'], ['1.5', '1,5% (chỉ BHYT)']].map(([v, t]) => '<option value="' + v + '"' + (String(r.bhRate || '') === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select></label>' +
+    '<label>Cách tính thuế TNCN<select data-act="nsF" data-k="r.thue">' + NS_TAX_MODES.map(([v, t]) => '<option value="' + v + '"' + ((r.thue || '') === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select></label></div>' +
+    '<h4>Hồ sơ (chỉ cô thấy; in vào cột họ tên của bảng lương)</h4><div class="form-grid">' +
+    inp('id.cccd', 'Số CCCD / hộ chiếu', id.cccd || '') + inp('id.ns', 'Ngày sinh', id.ns || '', ' type="date"') + inp('id.mst', 'Mã số thuế cá nhân', id.mst || '') +
+    inp('id.bank', 'Ngân hàng', id.bank || '', ' placeholder="VD: Vietcombank Phú Thọ"') + inp('id.stk', 'Số tài khoản', id.stk || '', ' inputmode="numeric"') + inp('id.phone', 'Điện thoại', id.phone || '') + '</div>' +
+    (f.isNew ? '' : '<div class="choices"><button class="quiet" data-act="nsHoSo">Lấy CCCD, STK từ bảng lương gần nhất</button></div>');
+  h += '<div class="form-grid">' + inp('note', 'Ghi chú', f.note || '') + '</div>';
+  if (f.isNew) h += '<div class="form-grid"><label>Link app<select data-act="nsF" data-k="app">' + [['GV', 'Tạo link vai trò GV'], ['TA', 'Tạo link vai trò TA'], ['Quản lí', 'Tạo link vai trò Quản lí'], ['', 'Không tạo link']].map(([v, t]) => '<option value="' + v + '"' + (f.app === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select></label>' +
+    '<label>Hợp đồng<select data-act="nsF" data-k="hdOn"><option value="1"' + (f.hdOn ? ' selected' : '') + '>Ghi hợp đồng ' + (f.trialMode !== '0' ? 'thử việc' : 'vào trang Hợp đồng') + '</option><option value=""' + (f.hdOn ? '' : ' selected') + '>Để sau</option></select></label></div>';
+  h += '<p class="small muted">Thử việc: tối đa 60 ngày với việc cần trình độ cao đẳng trở lên, 30 ngày với trung cấp, 6 ngày làm việc với việc khác; lương thử việc ít nhất 85%. Tháng có thử việc, app tính phần lương cố định và đơn giá theo số ngày, số buổi trong thời gian thử việc.</p>' +
+    '<div class="choices"><button class="primary" data-act="nsSave"' + (ns.busy ? ' disabled' : '') + '>' + (ns.busy === 'save' ? 'Đang lưu…' : 'Lưu') + '</button><button class="quiet" data-act="nsCancel">Huỷ</button></div></div>';
+  return h;
+}
+function nsField(k, v) {
+  const f = ns.form; if (!f) return;
+  if (k.startsWith('id.')) { f.id = f.id || {}; f.id[k.slice(3)] = Q.clean(v); return false; }
+  if (k.startsWith('r.')) {
+    const key = k.slice(2), textKeys = ['het', 'thue', 'bhRate'], flags = ['usd', 'nhaUsd', 'nhaFree'];
+    f.rate[key] = flags.includes(key) ? (v ? 1 : 0) : textKeys.includes(key) ? v : (f.group === 'GVNN' && f.rate.usd && ['r', 'r101', 'ielts'].includes(key)) || (key === 'nha' && f.rate.nhaUsd) || ['npt', 'baseH'].includes(key) ? (v === '' ? '' : Number(String(v).replace(',', '.'))) : nsNum(v);
+    return flags.includes(key) || ['gs', 'dl', 'tg', 'ch'].includes(key);
+  }
+  f[k] = k === 'pct' ? Number(v) : k === 'hdOn' ? !!v : v;
+  if (k === 'trialMode' || k === 'start') { if (f.trialMode === '1' || f.trialMode === '2') f.trial = Q.addDays(nsAddMonths(f.start || today(), Number(f.trialMode)), -1); if (f.trialMode === '0') f.trial = ''; }
+  if (k === 'group' && v === 'GVNN' && f.isNew) { f.rate = { usd: 1, bh: '' }; f.pos = f.pos || 'Giáo viên nước ngoài'; }
+  if (k === 'group' && v === 'NVVN' && f.isNew) f.rate = { gsK: ['TUTOR'], dlK: ['KIDS', 'FIGHTER', 'TA', 'IELTS TUTOR'] };
+  return ['group', 'trialMode', 'status', 'start'].includes(k);
+}
+async function nsSave() {
+  const f = ns.form;
+  const name = Q.key(f.name || ''), full = Q.clean(f.full || '').toUpperCase();
+  if (!name || name.length > 60) return say('Ghi tên đúng như trên Schedule để app đếm công.', 'bad');
+  if (f.isNew && nsLatest().has(name) && nsLatest().get(name).status !== 'Đã nghỉ') return say(name + ' đã có trong danh sách. Bấm Sửa ở dòng đó.', 'bad');
+  if (!f.start) return say('Chọn ngày vào làm.', 'bad');
+  const trial = f.trialMode === '0' ? '' : f.trial;
+  if (trial) {
+    if (trial < f.start) return say('Ngày hết thử việc phải sau ngày vào làm.', 'bad');
+    if (Q.fromIso(trial) - Q.fromIso(f.start) > 59 * 864e5) return say('Thử việc tối đa 60 ngày (Điều 25 BLLĐ).', 'bad');
+    if (!(f.pct >= 85 && f.pct <= 100)) return say('Lương thử việc ít nhất 85% lương chính thức (Điều 26 BLLĐ).', 'bad');
+  }
+  const rate = Object.fromEntries(Object.entries(f.rate).filter(([k, v]) => v !== '' && v != null && v !== 0 && !(Array.isArray(v) && !v.length)));
+  if (f.group === 'NVVN' && !['c', 'd', 'gs', 'dl', 'tg', 'ch'].some(k => rate[k])) return say('Nhập ít nhất một khoản lương.', 'bad');
+  if (f.group === 'GVNN' && !rate.r && !rate.base) return say('Nhập đơn giá giờ hoặc lương cơ bản.', 'bad');
+  const status = f.isNew ? (trial && trial >= today() ? 'Thử việc' : 'Chính thức') : f.status;
+  const row = [stamp(), name, full, f.group, Q.clean(f.pos || ''), status, f.start, trial, trial ? f.pct : 100, nsSummary(f.group, rate), JSON.stringify(rate), Q.clean(f.note || ''), JSON.stringify(Object.fromEntries(Object.entries(f.id || {}).filter(([, v]) => v))), me.name];
+  ns.busy = 'save'; render();
+  try {
+    await appendRows(CONFIG.quanLiId, 'NHAN_VIEN', [row]);
+    ns.rows.push(nsRow(row));
+    const done = ['Đã lưu ' + (full || name) + '.'];
+    if (f.isNew && f.hdOn) {
+      const hdr = [stamp(), name, trial ? 'Thử việc' : f.group === 'GVNN' ? 'Giáo viên nước ngoài' : 'Toàn thời gian (xác định thời hạn)', '', '', f.start, trial || '', trial || '', trial ? 'Lương thử việc ' + f.pct + '%' : '', 'Hiệu lực', me.name];
+      await appendRows(CONFIG.quanLiId, 'HOP_DONG', [hdr]); ns.hd.push(hdRow(hdr)); done.push('Đã ghi hợp đồng ' + (trial ? 'thử việc đến ' + viDate(trial) : '') + ' ở trang Hợp đồng.');
+    }
+    if (f.isNew && f.app && !(nguoi && nguoi.people.some(p => Q.key(p.name) === name))) {
+      try { const r = await call('them', { name, role: f.app }); nguoiMoi = { name: r.name, link: location.origin + location.pathname + '#k=' + r.key }; done.push('Đã tạo link app: mở trang Người dùng để copy gửi riêng cho ' + name + ' (link chỉ hiện một lần).'); nguoi = null; }
+      catch (e) { done.push('Chưa tạo được link app: ' + e.message); }
+    }
+    ns.form = null; ns.msg = done.join(' ');
+  } catch (e) { say('Chưa lưu được: ' + e.message, 'bad'); }
+  finally { ns.busy = ''; render(); }
+}
+async function nsDecide(name, pass) {
+  const r = nsLatest().get(name);
+  if (!r) return;
+  const from = Q.addDays(r.trial || today(), 1);
+  if (!window.confirm(pass ? 'Xác nhận ' + (r.full || name) + ' đạt thử việc, chính thức từ ' + viDate(from) + '?' : 'Xác nhận ' + (r.full || name) + ' không đạt thử việc, nghỉ từ ' + viDate(from) + '?')) return;
+  const rate = Object.assign({}, r.rate);
+  if (!pass) rate.het = r.trial || today();
+  const row = [stamp(), name, r.full, r.group, r.pos, pass ? 'Chính thức' : 'Đã nghỉ', r.start, r.trial, r.pct, nsSummary(r.group, rate), JSON.stringify(rate), (pass ? 'Đạt thử việc ' : 'Không đạt thử việc ') + viDate(today()), JSON.stringify(r.id || {}), me.name];
+  try {
+    await appendRows(CONFIG.quanLiId, 'NHAN_VIEN', [row]); ns.rows.push(nsRow(row));
+    if (pass) {
+      drafts.hd = { person: name, type: r.group === 'GVNN' ? 'Giáo viên nước ngoài' : 'Toàn thời gian (xác định thời hạn)', start: from, end: Q.addDays(nsAddMonths(from, 12), -1) };
+      ns.msg = (r.full || name) + ' đã chính thức từ ' + viDate(from) + '. Ký hợp đồng chính thức rồi bấm Lưu ở trang Hợp đồng (đã điền sẵn).';
+    } else ns.msg = (r.full || name) + ' nghỉ từ ' + viDate(from) + '. Nhớ báo kết quả thử việc bằng văn bản và xoá link app ở trang Người dùng.';
+  } catch (e) { say('Chưa lưu được: ' + e.message, 'bad'); }
+  render();
+}
+
+/* ---------- The month's payroll draft, laid out from the records and the Schedule ---------- */
+// Thuế TNCN: lũy tiến (HĐLĐ từ 3 tháng, cư trú); 10% khi không HĐLĐ hoặc HĐ dưới 3 tháng và mỗi lần trả từ NS_K10_FROM (Nghị định 253/2026, kế toán xác nhận);
+// 20% trên thu nhập chịu thuế với người không cư trú (dưới 183 ngày ở Việt Nam).
+const NS_TAX_MODES = [['', 'Lũy tiến (HĐLĐ từ 3 tháng, cư trú)'], ['k10', 'Khấu trừ 10% (không HĐLĐ hoặc HĐ dưới 3 tháng)'], ['k20', '20% (người nước ngoài không cư trú)']];
+const NS_K10_FROM = 5000000;
+const nsTaxCell = (mode, taxable, gross) => mode === 'k20' ? '=ROUND(MAX(0;' + gross + ')*20%;0)' : mode === 'k10' ? '=IF(' + gross + '>=' + NS_K10_FROM + ';ROUND(' + gross + '*10%;0);0)' : NS_TAX(taxable);
+const nsBhPct = a => String(a.bhRate || 10.5).replace('.', ',') + '%';
+const NS_TAX = x => '=ROUND(MAX(0;' + x + '*5%;' + x + '*10%-500000;' + x + '*20%-3500000;' + x + '*30%-9500000;' + x + '*35%-14500000);0)';
+const nsDec = n => String(Math.round(n * 100) / 100).replace('.', ',');
+function nsPayCard() {
+  const m = ns.month || Q.addDays(today().slice(0, 7) + '-01', -1).slice(0, 7);
+  return '<div class="card ns-pay"><h3>💰 Bảng lương tháng</h3><div class="form-grid">' +
+    '<label>Tháng<input type="month" data-act="nsF0" data-k="month" value="' + esc(m) + '"></label>' +
+    '<label>Tỷ giá $ của tháng (đ, cho GV tính bằng $)<input data-act="nsF0" data-k="fx" inputmode="numeric" value="' + esc(ns.fx || (saved.get('nsFx') || '26295')) + '"></label></div>' +
+    '<p class="small muted">1. Bấm Lập: app đếm công từ Schedule và bảng chấm bài, nhân đơn giá ở danh sách dưới, ghi thành tab nháp. Lập lại bao nhiêu lần cũng được, ô cô đã nhập được giữ. ' +
+    '2. Mở trang Lương: xem từng người, nhập thưởng thêm, trừ khác, tạm ứng, tỷ giá. 3. Bấm Chốt: nhân viên thấy lương của mình từ ngày 8.</p>' +
+    '<div class="choices"><button class="primary" data-act="nsLap"' + (ns.busy ? ' disabled' : '') + '>' + (ns.busy === 'lap' ? 'Đang lập…' : 'Lập / cập nhật bảng nháp') + '</button>' +
+    '<button data-act="view" data-v="luong">Mở trang Lương</button><button class="good" data-act="nsChot"' + (ns.busy ? ' disabled' : '') + '>Chốt bảng ' + esc(monthName(m)) + '</button></div></div>';
+}
+function nsWindow(r, month) {
+  const first = month + '-01', last = Q.addDays(nsAddMonths(first, 1), -1), dim = Number(last.slice(8));
+  const from = r.start && r.start > first ? r.start : first, to = r.rate.het && r.rate.het < last ? r.rate.het : last;
+  if (from > to) return null;
+  const days = Math.round((Q.fromIso(to) - Q.fromIso(from)) / 864e5) + 1;
+  const tEnd = r.trial && r.pct < 100 ? (r.trial < to ? r.trial : to) : '';
+  const trialDays = tEnd && tEnd >= from ? Math.round((Q.fromIso(tEnd) - Q.fromIso(from)) / 864e5) + 1 : 0;
+  return { first, last, dim, from, to, days, trialDays, inTrial: d => !!(tEnd && d <= tEnd && d >= from) };
+}
+// Fixed monthly pay for the days worked, probation days at the probation rate.
+function nsFixed(amount, w, pct) {
+  if (!amount) return '';
+  if (w.days === w.dim && !w.trialDays) return amount;
+  return '=ROUND(' + amount + '*(' + (w.trialDays ? w.trialDays + '*' + pct + '%+' : '') + (w.days - w.trialDays) + ')/' + w.dim + ';0)';
+}
+// A unit rate, weighted when part of the units fall inside probation.
+function nsRateCell(rate, u, pct) {
+  if (!u.trial || pct >= 100 || !u.all) return rate;
+  return '=(' + nsDec(u.trial) + '*' + rate + '*' + pct + '%+' + nsDec(u.all - u.trial) + '*' + rate + ')/' + nsDec(u.all);
+}
+function nsUnits(pay, r, w, kinds, measure) {
+  const k = r.name, out = { all: 0, trial: 0, minutes: 0, trialMinutes: 0, by: {} };
+  if ((kinds || []).includes('CHAM') || measure === 'papers') {
+    pay.marking.filter(x => x.person === k && x.day >= w.from && x.day <= w.to).forEach(x => { out.all += x.papers; if (w.inTrial(x.day)) out.trial += x.papers; out.by['bảng chấm bài'] = (out.by['bảng chấm bài'] || 0) + x.papers; });
+    if (measure === 'papers') return out;
+  }
+  pay.entries.filter(e => e.person === k && e.count && e.day >= w.from && e.day <= w.to && (kinds || []).includes(e.kind)).forEach(e => {
+    const v = measure === 'hours' ? e.minutes : 1;
+    out.all += v; out.by[e.kind] = (out.by[e.kind] || 0) + v; out.minutes += e.minutes;
+    if (w.inTrial(e.day)) { out.trial += v; out.trialMinutes += e.minutes; }
+  });
+  if (measure === 'hours') { out.all /= 60; out.trial /= 60; Object.keys(out.by).forEach(k => { out.by[k] /= 60; }); }
+  return out;
+}
+const nsBy = u => Object.entries(u.by).map(([k, v]) => k + ' ' + nsDec(v)).join(' + ');
+function nsHeader(title, bands, subs, labels) {
+  const w = labels.length, r1 = Array(w).fill(''), r2 = Array(w).fill('');
+  bands.forEach(b => { r1[b[0]] = b[2]; }); subs.forEach(s => { r2[s[0]] = s[2]; });
+  const r0 = Array(w).fill(''); r0[0] = 'PHÚC HƯNG EDU'; r0[2] = title;
+  return [r0, r1, r2, labels];
+}
+const NS_NV_LABELS = ['Lưu ý (cách tính)', 'HỌ TÊN', 'Lương cố định', 'Thưởng hoàn thành CV', 'Thưởng thêm (nhập tay)', 'Số công', 'Đơn giá', 'Thành tiền', 'Số công', 'Đơn giá', 'Thành tiền', 'Số giờ', 'Đơn giá', 'Thành tiền', 'Số bài', 'Đơn giá', 'Thành tiền',
+  'TỔNG THU NHẬP', 'MỨC ĐÓNG BẢO HIỂM', 'BHXH, BHYT, BHTN (10,5%)', 'GIẢM TRỪ NGƯỜI PHỤ THUỘC', 'THU NHẬP TÍNH THUẾ', 'THUẾ TNCN', 'TRỪ KHÁC (truy thu, nghỉ không lương) (nhập tay)', 'TỔNG KHẤU TRỪ', 'THỰC NHẬN', 'TẠM ỨNG (nhập tay)', 'CÒN LẠI (chuyển khoản)', 'NGUỒN SỐ CÔNG / CẦN XEM'];
+const NS_NV_LAYOUT = { bands: [[2, 18, 'CÁC KHOẢN ĐƯỢC NHẬN', '#c9daf8'], [18, 23, 'BẢO HIỂM VÀ THUẾ', '#fff2cc', 1], [23, 25, 'KHẤU TRỪ', '#f4cccc', 1], [25, 28, 'THỰC NHẬN', '#d9ead3', 1], [28, 29, '', '#eeeeee', 1]],
+  subs: [[2, 5, 'LƯƠNG VÀ THƯỞNG', '#e8f0fe'], [5, 8, 'GIA SƯ', '#d6e4f9'], [8, 11, 'DẠY - ĐỨNG LỚP', '#e8f0fe'], [11, 14, 'TRỢ GIẢNG THEO GIỜ', '#d6e4f9'], [14, 17, 'CHẤM / CHỮA BÀI', '#e8f0fe'], [17, 18, '', '#c9daf8']],
+  money: [2, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27], num: [5, 8, 11, 14], manual: [4, 23, 26], auto: [5, 8, 11, 14], rate: [6, 9, 12, 15], net: [25, 27] };
+const NS_GV_LABELS = ['Lưu ý (cách tính)', 'HỌ TÊN / Name', 'Số giờ / Hours', 'Tỷ giá (đ/$) / Exchange rate', 'Lương cơ bản / Base pay', 'Giờ trong lương cơ bản / Hours in base', 'Đơn giá giờ / Hourly rate', 'Lương giờ / Hourly pay', 'Đơn giá từ giờ 101 / Rate from hour 101', 'Lương từ giờ 101 / Pay from hour 101',
+  'Số giờ / Hours', 'Đơn giá / Rate', 'Thành tiền / Pay', 'Thưởng / Bonus', 'Nhà ở / Housing', 'Thưởng thêm (nhập tay) / Extra', 'TỔNG THU NHẬP / TOTAL', 'KHOẢN KHÔNG TÍNH THUẾ / Not taxed', 'BHXH / Social insurance', 'THU NHẬP TÍNH THUẾ / Taxable income', 'THUẾ TNCN / Personal income tax',
+  'TRỪ KHÁC (nhập tay) / Other deductions', 'TỔNG KHẤU TRỪ / Total deductions', 'THỰC NHẬN / Net', 'TẠM ỨNG (nhập tay) / Advance', 'CÒN LẠI / Remaining salary', 'NGUỒN SỐ GIỜ / CẦN XEM'];
+const NS_GV_LAYOUT = { bands: [[2, 17, 'CÁC KHOẢN ĐƯỢC NHẬN / Received amounts', '#c9daf8'], [17, 21, 'BẢO HIỂM VÀ THUẾ / Insurance and tax', '#fff2cc', 1], [21, 23, 'KHẤU TRỪ / Deductions', '#f4cccc', 1], [23, 26, 'THỰC NHẬN / Net', '#d9ead3', 1], [26, 27, '', '#eeeeee', 1]],
+  subs: [[2, 10, 'GIỜ DẠY THƯỜNG / Regular teaching', '#e8f0fe'], [10, 13, 'LỚP IELTS / IELTS classes', '#d6e4f9'], [13, 16, 'THƯỞNG, NHÀ Ở / Bonus, housing', '#e8f0fe'], [16, 17, '', '#c9daf8']],
+  money: [3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25], num: [2, 5, 10], manual: [3, 15, 21, 24], auto: [2, 10], rate: [5, 6, 8, 11], net: [23, 25] };
+// Builds both month grids. pay = { entries, marking } from loadPay; fx = this month's dollar rate.
+function nsBuild(month, people, pay, fx) {
+  const mm = month.slice(5) + '/' + month.slice(0, 4), out = {};
+  ['NVVN', 'GVNN'].forEach(g => {
+    const nv = g === 'NVVN', labels = nv ? NS_NV_LABELS : NS_GV_LABELS, layout = JSON.parse(JSON.stringify(nv ? NS_NV_LAYOUT : NS_GV_LAYOUT));
+    const grid = nsHeader(nv ? 'BẢNG LƯƠNG NHÂN VIÊN, GIÁO VIÊN VIỆT NAM — THÁNG ' + mm : 'BẢNG LƯƠNG GIÁO VIÊN NƯỚC NGOÀI / FOREIGN TEACHERS — THÁNG ' + mm, layout.bands, layout.subs, labels);
+    const list = [], missing = [];
+    people.filter(r => r.group === g && r.status !== 'Tạm dừng').forEach(r => {
+      const w = nsWindow(r, month);
+      if (!w) return;
+      const R = grid.length + 1, row = grid.length, a = r.rate, pct = r.trial && r.pct < 100 ? r.pct : 100, rules = [r.sum || nsSummary(g, a)], src = [];
+      if (a.thue) rules.push('Thuế: ' + (NS_TAX_MODES.find(x => x[0] === a.thue) || ['', ''])[1] + '.');
+      if (pct < 100 && w.trialDays) rules.push('Thử việc ' + pct + '% đến ' + viDate(r.trial) + ': ' + w.trialDays + ' ngày trong tháng.');
+      if (w.days < w.dim) rules.push('Tính ' + w.days + '/' + w.dim + ' ngày (' + viDate(w.from) + ' – ' + viDate(w.to) + ').');
+      let cells;
+      if (nv) {
+        const gs = a.gs ? nsUnits(pay, r, w, a.gsK || ['TUTOR'], 'count') : null, dl = a.dl ? nsUnits(pay, r, w, a.dlK || [], 'count') : null;
+        const tg = a.tg ? nsUnits(pay, r, w, ['Part-time'], 'hours') : null, ch = a.ch ? nsUnits(pay, r, w, ['CHAM'], 'papers') : null;
+        [[gs, 'Gia sư', 5], [dl, 'Dạy lớp', 8], [tg, 'Trợ giảng', 11], [ch, 'Chấm bài', 14]].forEach(([u, t, c]) => { if (!u) return; if (u.all) src.push(t + ': ' + (t === 'Trợ giảng' ? u.minutes + ' phút' : nsBy(u))); else { missing.push([row, c]); src.push(t + ': chưa có số trong tháng, cô xem lại'); } });
+        cells = [rules.join('\n'), '', nsFixed(a.c, w, pct), nsFixed(a.d, w, pct), '',
+          gs ? gs.all : '', gs ? nsRateCell(a.gs, gs, pct) : '', gs ? '=ROUND(F' + R + '*G' + R + ';0)' : '',
+          dl ? dl.all : '', dl ? nsRateCell(a.dl, dl, pct) : '', dl ? '=ROUND(I' + R + '*J' + R + ';0)' : '',
+          tg ? '=' + tg.minutes + '/60' : '', tg ? nsRateCell(a.tg, tg, pct) : '', tg ? '=ROUND(L' + R + '*M' + R + ';0)' : '',
+          ch ? ch.all : '', ch ? nsRateCell(a.ch, ch, pct) : '', ch ? '=ROUND(O' + R + '*P' + R + ';0)' : '',
+          '=SUM(C' + R + ';D' + R + ';E' + R + ';H' + R + ';K' + R + ';N' + R + ';Q' + R + ')', a.bh || '', a.bh ? '=ROUND(S' + R + '*' + nsBhPct(a) + ';0)' : '', a.npt ? '=' + a.npt + '*6200000' : '',
+          '=MAX(0;R' + R + '-T' + R + '-U' + R + '-15500000)', nsTaxCell(a.thue, 'V' + R, 'R' + R), '', '=T' + R + '+W' + R + '+X' + R, '=R' + R + '-Y' + R, '', '=Z' + R + '-AA' + R, src.join(' · ')];
+      } else {
+        const usd = !!a.usd, sep = !!a.ielts, all = NS_KINDS.filter(k => !(sep && k === 'IELTS'));
+        const hrs = nsUnits(pay, r, w, a.hK || all, 'hours'), ie = sep ? nsUnits(pay, r, w, ['IELTS'], 'hours') : null;
+        const money = v => usd ? '=D' + R + '*' + String(v).replace('.', ',') : v;
+        const rateCell = (v, u) => { if (!v) return ''; const base = usd ? 'D' + R + '*' + String(v).replace('.', ',') : v; if (!u.trial || pct >= 100 || !u.all) return usd ? '=' + base : base; return '=(' + nsDec(u.trial) + '*' + base + '*' + pct + '%+' + nsDec(u.all - u.trial) + '*' + base + ')/' + nsDec(u.all); };
+        src.push('Giờ thường: ' + (hrs.all ? nsBy(hrs) + ' giờ' : 'chưa có giờ trong tháng'));
+        if (!hrs.all) missing.push([row, 2]);
+        if (ie) src.push('IELTS: ' + nsDec(ie.all) + ' giờ');
+        cells = [rules.join('\n'), '', '=' + hrs.minutes + '/60', usd ? (fx || '') : (a.fx || '-'), nsFixed(a.base, w, pct), a.baseH || '', rateCell(a.r, hrs),
+          '=ROUND(MAX(0;IF(I' + R + '="";C' + R + ';MIN(C' + R + ';100))-F' + R + ')*G' + R + ';0)', a.r101 ? money(a.r101) : '', '=IF(I' + R + '="";0;ROUND(MAX(0;C' + R + '-100)*I' + R + ';0))',
+          ie ? '=' + ie.minutes + '/60' : '', ie ? rateCell(a.ielts, ie) : '', ie ? '=ROUND(K' + R + '*L' + R + ';0)' : '', nsFixed(a.bonus, w, 100), a.nha ? (a.nhaUsd ? money(a.nha) : a.nha) : '', '',
+          '=SUM(E' + R + ';H' + R + ';J' + R + ';M' + R + ';N' + R + ';O' + R + ';P' + R + ')', a.nhaFree && a.nha ? '=O' + R : '', a.bh ? '=ROUND(' + a.bh + '*' + nsBhPct(a) + ';0)' : '',
+          '=MAX(0;Q' + R + '-R' + R + '-S' + R + '-15500000)', nsTaxCell(a.thue, 'T' + R, 'Q' + R + '-R' + R), '', '=S' + R + '+U' + R + '+V' + R, '=Q' + R + '-W' + R, '', '=X' + R + '-Y' + R, src.join(' · ')];
+        if (usd && !fx) missing.push([row, 3]);
+      }
+      grid.push(cells.map(v => typeof v === 'number' && !Number.isInteger(v) ? nsDec(v) : v));
+      const id = r.id || {}, hasId = id.cccd || id.stk;
+      list.push({ row, name: r.full || r.name, short: r.name, role: r.pos, b: hasId ? [r.full || r.name].concat(id.cccd ? ['Số CCCD: ' + id.cccd] : [], id.ns ? ['Ngày sinh: ' + viDate(id.ns)] : [], r.pos ? ['Chức vụ: ' + r.pos] : [], id.mst ? ['MST: ' + id.mst] : [], id.stk ? ['STK: ' + id.stk + (id.bank ? ' - ' + id.bank : '')] : []).join('\n') : '' });
+    });
+    if (!list.length) return;
+    const first = 5, lastR = grid.length, sums = nv ? [2, 3, 4, 7, 10, 13, 16, 17, 19, 22, 23, 24, 25, 26, 27] : [4, 7, 9, 12, 13, 14, 15, 16, 18, 20, 21, 22, 23, 24, 25];
+    grid.push(labels.map((_, c) => c === 1 ? 'TỔNG CỘNG' : sums.includes(c) ? '=SUM(' + Q.colName(c) + first + ':' + Q.colName(c) + lastR + ')' : ''));
+    layout.missing = missing;
+    out[g] = { grid, people: list, layout };
+  });
+  return out;
+}
+async function nsLap() {
+  const month = ns.month || Q.addDays(today().slice(0, 7) + '-01', -1).slice(0, 7), fx = nsNum(ns.fx || saved.get('nsFx') || '26295');
+  if (!ns.rows) return;
+  ns.busy = 'lap'; ns.msg = ''; render();
+  try {
+    const pay = await loadPay(month, true);
+    const built = nsBuild(month, nsActive().concat([...nsLatest().values()].filter(r => r.status === 'Đã nghỉ' && r.rate.het && r.rate.het >= month + '-01')), pay, fx);
+    const done = [];
+    for (const g of Object.keys(built)) {
+      const b = built[g], r = await call('luonglap', { group: g, month, grid: b.grid, layout: b.layout, people: b.people }, 1);
+      done.push(r.tab + ': ' + r.rows + ' người' + (r.kept ? ', giữ ' + r.kept + ' ô cô đã nhập' : '') + (r.fresh.length ? '; người mới chưa có CCCD, STK: ' + r.fresh.join(', ') : '') + (b.layout.missing.length ? '; ' + b.layout.missing.length + ' ô cam cần xem' : ''));
+    }
+    keep('nsFx', String(fx));
+    ns.msg = done.length ? 'Đã lập ' + done.join(' · ') + '. Mở trang Lương để xem từng người.' : 'Không có ai để lập lương tháng này.';
+  } catch (e) { ns.msg = ''; say('Chưa lập được: ' + e.message, 'bad'); }
+  finally { ns.busy = ''; render(); }
+}
+async function nsChot() {
+  const month = ns.month || Q.addDays(today().slice(0, 7) + '-01', -1).slice(0, 7);
+  if (!window.confirm('Chốt bảng lương ' + monthName(month) + '? Nhân viên sẽ thấy lương của mình từ ngày 8; sau khi chốt muốn sửa thì sửa trong file.')) return;
+  ns.busy = 'chot'; render();
+  try { const r = await call('luongchot', { month }, 1); ns.msg = 'Đã chốt: ' + r.tabs.join(', ') + '.'; pay.all = null; }
+  catch (e) { say('Chưa chốt được: ' + e.message, 'bad'); }
+  finally { ns.busy = ''; render(); }
+}
+
+/* Lương page, owner, a draft: the yellow cells can be typed here. */
+const NS_MANUAL = { NVVN: [[4, 'Thưởng thêm'], [23, 'Trừ khác (truy thu, nghỉ không lương)'], [26, 'Tạm ứng']], GVNN: [[3, 'Tỷ giá (đ/$)'], [15, 'Thưởng thêm'], [21, 'Trừ khác'], [24, 'Tạm ứng']] };
+const slipCardBeforeNs = slipCard;
+slipCard = function (d) {
+  const h = slipCardBeforeNs(d);
+  if (!isOwner() || !d || !d.slip || !/\(NHÁP\)\s*$/.test(d.slip.tab)) return h;
+  const s = d.slip, g = /^GVNN/.test(s.tab) ? 'GVNN' : 'NVVN', have = c => { const it = s.items.find(x => x.col === c); return it ? it.value : ''; };
+  return h + '<div class="card row ns-manual"><b>✏️ Ô cô nhập (bảng nháp)</b><div class="form-grid">' + NS_MANUAL[g].map(([c, t]) => '<label>' + t + '<input inputmode="numeric" data-act="nsCell" data-tab="' + esc(s.tab) + '" data-row="' + s.row + '" data-col="' + c + '" value="' + esc(String(have(c)).replace(/\s*đ$/, '')) + '"></label>').join('') + '</div>' +
+    '<p class="small muted">Gõ số rồi bấm ra ngoài ô, app ghi vào bảng nháp và tính lại thực nhận. Để trống là 0.</p></div>';
+};
+document.addEventListener('change', async e => {
+  const b = e.target;
+  if (!b || !b.dataset) return;
+  if (b.dataset.act === 'nsCell') {
+    b.disabled = true;
+    try { await call('luongo', { tab: b.dataset.tab, row: Number(b.dataset.row), col: Number(b.dataset.col), value: b.value }, 1); say('Đã ghi vào bảng nháp.'); await loadLuong(true); }
+    catch (err) { say('Chưa ghi được: ' + err.message, 'bad'); b.disabled = false; }
+  }
+  if (b.dataset.act === 'nsF' && ns.form) { if (nsField(b.dataset.k, b.value)) render(); }
+  if (b.dataset.act === 'nsF0') { ns[b.dataset.k] = b.value; if (b.dataset.k === 'month') render(); }
+});
+document.addEventListener('input', e => {
+  const b = e.target;
+  if (b && b.dataset && b.dataset.act === 'nsF' && ns.form && b.tagName === 'INPUT') nsField(b.dataset.k, b.value);
+  if (b && b.dataset && b.dataset.act === 'nsF0') ns[b.dataset.k] = b.value;
+});
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act]');
+  if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'nsNew') { ns.form = nsBlank(); ns.msg = ''; if (!nguoi) call('nguoi', {}).then(r => { nguoi = r; }).catch(() => {}); Promise.all([weekOf(today()), weekOf(Q.addDays(today(), -7))]).then(render).catch(() => {}); render(); }
+  if (act === 'nsEdit') { const r = nsLatest().get(b.dataset.n); if (r) { ns.form = nsFormFrom(r); ns.msg = ''; render(); const el = document.querySelector('.ns-form'); if (el) el.scrollIntoView({ block: 'start' }); } }
+  if (act === 'nsCancel') { ns.form = null; render(); }
+  if (act === 'nsKind' && ns.form) { const k = b.dataset.k, v = b.dataset.v, list = ns.form.rate[k] = ns.form.rate[k] || []; const i = list.indexOf(v); if (i >= 0) list.splice(i, 1); else list.push(v); render(); }
+  if (act === 'nsSave' && ns.form) nsSave();
+  if (act === 'nsHoSo' && ns.form) {
+    b.disabled = true;
+    call('nshoso', { name: ns.form.full || ns.form.name, short: ns.form.name }, 1).then(r => {
+      const t = String(r.text || ''), id = ns.form.id = ns.form.id || {};
+      const cccd = t.match(/(?:CCCD|CMND|hộ chiếu|passport)[^\d]{0,20}(\d[\d ]{7,14}\d)/i), stk = t.match(/(?:STK|Số TK|tài khoản)[^\d]{0,12}(\d[\d .]{4,24}\d)\s*[-–:,]?\s*([^\n]*)/i), mst = t.match(/MST[^\d]{0,6}(\d{10,14})/i), ns_ = t.match(/(?:sinh)[^\d]{0,6}(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+      if (cccd && !id.cccd) id.cccd = cccd[1].replace(/\s/g, '');
+      if (stk && !id.stk) { id.stk = stk[1].replace(/[\s.]/g, ''); if (!id.bank && stk[2]) id.bank = Q.clean(stk[2]).slice(0, 60); }
+      if (mst && !id.mst) id.mst = mst[1];
+      if (ns_ && !id.ns) id.ns = ns_[3] + '-' + ns_[2].padStart(2, '0') + '-' + ns_[1].padStart(2, '0');
+      say(t ? 'Đã lấy từ ' + r.tab + '. Cô xem lại rồi bấm Lưu.' : 'Không thấy dòng của người này trong bảng lương.', t ? '' : 'bad'); render();
+    }).catch(err => { say('Chưa lấy được: ' + err.message, 'bad'); b.disabled = false; });
+  }
+  if (act === 'nsPass') nsDecide(b.dataset.n, true);
+  if (act === 'nsFail') nsDecide(b.dataset.n, false);
+  if (act === 'nsLap') nsLap();
+  if (act === 'nsChot') nsChot();
+});
+// Điều hành: one more tile, owner only, opening the same kind of window as the others.
+const dashTilesBeforeNs = dashTiles;
+dashTiles = function (week) {
+  const h = dashTilesBeforeNs(week);
+  if (!isOwner()) return h;
+  const list = ns.rows ? nsActive() : [], due = list.filter(r => r.status === 'Thử việc' && r.trial && r.trial <= Q.addDays(today(), 7)).length, trial = list.filter(r => r.status === 'Thử việc').length;
+  const tile = '<button class="dash-tile ' + (due ? 'warn' : 'plain') + '" data-act="panel" data-v="ns"><span class="dash-ico">👥</span><span class="dash-num">' + (ns.rows ? list.length : '') + '</span><span class="dash-name">Nhân sự & lương</span><span class="dash-sub">' +
+    (due ? due + ' người sắp hết thử việc' : trial ? trial + ' người đang thử việc' : 'thêm người, đơn giá, bảng lương') + '</span></button>';
+  return h.replace(/<\/div>$/, tile + '</div>');
+};
+const viewManagerBeforeNs = viewManager;
+viewManager = function (week) {
+  if (panel !== 'ns' || !isOwner()) return viewManagerBeforeNs(week);
+  panel = 'tong';
+  let base;
+  try { base = viewManagerBeforeNs(week); } finally { panel = 'ns'; }
+  return base + '<div class="dash-veil" data-act="panel" data-v="tong"></div><div class="dash-modal" role="dialog" aria-label="Nhân sự và lương"><div class="dash-head"><b>👥 Nhân sự & lương</b><span class="spacer"></span><button class="quiet" data-act="panel" data-v="tong" aria-label="Đóng">✕</button></div><div class="dash-body">' + nsPanel() + '</div></div>';
+};
+const loadPanelBeforeNs = loadPanel;
+loadPanel = async function () {
+  if (panel === 'ns') { if (isOwner()) await loadNs(); return; }
+  await loadPanelBeforeNs();
+  if (isOwner() && !ns.rows) loadNs().then(render).catch(() => {});
+};
+
+/* Owner 10/11: "bên nhân sự hiện thứ cần được hiện thôi... tham khảo như bên Misa". Two tabs (Hồ sơ nhân viên, Bảng lương), a plain
+ * table with search and status filter, and one person's record in sections, one section on screen at a time. */
+ns.tab = 'hoso'; ns.filter = 'dang'; ns.q = ''; ns.sec = 'chung';
+function nsMainPay(r) {
+  const a = r.rate || {}, m = n => nsMoney(n) + ' đ';
+  if (r.group === 'GVNN') return a.base ? m(a.base) + ' / ' + (a.baseH || 0) + ' giờ' : a.r ? (a.usd ? a.r + '$' : m(a.r)) + ' / giờ' : '—';
+  return a.c ? m(a.c) + ' / tháng' : a.gs ? m(a.gs) + ' / công' : a.dl ? m(a.dl) + ' / công' : a.tg ? m(a.tg) + ' / giờ' : a.ch ? m(a.ch) + ' / bài' : '—';
+}
+nsPanel = function () {
+  if (!isOwner()) return '<div class="card empty">Chỉ cô Trang xem phần này.</div>';
+  let h = '<div class="tabs ns-tabs">' + [['hoso', '👤 Hồ sơ nhân viên'], ['luong', '💰 Bảng lương']].map(([k, t]) => '<button class="' + (ns.tab === k ? 'on' : '') + '" data-act="nsTab" data-v="' + k + '">' + t + '</button>').join('') + '</div>';
+  if (ns.err) h += '<div class="notice bad">' + esc(ns.err) + '</div>';
+  if (ns.msg) h += '<div class="notice">' + esc(ns.msg) + ' <button class="quiet" data-act="nsMsgOff">Đóng</button></div>';
+  if (!ns.rows) return h + '<div class="card empty">Đang đọc…</div>';
+  if (ns.tab === 'luong') return h + nsPayCard();
+  if (ns.form) return h + nsFormHtml();
+  const all = [...nsLatest().values()], t = today();
+  const due = all.filter(r => r.status === 'Thử việc' && r.trial && r.trial <= Q.addDays(t, 7));
+  due.forEach(r => {
+    h += '<div class="notice warn ns-due">⏳ <b>' + esc(r.full || r.name) + '</b> ' + esc(nsState(r)[1]) + '. <button class="good" data-act="nsPass" data-n="' + esc(r.name) + '">Đạt, chính thức</button> <button class="low" data-act="nsFail" data-n="' + esc(r.name) + '">Không đạt</button></div>';
+  });
+  const counts = { dang: all.filter(r => r.status !== 'Đã nghỉ').length, thu: all.filter(r => r.status === 'Thử việc').length, nghi: all.filter(r => r.status === 'Đã nghỉ').length };
+  h += '<div class="ns-bar"><input type="search" data-act="nsQ" placeholder="Tìm tên…" value="' + esc(ns.q) + '">' +
+    [['dang', 'Đang làm'], ['thu', 'Thử việc'], ['nghi', 'Đã nghỉ']].map(([k, tx]) => '<button class="chip' + (ns.filter === k ? ' on' : '') + '" data-act="nsFilter" data-v="' + k + '">' + tx + ' ' + counts[k] + '</button>').join('') +
+    '<span class="spacer"></span><button class="primary" data-act="nsNew">+ Thêm nhân viên</button></div>';
+  const q = Q.key(ns.q || '');
+  const list = all.filter(r => ns.filter === 'nghi' ? r.status === 'Đã nghỉ' : ns.filter === 'thu' ? r.status === 'Thử việc' : r.status !== 'Đã nghỉ')
+    .filter(r => !q || Q.key(r.full + ' ' + r.name + ' ' + r.pos).includes(q))
+    .sort((a, b) => a.group.localeCompare(b.group) || (a.full || a.name).localeCompare(b.full || b.name, 'vi'));
+  if (!list.length) return h + '<div class="card empty">Không có ai.</div>';
+  h += '<div class="card table ns-table"><table><thead><tr><th>Họ tên</th><th>Vị trí</th><th>Trạng thái</th><th>Hợp đồng</th><th class="num">Lương chính</th></tr></thead><tbody>' +
+    list.map(r => { const [tone, text] = nsState(r); return '<tr data-act="nsEdit" data-n="' + esc(r.name) + '"><td><b>' + esc(r.full || r.name) + '</b><div class="small muted">' + esc(r.name) + (r.group === 'GVNN' ? ' · nước ngoài' : '') + '</div></td><td>' + esc(r.pos || '') + '</td><td><span class="tag ' + tone + '">' + esc(text) + '</span></td><td>' + nsContract(r) + '</td><td class="num">' + esc(nsMainPay(r)) + '</td></tr>'; }).join('') +
+    '</tbody></table></div>';
+  return h;
+};
+const nsFormHtmlFull = nsFormHtml;
+// The full form split at its section headings; only the chosen section shows, the save bar always does.
+nsFormHtml = function () {
+  const full = nsFormHtmlFull(), f = ns.form;
+  const start = full.indexOf('<div class="form-grid">'), endBtns = full.lastIndexOf('<p class="small muted">Thử việc:');
+  const head = '<div class="card ns-form"><div class="row-top"><button class="quiet" data-act="nsCancel">‹ Danh sách</button><b>' + (f.isNew ? 'Thêm nhân viên mới' : esc(f.full || f.name)) + '</b>' + (f.isNew ? '' : '<span class="tag ' + nsState(Object.assign({ pct: 100 }, f))[0] + '">' + esc(f.status) + '</span>') + '</div>';
+  const body = full.slice(start, endBtns), parts = body.split(/<h4>/), first = parts[0], rest = {};
+  parts.slice(1).forEach(p => { const i = p.indexOf('</h4>'); rest[p.slice(0, i)] = p.slice(i + 5); });
+  const tail = rest['Hồ sơ (chỉ cô thấy; in vào cột họ tên của bảng lương)'] || '';
+  const noteAt = tail.indexOf('<div class="form-grid"><label>Ghi chú');
+  const secs = { chung: first + (noteAt >= 0 ? tail.slice(noteAt) : ''), luong: rest['Lương'] || '', bh: rest['Bảo hiểm và thuế'] || '', hoso: noteAt >= 0 ? tail.slice(0, noteAt) : tail };
+  const names = [['chung', 'Thông tin chung'], ['luong', 'Lương'], ['bh', 'Bảo hiểm & thuế'], ['hoso', 'CCCD & ngân hàng']];
+  if (!secs[ns.sec]) ns.sec = 'chung';
+  return head + '<div class="tabs ns-sec">' + names.map(([k, t]) => '<button class="' + (ns.sec === k ? 'on' : '') + '" data-act="nsSec" data-v="' + k + '">' + t + '</button>').join('') + '</div>' +
+    '<div class="ns-sec-body">' + secs[ns.sec] + '</div>' +
+    (ns.sec === 'chung' ? '<p class="small muted">Thử việc tối đa 60 ngày (việc cần cao đẳng trở lên), 30 ngày (trung cấp), 6 ngày làm việc (việc khác); lương thử việc ít nhất 85%; hết thử việc phải báo kết quả.</p>' : '') +
+    '<div class="ns-save"><button class="primary" data-act="nsSave"' + (ns.busy ? ' disabled' : '') + '>' + (ns.busy === 'save' ? 'Đang lưu…' : 'Lưu') + '</button><button class="quiet" data-act="nsCancel">Huỷ</button></div></div>';
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act]');
+  if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'nsTab') { ns.tab = b.dataset.v; ns.form = null; render(); }
+  if (act === 'nsFilter') { ns.filter = b.dataset.v; render(); }
+  if (act === 'nsSec') { ns.sec = b.dataset.v; render(); }
+  if (act === 'nsMsgOff') { ns.msg = ''; render(); }
+  if (act === 'nsNew' || act === 'nsEdit') ns.sec = 'chung';
+}, true);
+// render() waits while a box has focus, so the search hides rows in place.
+document.addEventListener('input', e => { const b = e.target; if (!(b && b.dataset && b.dataset.act === 'nsQ')) return; ns.q = b.value; const q = Q.key(b.value); document.querySelectorAll('.ns-table tr[data-n]').forEach(tr => { tr.style.display = !q || Q.key(tr.textContent).includes(q) ? '' : 'none'; }); });
