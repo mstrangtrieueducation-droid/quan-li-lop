@@ -4376,3 +4376,64 @@ pupilFlags = function (ctx, r) {
 };
 const attendTextBeforeOut = attendText;
 attendText = function (m) { return m && m.status === OUT_MAKEUP ? '<span class="sum-sent">Ra ngoài bù bài · không vào học</span>' : attendTextBeforeOut(m); };
+
+/* ---------- Print documents from CLASS RESOURCES (owner 09/11: "tài liệu gì in sẽ là link drive... thêm ở class resources... từ sheet
+ * nối nút vào web") ----------
+ * Sheet "TÀI LIỆU IN · nối vào app Quản lí lớp" (tab TAI_LIEU_IN) in the CLASS RESOURCES folder: SÁCH (as in the Schedule's BOOK),
+ * TIẾT (one number, a list "12, 13" or a range "12-14"), TÊN TÀI LIỆU, LINK DRIVE. A lesson with a matching row gets 🖨 buttons on
+ * its class page, and the printing card lists the documents for today and the next two days, so the person printing opens them
+ * straight from the app. Read again every 10 minutes. */
+const printDocs = { map: null, at: 0, loading: false, tried: 0 };
+const docBook = b => Q.key(b).replace(/^SACH\s*:?\s*/, '').replace(/\bOXFORD\s+/, '').replace(/\s+/g, ' ').trim();
+function docLessons(v) {
+  const out = [];
+  String(v || '').split(/[,;\n]/).forEach(part => {
+    const m = part.trim().match(/^(\d+)\s*(?:-|–|đến)\s*(\d+)$/i);
+    if (m) { for (let n = Number(m[1]); n <= Number(m[2]) && n - Number(m[1]) < 200; n++) out.push(String(n)); }
+    else if (/^\d+$/.test(part.trim())) out.push(String(Number(part.trim())));
+  });
+  return out;
+}
+async function loadPrintDocs(force) {
+  if (printDocs.loading || (!force && printDocs.map && Date.now() - printDocs.at < 600000)) return;
+  printDocs.loading = true;
+  try {
+    const [[rows]] = [await batchGet(CONFIG.tailieuId || 'tailieu', ["'TAI_LIEU_IN'!A2:E1000"])];
+    const map = new Map();
+    rows.forEach(r => {
+      const book = docBook(r[0]), link = Q.clean(r[3]);
+      if (!book || !/^https:\/\//i.test(link)) return;
+      docLessons(r[1]).forEach(n => { const k = book + '|' + n; if (!map.has(k)) map.set(k, []); map.get(k).push({ name: Q.clean(r[2]) || T('Tài liệu in', 'Print document'), link, note: Q.clean(r[4]) }); });
+    });
+    printDocs.map = map; printDocs.at = Date.now();
+  } finally { printDocs.loading = false; }
+}
+function docsFor(s) {
+  if (!s) return [];
+  if ((!printDocs.map || Date.now() - printDocs.at > 600000) && Date.now() - printDocs.tried > 60000) { printDocs.tried = Date.now(); if (!printDocs.loading) loadPrintDocs(true).then(render).catch(() => {}); }
+  if (!printDocs.map) return [];
+  return printDocs.map.get(docBook(s.book) + '|' + String(Number(s.lesson) || Q.clean(s.lesson))) || [];
+}
+const docButtons = list => list.map(d => '<a class="doc-btn" href="' + esc(d.link) + '" target="_blank" rel="noopener" title="' + esc(d.note || d.name) + '">🖨 ' + esc(d.name) + '</a>').join('');
+// Class page: the documents of this lesson right under the lesson header.
+const viewClassBeforeDocs = viewClass;
+viewClass = function () {
+  const h = viewClassBeforeDocs(), list = docsFor(current);
+  if (!list.length) return h;
+  const row = '<div class="doc-row"><b>' + T('Tài liệu in', 'Print documents') + ':</b>' + docButtons(list) + '</div>';
+  // Placed just above the bar with "Mở màn hình lên lớp" (or that button), i.e. right under the lesson header card.
+  const i = [h.indexOf('<div class="roll-bar">'), h.indexOf('<button class="primary ll-open"')].filter(x => x >= 0)[0];
+  return i == null ? row + h : h.slice(0, i) + row + h.slice(i);
+};
+// Printing card: documents of the lessons today and in the next two days.
+const printCardBeforeDocs = printCard;
+printCard = function (week) {
+  const h = printCardBeforeDocs(week);
+  const days = [day, Q.addDays(day, 1), Q.addDays(day, 2)], items = [];
+  days.forEach(d => { const w = weeks[Q.weekTab(tabs, d)]; (w ? w.data.sessions : []).filter(s => s.day === d && !s.off).sort((a, b) => a.start - b.start).forEach(s => { const list = docsFor(s), need = /PRINT/.test(Q.key(s.note || '')); if (list.length || need) items.push({ s, list, need }); }); });
+  if (!items.length) return h;
+  const lines = items.map(({ s, list }) => '<div class="doc-line"><span class="doc-when">' + esc(dayLabel(s.day).replace(/,.*$/, '')) + ' ' + Q.clock(s.start) + '</span><b>' + esc(s.cls) + '</b><span class="muted small">' + esc(Q.clean(s.book)) + (s.lesson ? T(' · tiết ', ' · lesson ') + esc(s.lesson) : '') + '</span>' +
+    (list.length ? docButtons(list) : '<span class="tag warn">' + T('Cần in · chưa có link trong TÀI LIỆU IN', 'Printing needed · no link yet') + '</span>') + '</div>').join('');
+  const box = '<div class="card row doc-card"><b>🖨️ ' + T('Tài liệu cần in (hôm nay và 2 ngày tới)', 'Documents to print (today and next 2 days)') + '</b>' + lines + '</div>';
+  return (h || '') + box;
+};
