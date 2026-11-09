@@ -2015,7 +2015,9 @@ function hocPhiFrame() {
   const bar = document.querySelector('header');
   f.classList.add('hp-full');
   // An iframe does not stretch between top and bottom like a box does, so its height is set too (owner 09/11 photo: it stayed 150px).
-  const top = bar ? Math.max(0, Math.round(bar.getBoundingClientRect().bottom)) : 0;
+  // While the "paste your tuition link" bar is still shown (first time on this device), the frame starts under it, never over it.
+  const hb = document.querySelector('.hp-bar');
+  const top = Math.max(0, Math.round(hb ? hb.getBoundingClientRect().bottom + 8 : bar ? bar.getBoundingClientRect().bottom : 0));
   f.style.top = top + 'px';
   f.style.height = Math.max(320, innerHeight - top) + 'px';
 }
