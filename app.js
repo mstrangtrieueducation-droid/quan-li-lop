@@ -1173,8 +1173,23 @@ function render() {
   else if (view === 'lopcn') h += viewHomerooms();
   else if (view === 'hocphi' && isManager()) h += viewHocPhi();
   else h += viewSchedule(week);
-  $('main').innerHTML = h;
+  paintMain(h);
   paintSave();
+}
+// Owner 09/11 ("bị giật"): the page is redrawn only when it changed, and an open side panel keeps its place and scroll instead of
+// sliding in again on every redraw.
+function paintMain(h) {
+  const main = $('main');
+  if (main._html === h) return;
+  const dw = main.querySelector('.drawer'), body = dw && dw.querySelector('.dw-body'), top = body ? body.scrollTop : 0, label = dw && dw.getAttribute('aria-label');
+  main.innerHTML = h;
+  main._html = h;
+  const now = main.querySelector('.drawer');
+  if (dw && now && now.getAttribute('aria-label') === label) {
+    now.classList.add('dw-stay');
+    const b = now.querySelector('.dw-body');
+    if (b) b.scrollTop = top;
+  }
 }
 async function guarded(work) {
   try { loadError = ''; await work(); } catch (e) { if (!/đăng nhập/.test(e.message)) loadError = e.status === 403 ? T('Tài khoản này chưa có quyền xem phần đó. Vui lòng báo quản lí.', 'This account cannot see that part. Please tell the manager.') : T('Chưa đọc được dữ liệu: ', 'Could not read the data: ') + e.message; }
@@ -1320,7 +1335,7 @@ async function enter() {
     if (e.status === 401) { forget('boot'); return; }
     me = me || { name: '', role: '' };
     loadError = T('Chưa mở được: ', 'Could not open: ') + e.message;
-    $('main').innerHTML = '<div class="notice bad">' + esc(loadError) + '</div>';
+    $('main').innerHTML = '<div class="notice bad">' + esc(loadError) + '</div>'; $('main')._html = null;
   }
 }
 $('btnTheme').addEventListener('click', () => { theme = theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = theme; try { localStorage.setItem('ql-theme', theme); } catch (e) {} paintTheme(); });

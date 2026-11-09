@@ -840,7 +840,7 @@ function renderBoard() {
   paintTheme();
   if (view !== 'lenlop') { view = 'bang'; document.body.classList.remove('lenlop'); }
   const notes = notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('');
-  $('main').innerHTML = notes + (loadError ? '<div class="notice bad">' + esc(loadError) + '</div>' : '') + (view === 'lenlop' && current ? viewLenLop() : viewBoard());
+  $('main').innerHTML = notes + (loadError ? '<div class="notice bad">' + esc(loadError) + '</div>' : '') + (view === 'lenlop' && current ? viewLenLop() : viewBoard()); $('main')._html = null;
   paintSave();
 }
 const renderBeforeBoard = render;
@@ -3649,9 +3649,11 @@ function ktQueue(classes) {
     ktData[c.key] = Object.assign({}, old || {}, { loading: true });
     call('diemlop', { cls: c.name }).then(d => { ktData[c.key] = { data: d, at: Date.now() }; keep('kt:' + c.key, ktData[c.key]); })
       .catch(() => { ktData[c.key] = Object.assign({}, old || { data: null }, { at: Date.now() - 3000000, loading: false }); })
-      .finally(() => { ktBusy--; render(); if (ktWait.length) ktQueue([]); });
+      .finally(() => { ktBusy--; ktRenderSoon(); if (ktWait.length) ktQueue([]); });
   }
 }
+let ktRenderTimer = 0;
+function ktRenderSoon() { clearTimeout(ktRenderTimer); ktRenderTimer = setTimeout(render, ktWait.length || ktBusy ? 1500 : 150); }
 const ktTone = p => p >= 85 ? 'ok' : p >= 65 ? 'warn' : 'bad';
 function ktLatest(key) {
   const d = ktData[key] && ktData[key].data;

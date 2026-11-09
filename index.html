@@ -1084,6 +1084,7 @@
   .drawer { position: fixed; z-index: 41; top: 0; right: 0; bottom: 0; width: min(420px, 100vw); display: flex; flex-direction: column; background: var(--card); color: var(--ink); box-shadow: -12px 0 32px rgba(15, 23, 42, .2); animation: dwIn .2s ease-out; }
   @keyframes dwIn { from { transform: translateX(40px); opacity: .6; } to { transform: none; opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .drawer { animation: none; } }
+  .drawer.dw-stay { animation: none; }
   .dw-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
   .dw-body { flex: 1; overflow: auto; padding: 8px 10px 24px; display: grid; align-content: start; gap: 6px; }
   .dw-row { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px; border-radius: 10px; border: 1px solid var(--line); }
@@ -1183,10 +1184,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109Q"></script>
-<script src="logic.js?v=20261109Q"></script>
-<script src="app.js?v=20261109Q"></script>
-<script src="qrcode.js?v=20261109Q"></script>
-<script src="extra.js?v=20261109Q"></script>
+<script src="config.js?v=20261109R"></script>
+<script src="logic.js?v=20261109R"></script>
+<script src="app.js?v=20261109R"></script>
+<script src="qrcode.js?v=20261109R"></script>
+<script src="extra.js?v=20261109R"></script>
 </body>
 </html>
