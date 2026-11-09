@@ -1133,6 +1133,20 @@
   .sk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px; } .sk-grid .sk { min-height: 140px; }
   @keyframes skMove { from { background-position: 200% 0; } to { background-position: 0 0; } }
   @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+  /* Lớp chủ nhiệm overview (owner 09/11) */
+  .hr-ov { width: 100%; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: var(--card); text-align: left; font-weight: 400; grid-template-columns: 10px auto minmax(90px, .8fr) minmax(0, 2.4fr) auto 16px; cursor: pointer; }
+  .hr-tbl > .hr-ov:first-child { border-top: 0; }
+  .hr-ov:hover { background: var(--soft); }
+  .hr-chips { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+  .hr-chips .lvl { font-size: 11px; }
+  .chip.ok-chip { background: var(--ok-soft); color: var(--ok); font-weight: 700; }
+  .hr-go-ic { color: var(--muted); font-weight: 800; }
+  .dw-sec { display: grid; gap: 6px; margin-top: 6px; }
+  .dw-sec-h { display: flex; justify-content: space-between; align-items: center; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .dw-sec-h span { color: var(--muted); font-weight: 700; }
+  .dw-none { padding: 4px 2px 8px; }
+  .dw-row .lvl { justify-self: start; }
+  @media (max-width: 760px) { .hr-ov { grid-template-columns: 10px auto minmax(0, 1fr) 16px; } .hr-ov .hr-cm, .hr-ov .hr-next { display: none; } .hr-ov .hr-chips { grid-column: 2 / 4; grid-row: 2; } .hr-ov .hr-go-ic { grid-column: 4; grid-row: 1; } }
 </style>
 </head>
 <body class="notranslate">
@@ -1162,10 +1176,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109M"></script>
-<script src="logic.js?v=20261109M"></script>
-<script src="app.js?v=20261109M"></script>
-<script src="qrcode.js?v=20261109M"></script>
-<script src="extra.js?v=20261109M"></script>
+<script src="config.js?v=20261109N"></script>
+<script src="logic.js?v=20261109N"></script>
+<script src="app.js?v=20261109N"></script>
+<script src="qrcode.js?v=20261109N"></script>
+<script src="extra.js?v=20261109N"></script>
 </body>
 </html>

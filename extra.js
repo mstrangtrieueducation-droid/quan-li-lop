@@ -3543,3 +3543,88 @@ viewSchedule = function (week) {
   const note = '<div class="notice bad">' + T('Tab ' + esc(week.tab) + ': hàng ngày ở LỊCH LÀM VIỆC TA đang ghi sai ngày (bắt đầu ' + esc(viDate(week.data.duty.stale).slice(0, 5)) + '). App tạm xếp theo thứ; sửa hàng ngày trong Schedule giúp.', 'The rota header of ' + esc(week.tab) + ' has wrong dates; days are placed by column for now.') + '</div>';
   return note + h;
 };
+
+/* ---------- Lớp chủ nhiệm, class overview from lists already worked out (owner 09/11: "logic Lớp chủ nhiệm đang sai... tổng quan lớp,
+ * dữ liệu phải đúng... làm sao không hết quota") ----------
+ * No class sheet is read any more (the old page read every homeroom class's whole sheet on each visit and counted homework its own way).
+ *  - homework owed: the Schedule's AUTO_KIDS_BU_BAI, the official list the Schedule worked out from the class sheets with the owner's
+ *    rules (one read for all classes, kept 5 minutes);
+ *  - penalty levels: AUTO_KIDS_MUC_PHAT (already read for Lịch);
+ *  - class size and absences: the attendance log the app already holds (pupils marked in the last lesson; absences in 14 days);
+ *  - reports and the next lesson: as before. */
+const buBai = { rows: null, at: 0, loading: false };
+async function loadBuBai(force) {
+  if (buBai.loading || (!force && buBai.rows && Date.now() - buBai.at < 300000)) return;
+  buBai.loading = true;
+  try {
+    const [[rows]] = [await batchGet(CONFIG.scheduleId, ["'AUTO_KIDS_BU_BAI'!A2:I800"])];
+    buBai.rows = rows.filter(r => Q.clean(r[1]) && Q.clean(r[2])).map(r => ({ cls: Q.clean(r[1]), name: Q.clean(r[2]), reason: Q.clean(r[3]), items: String(r[4] || '').split('\n[TA_REASON')[0].trim(), scanned: Q.clean(r[6]) }));
+    buBai.at = Date.now();
+  } finally { buBai.loading = false; }
+}
+loadHomerooms = async function () {
+  if (cnLoading) return;
+  cnLoading = true;
+  try {
+    await Promise.all([weekOf(today()), weekOf(Q.addDays(today(), 7)), weekOf(Q.addDays(today(), -7)), loadHomeroom(), loadBuBai(), loadMarks(), loadLadder(), ensureReportData()].map(p => Promise.resolve(p).catch(() => null)));
+  } finally { cnLoading = false; render(); }
+};
+const markIsPupil = m => m && m.name && m.name !== CHOT_NAME;
+function classSummary(x) {
+  const k = x.cls.key, t = today(), from = Q.addDays(t, -14);
+  let size = null;
+  if (x.last) { try { size = [...marksOf(x.last).values()].filter(markIsPupil).length || null; } catch (e) {} }
+  const marks = logs.marks ? logs.marks.rows.filter(r => Q.key(r.cls) === k && r.day >= from && r.day <= t && markIsPupil(r)) : [];
+  const latest = new Map();
+  marks.forEach(r => latest.set(r.day + '|' + r.time + '|' + r.name, r));
+  const absent = [...latest.values()].filter(r => Q.ABSENT.includes(r.status));
+  const owed = (buBai.rows || []).filter(r => Q.key(r.cls) === k);
+  const lad = (ladder.rows || []).filter(r => Q.key(r.cls) === k && r.level >= 1).sort((a, b) => b.level - a.level);
+  const reps = reports.rows ? reportItems('').filter(r => Q.key(r.s.cls) === k && (r.state === 'over' || r.state === 'today')) : [];
+  const kids = /^KIDS/i.test(x.cls.name);
+  const tone = lad.some(r => r.level >= 3) || reps.some(r => r.state === 'over') ? 'red' : owed.length || lad.length || absent.length >= 3 ? 'amber' : 'green';
+  return { size, absent, owed, lad, reps, kids, tone, scanned: owed[0] ? owed[0].scanned : '' };
+}
+viewHomerooms = function () {
+  const list = myHomerooms();
+  if (!buBai.rows && !buBai.loading) setTimeout(() => loadBuBai().then(render).catch(() => {}), 0);
+  if (!list.length) return '<div class="card empty">' + (cnLoading ? T('Đang đọc…', 'Reading…') : T('Bạn chưa chủ nhiệm lớp nào trong tuần này.', 'No homeroom class this week.')) + '</div>' + (isManager() || isCm() ? reportSection() : '');
+  const all = list.map(x => ({ x, s: classSummary(x) }));
+  const pupils = all.reduce((n, z) => n + (z.s.size || 0), 0), owing = all.reduce((n, z) => n + z.s.owed.length, 0);
+  const act = all.reduce((n, z) => n + z.s.reps.length + z.s.lad.filter(r => r.level >= 3).length, 0);
+  let h = '<div class="kpi4">' + kpi4Card('school', 'indigo', T('Lớp chủ nhiệm', 'Classes'), list.length, isManager() ? new Set(list.map(z => Q.key(z.cm))).size + T(' chủ nhiệm', ' homeroom teachers') : '') +
+    kpi4Card('users', 'sky', T('Học sinh', 'Pupils'), pupils || '—', T('theo điểm danh buổi gần nhất', 'from the last roll call')) +
+    kpi4Card('pct', !buBai.rows ? 'slate' : owing ? 'amber' : 'green', T('Em nợ bài', 'Owing work'), buBai.rows ? owing : '…', buBai.rows && pupils ? Math.round(owing / pupils * 100) + T('% sĩ số · danh sách Schedule', '% · Schedule list') : '') +
+    kpi4Card('bolt', act ? 'red' : 'green', T('Cần xử lý', 'Act now'), act, T('report trễ · phạt từ M3', 'late reports · level 3+')) + '</div>';
+  const order = { red: 0, amber: 1, green: 2 };
+  h += '<div class="hr-tbl">' + all.sort((a, b) => order[a.s.tone] - order[b.s.tone] || a.x.cls.name.localeCompare(b.x.cls.name, 'vi', { numeric: true })).map(({ x, s }) => {
+    const next = x.next ? dayLabel(x.next.day).replace(/^Thứ /, 'T').replace(/^Chủ nhật/, 'CN') + ' ' + Q.clock(x.next.start) : '';
+    const levels = [5, 4, 3, 2, 1].map(l => [l, s.lad.filter(r => r.level === l).length]).filter(([, n]) => n).map(([l, n]) => '<span class="lvl l' + l + '">M' + l + (n > 1 ? '×' + n : '') + '</span>').join('');
+    return '<button class="hr-row hr-ov" data-act="hrDrawer" data-k="' + esc(x.cls.key) + '"><span class="dot d-' + s.tone + '"></span>' + clsBadge(x.cls.name) +
+      '<span class="hr-cm">' + esc(isManager() ? titleCase(x.cm) : next) + '</span>' +
+      '<span class="hr-chips"><span class="chip" title="' + T('Sĩ số theo điểm danh buổi gần nhất', 'Pupils at the last roll call') + '">' + ico('users') + (s.size || '—') + '</span>' +
+      (s.kids ? (s.owed.length ? '<span class="chip warn">' + T('Nợ bài ', 'Owe ') + s.owed.length + '</span>' : buBai.rows ? '<span class="chip ok-chip" title="' + T('Không em nào trong danh sách bù bài của Schedule', 'Nobody on the Schedule makeup list') + '">' + T('Nợ 0', 'Owe 0') + '</span>' : '') : '') +
+      levels + (s.absent.length ? '<span class="chip">' + T('Vắng ', 'Absent ') + s.absent.length + '</span>' : '') + (s.reps.length ? '<span class="chip warn">' + T('Report ', 'Report ') + s.reps.length + '</span>' : '') + '</span>' +
+      '<span class="hr-next">' + esc(isManager() ? next : '') + '</span><span class="hr-go-ic">›</span></button>';
+  }).join('') + '</div>';
+  h += isManager() || isCm() ? reportSection() : '';
+  if (hrDrawer) h += hrOverviewDrawer(list.find(z => z.cls.key === hrDrawer));
+  return h;
+};
+function hrOverviewDrawer(x) {
+  if (!x) { hrDrawer = null; return ''; }
+  const s = classSummary(x), dm = d => String(d || '').slice(8, 10) + '/' + String(d || '').slice(5, 7);
+  const sec = (title, n, body) => '<div class="dw-sec"><div class="dw-sec-h"><b>' + title + '</b><span>' + n + '</span></div>' + body + '</div>';
+  const none = t => '<div class="small muted dw-none">' + t + '</div>';
+  const byPupil = new Map();
+  s.absent.forEach(r => { const a = byPupil.get(r.name) || []; a.push(dm(r.day)); byPupil.set(r.name, a); });
+  let body = '';
+  if (x.next) body += '<div class="pls">' + pill('cal', dayLabel(x.next.day) + ' ' + Q.clock(x.next.start)) + (x.next.book ? pill('book', Q.clean(x.next.book) + (x.next.lesson ? ' · ' + T('Tiết ', 'L') + x.next.lesson : '')) : '') + '</div>';
+  body += s.kids ? sec(T('Nợ bài', 'Homework owed'), s.owed.length + (s.scanned ? T(' · quét ', ' · checked ') + esc(s.scanned.slice(0, 5)) : ''),
+    s.owed.length ? s.owed.map(r => '<div class="dw-row"><span class="dw-n">!</span><div><b>' + esc(r.name) + '</b><small>' + esc(r.reason) + '</small>' + (r.items ? '<div class="dw-chips">' + r.items.split(/,\s*|;\s*/).filter(Boolean).slice(0, 6).map(i => '<span class="chip">' + esc(i) + '</span>').join('') + '</div>' : '') + '</div></div>').join('') : none(buBai.rows ? T('Không em nào trong danh sách nợ bài.', 'Nobody on the list.') : T('Đang đọc…', 'Reading…'))) : '';
+  body += sec(T('Mức phạt', 'Penalty levels'), s.lad.length, s.lad.length ? s.lad.map(r => '<div class="dw-row"><span class="lvl l' + r.level + '">M' + r.level + '</span><div><b>' + esc(r.name) + '</b><small>' + esc(r.reason) + (r.since ? T(' · từ ', ' · since ') + esc(r.since.slice(0, 5)) : '') + '</small></div></div>').join('') : none(T('Không em nào.', 'Nobody.')));
+  body += sec(T('Vắng 14 ngày', 'Absent, 14 days'), s.absent.length, byPupil.size ? [...byPupil.entries()].sort((a, b) => b[1].length - a[1].length).map(([n, days]) => '<div class="dw-row"><span class="dw-n">' + days.length + '</span><div><b>' + esc(n) + '</b><small>' + esc(days.join(', ')) + '</small></div></div>').join('') : none(T('Không vắng buổi nào.', 'No absences.')));
+  if (s.reps.length) body += sec(T('Report cần làm', 'Reports due'), s.reps.length, s.reps.map(r => '<div class="dw-row"><span class="dw-n">' + esc(r.s.lesson) + '</span><div><b>' + T('Tiết ', 'Lesson ') + esc(r.s.lesson) + '</b><small>' + esc(dayLabel(r.s.day)) + (r.state === 'over' ? T(' · quá hạn', ' · overdue') : T(' · hạn hôm nay', ' · due today')) + '</small></div></div>').join(''));
+  return '<div class="dw-veil" data-act="hrClose"></div><aside class="drawer" role="dialog" aria-label="' + esc(x.cls.name) + '"><div class="dw-head">' + clsBadge(x.cls.name) + '<b>' + esc(titleCase(x.cm)) + '</b><span class="spacer"></span>' +
+    (x.next ? '<button class="quiet" data-act="open" data-row="' + x.next.row + '" data-day="' + x.next.day + '">' + T('Mở lớp', 'Open') + '</button>' : '') + '<button class="quiet" data-act="hrClose" aria-label="' + T('Đóng', 'Close') + '">✕</button></div><div class="dw-body">' + body + '</div></aside>';
+}
