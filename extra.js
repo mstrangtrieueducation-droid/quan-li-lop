@@ -3677,3 +3677,63 @@ function ktSection(key) {
     '<div class="small muted">' + (k.t.date ? T('Ngày kiểm tra ', 'Test date ') + esc(viDate(k.t.date)) + ' · ' : '') + T('tổng ', 'out of ') + k.t.total + '</div>' +
     rows.map(([n, v]) => { const p = typeof v === 'number' ? Math.round(v / k.t.total * 100) : null; return '<div class="kt-row"><b>' + esc(n) + '</b><span>' + (p == null ? esc(v) : v + '/' + k.t.total) + '</span>' + (p == null ? '<span class="chip">' + T('vắng', 'absent') + '</span>' : '<span class="chip kt-' + ktTone(p) + '">' + p + '%</span>') + '</div>'; }).join('') + older + '</div>';
 }
+
+/* ---------- IELTS / FIGHTER: who may not come in today (owner 09/11: "nay buổi 5 vocab 2 mà buổi 4 vocab 2 chưa làm bài thì không được
+ * vào lớp... cảnh báo lúc mở điểm danh để tôi quyết định ấn tick hay sent home") ----------
+ *  - IELTS: the Schedule's own gate list (AUTO_IELTS_TRUOC_GIO_HOC, made one hour before each class: skill and task code still missing);
+ *  - FIGHTER: work owed from the class sheet for the programme of today's lesson (not self-study), due by today.
+ * The roll call shows a red line at the top and a line under each pupil; the teacher still decides: tick present or "Cho về". */
+const ieltsGate = { rows: null, at: 0, loading: false };
+function loadIeltsGate() {
+  if (ieltsGate.loading || (ieltsGate.rows && Date.now() - ieltsGate.at < 600000)) return;
+  ieltsGate.loading = true;
+  batchGet(CONFIG.scheduleId, ["'AUTO_IELTS_TRUOC_GIO_HOC'!A2:H800"]).then(([rows]) => { ieltsGate.rows = rows; ieltsGate.at = Date.now(); })
+    .catch(() => {}).finally(() => { ieltsGate.loading = false; render(); });
+}
+const dmyOf = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
+function gateOf(ctx, p) {
+  const s = ctx.session;
+  if (!s || !isSecondary(s)) return null;
+  if (/^IELTS/i.test(Q.clean(s.cls))) {
+    if (!ieltsGate.rows) { loadIeltsGate(); return null; }
+    const hit = ieltsGate.rows.find(r => Q.clean(r[1]) === dmyOf(s.day) && Q.key(r[2]) === Q.key(s.cls) && Q.key(r[3]) === Q.key(p.name));
+    return hit ? { why: T('chưa làm bài ', 'missing ') + Q.clean(r4(hit[4])) + (Q.clean(hit[7]) && hit[7] !== '0' ? ' (' + Q.clean(hit[7]) + ')' : '') } : null;
+  }
+  const book = Q.key(s.book);
+  if (!book) return null;
+  const owed = (secOwedOf(ctx, p) || []).filter(o => !o.self && Q.key(o.label).includes(book));
+  return owed.length ? { why: T('chưa làm ', 'missing ') + owed.slice(0, 2).map(shortTask).join(', ') + (owed.length > 2 ? ' +' + (owed.length - 2) : '') } : null;
+}
+const r4 = v => ({ SPEAKING: 'Nói', WRITING: 'Viết', READING: 'Đọc', LISTENING: 'Nghe' })[Q.key(v)] || Q.clean(v);
+function gateChecked(s) {
+  if (!/^IELTS/i.test(Q.clean(s.cls))) return true;
+  return !!(ieltsGate.rows && ieltsGate.rows.some(r => Q.clean(r[1]) === dmyOf(s.day) && Q.key(r[2]) === Q.key(s.cls)));
+}
+// The line under each pupil on the class page.
+const kidsMakeupBeforeGate = kidsMakeup;
+kidsMakeup = function (ctx, p, i, canEdit) {
+  const g = gateOf(ctx, p), st = (ctx.marks.get(p.name) || {}).status || '';
+  const line = g ? '<div class="gate-line">⛔ ' + T('Không vào lớp: ', 'Not allowed in: ') + esc(g.why) + (st === SEND_HOME ? ' · ' + T('đã cho về', 'sent home') : '') + '</div>' : '';
+  return line + kidsMakeupBeforeGate(ctx, p, i, canEdit);
+};
+// The red line at the top of the roll call.
+const viewClassBeforeGate = viewClass;
+viewClass = function () {
+  const out = viewClassBeforeGate();
+  if (!current || !isSecondary(current)) return out;
+  const ctx = classContext(current);
+  if (!ctx.tracker) return out;
+  const list = ctx.tracker.pupils.map(p => ({ p, g: gateOf(ctx, p) })).filter(z => z.g);
+  const note = list.length ? '<div class="notice bad gate-top">⛔ ' + list.length + T(' em chưa làm bài buổi trước, theo luật không được vào lớp: ', ' pupils have not done the last homework and may not come in: ') + esc(list.map(z => z.p.eng || z.p.name).join(', ')) + T('. Cô/thầy chọn Có mặt hay "Cho về · thiếu bài".', '. Choose present or "Sent home".') + '</div>'
+    : !gateChecked(current) ? '<div class="notice gate-top">' + T('Danh sách không vào lớp của buổi này chưa quét (Schedule quét khoảng 1 tiếng trước giờ học).', 'The not-allowed-in list for this lesson is not ready yet (about an hour before class).') + '</div>' : '';
+  const at = out.indexOf('<div class="card"><div class="pupil');
+  return note && at >= 0 ? out.slice(0, at) + note + out.slice(at) : out + note;
+};
+// On the class screen pupils see: a short bilingual flag.
+const pupilFlagsBeforeGate = pupilFlags;
+pupilFlags = function (ctx, r) {
+  const html = pupilFlagsBeforeGate(ctx, r), g = gateOf(ctx, r.p);
+  if (!g) return html;
+  const flag = '<span class="rv-flag debt">⛔ ' + T('Chưa làm bài buổi trước', 'Last homework not done') + ' <i class="rv-en-i">Homework missing</i></span>';
+  return html ? html.replace('<span class="rv-flags">', '<span class="rv-flags">' + flag) : '<span class="rv-flags">' + flag + '</span>';
+};
