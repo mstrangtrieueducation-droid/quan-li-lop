@@ -2660,7 +2660,8 @@ classContext = function (session) {
  * Each closed line is: short name (the last two words; the full name shows when the line is opened) and one small icon button per
  * reminder of this class plus ⚠️ for a warning, each with its count. A legend above the list says what the icons mean, in Vietnamese
  * with English under it. Touching the name still opens the full line (with "−", absent). */
-const TICK_ICON = { 'Mất trật tự': '🔊', 'Mất tập trung': '👀', 'Ngủ gật': '😴', 'Viết không kịp': '⏳', 'Viết linh tinh tùy ý': '✏️', 'Làm việc riêng': '📱', 'Trả lời sai': '❌', 'Phát biểu tốt': '👍', 'Dùng điện thoại': '📵' };
+// Owner 09/11 (staff idea, ML): 🗣️ reads better than 🔊 for "Mất trật tự".
+const TICK_ICON = { 'Mất trật tự': '🗣️', 'Mất tập trung': '👀', 'Ngủ gật': '😴', 'Viết không kịp': '⏳', 'Viết linh tinh tùy ý': '✏️', 'Làm việc riêng': '📱', 'Trả lời sai': '❌', 'Phát biểu tốt': '👍', 'Dùng điện thoại': '📵' };
 const shortName = full => { const w = String(full || '').trim().split(/\s+/); return w.length > 2 ? w.slice(-2).join(' ') : full; };
 const paintStripBeforeQuick = paintStrip;
 paintStrip = function () {
