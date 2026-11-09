@@ -1317,11 +1317,14 @@ function pruneWeeks() {
 async function enter() {
   $('login').hidden = true; $('app').hidden = false;
   const tag = keyTag(accessKey), copy = saved.get('boot');
+  // The fresh answer is asked for first, so it is on its way while the kept copy is drawn.
+  const bootCall = call('boot', {});
+  bootCall.catch(() => {});
   if (copy && copy.tag === tag && copy.b) {
     try { applyBoot(copy.b); outbox = saved.get('outbox') || []; render(); weekOf(day).then(render).catch(() => {}); } catch (e) { /* the fresh answer below still comes */ }
   }
   try {
-    const b = await call('boot', {});
+    const b = await bootCall;
     applyBoot(b);
     keep('boot', { tag, b, at: Date.now() });
     try { pruneWeeks(); } catch (e) {}
