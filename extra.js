@@ -4523,3 +4523,69 @@ printCard = function (week) {
   const box = '<div class="card row doc-card"><b>🖨️ ' + T('Tài liệu cần in (hôm nay và 2 ngày tới)', 'Documents to print (today and next 2 days)') + '</b>' + lines + '</div>';
   return (h || '') + box;
 };
+
+/* ---------- Printing, followed (owner 09/11: "tài liệu in không cần answer key... quản lí với tôi cũng cần nắm được việc in... dấu ấn ai đã
+ * in rồi... hiện luôn số bản cần in là số học sinh lớp đó + sơ cua thêm 1-2 bản mỗi lần") ----------
+ * - Answer keys never show among the files to print (only the folder link stays when nothing else is there).
+ * - Each lesson to print shows the copies: pupils of that class (or group) + 1 spare up to 10 pupils, + 2 above.
+ * - "✓ Đã in" writes a row in DIEM_DANH (class "IN TÀI LIỆU", name "<class> · tiết <n>"): everyone sees who printed and when;
+ *   the person who ticked it or a manager can take it back. */
+const PRINT_DOC_CLS = 'IN TÀI LIỆU';
+const isAnswerKey = name => /ANSWER|\bKEYS?\b|DAP AN|LOI GIAI/.test(Q.key(String(name || '')).replace(/[_\-.]/g, ' '));
+const docsForBeforeKey = docsFor;
+docsFor = function (s) {
+  const list = docsForBeforeKey(s), files = list.filter(d => !d.folder && !isAnswerKey(d.name));
+  return files.length ? files : list.filter(d => d.folder);
+};
+const printTried = new Set();
+function printCopies(s) {
+  const c = classOf(s) || sentClass(s.cls);
+  if (!c) return null;
+  const t = trackers[c.key];
+  if (!t) { if (!printTried.has(c.key)) { printTried.add(c.key); loadTracker(c, false, true).then(render).catch(() => {}); } return null; }
+  const g = Q.key(s.cls), mine = (t.pupils || []).filter(p => p.group === g), n = (mine.length ? mine : t.pupils || []).length;
+  if (!n) return null;
+  const spare = n <= 10 ? 1 : 2;
+  return { n, spare, total: n + spare };
+}
+const printKey = s => Q.clean(s.cls) + ' · ' + T('tiết ', 'lesson ') + Q.clean(s.lesson || '');
+function printedOf(s) {
+  const k = Q.clean(s.cls) + ' · tiết ' + Q.clean(s.lesson || ''), rows = (logs.marks ? logs.marks.rows : []).filter(r => r.cls === PRINT_DOC_CLS && r.day === s.day && r.name === k);
+  const last = rows[rows.length - 1];
+  return last && last.status === 'Đã in' ? last : null;
+}
+function printLine(s, list, week) {
+  const cp = printCopies(s), done = printedOf(s), can = isManager() || isTaSide(week) || isMe(s.teacher) || isMe(s.ta);
+  const copies = cp ? '<span class="doc-copies" title="' + esc(cp.n + T(' học sinh + ', ' pupils + ') + cp.spare + T(' bản dự phòng', ' spare')) + '">🧾 ' + T('Cần in ', 'Print ') + '<b>' + cp.total + '</b>' + T(' bản', ' copies') + ' <small>(' + cp.n + ' HS + ' + cp.spare + ')</small></span>' : '<span class="doc-copies muted small">🧾 ' + T('đang đếm sĩ số…', 'counting pupils…') + '</span>';
+  const mark = done ? '<span class="tag ok">✓ ' + T('Đã in', 'Printed') + ' · ' + esc(done.by || '?') + ' · ' + esc(String(done.at || '').slice(11, 16)) + ' ' + esc(String(done.at || '').slice(0, 5)) + '</span>' + (isManager() || isMe(done.by) ? '<button class="quiet" data-act="docPrinted" data-row="' + s.row + '" data-day="' + s.day + '" data-v="Bỏ in">' + T('Bỏ', 'Undo') + '</button>' : '')
+    : can ? '<button class="good" data-act="docPrinted" data-row="' + s.row + '" data-day="' + s.day + '" data-v="Đã in">✓ ' + T('Đã in', 'Printed') + '</button>' : '<span class="tag warn">' + T('Chưa in', 'Not printed') + '</span>';
+  return '<div class="doc-line' + (done ? ' done' : '') + '"><span class="doc-when">' + esc(dayLabel(s.day).replace(/,.*$/, '')) + ' ' + Q.clock(s.start) + '</span><b>' + esc(s.cls) + '</b><span class="muted small">' + esc(Q.clean(s.book)) + (s.lesson ? T(' · tiết ', ' · lesson ') + esc(s.lesson) : '') + '</span>' +
+    (list.length ? docButtons(list) : '<span class="tag warn">' + T('Cần in · chưa tìm thấy file', 'Printing needed · file not found yet') + '</span>') + copies + mark + '</div>';
+}
+printCard = function (week) {
+  const h = printCardBeforeDocs(week);
+  if (!logs.marks) setTimeout(() => loadMarks().then(render).catch(() => {}), 0);
+  const days = [day, Q.addDays(day, 1), Q.addDays(day, 2)], items = [];
+  days.forEach(d => { const w = weeks[Q.weekTab(tabs, d)]; (w ? w.data.sessions : []).filter(s => s.day === d && !s.off).sort((a, b) => a.start - b.start).forEach(s => { const list = docsFor(s), need = /PRINT/.test(Q.key(s.note || '')); if (list.length || need) items.push({ s, list }); }); });
+  if (!items.length) return h;
+  const left = items.filter(x => !printedOf(x.s)).length;
+  const box = '<div class="card row doc-card"><div class="row-top"><b>🖨️ ' + T('Tài liệu cần in (hôm nay và 2 ngày tới)', 'Documents to print (today and next 2 days)') + '</b><span class="spacer"></span><span class="tag ' + (left ? 'warn' : 'ok') + '">' + (left ? left + T(' buổi chưa in', ' not printed') : T('Đã in đủ', 'All printed')) + '</span></div>' + items.map(x => printLine(x.s, x.list, week)).join('') + '</div>';
+  return (h || '') + box;
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="docPrinted"]');
+  if (!b) return;
+  const s = findSession(b.dataset.row, b.dataset.day);
+  if (!s) return;
+  appendMark({ day: s.day, cls: PRINT_DOC_CLS, lesson: '', start: s.start }, { row: '', name: Q.clean(s.cls) + ' · tiết ' + Q.clean(s.lesson || ''), eng: '' }, b.dataset.v);
+  render();
+});
+// Class page: the copies to print next to the documents.
+const viewClassBeforeCopies = viewClass;
+viewClass = function () {
+  const h = viewClassBeforeCopies();
+  if (!current || h.indexOf('class="doc-row"') < 0) return h;
+  const cp = printCopies(current), done = printedOf(current);
+  const add = (cp ? '<span class="doc-copies">🧾 ' + T('Cần in ', 'Print ') + '<b>' + cp.total + '</b>' + T(' bản', ' copies') + ' <small>(' + cp.n + ' HS + ' + cp.spare + ')</small></span>' : '') + (done ? '<span class="tag ok">✓ ' + T('Đã in', 'Printed') + ' · ' + esc(done.by || '?') + '</span>' : '');
+  return h.replace(/(<div class="doc-row">[\s\S]*?)(<\/div>)/, (m0, a, b) => a + add + b);
+};
