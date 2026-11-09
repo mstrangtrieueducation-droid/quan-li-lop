@@ -20,6 +20,21 @@ const ERROR_TYPES = ['Đi muộn', 'Quên điểm danh', 'Chưa nhập A/B/F', '
 
 // Owner 09/11 ("vẫn có khoảng trắng ban đầu"): the web font is fetched without holding back the first paint.
 (function () { try { const f = document.createElement('link'); f.rel = 'stylesheet'; f.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'; document.head.appendChild(f); } catch (e) {} })();
+
+// Owner 09/11: the page's own files are kept on the device (sw.js) so it opens at once; a newer copy reloads the page while it is still opening.
+(function () {
+  if (!('serviceWorker' in navigator) || location.protocol !== 'https:' && location.hostname !== 'localhost') return;
+  try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) { return; }
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (!e.data || e.data.type !== 'app-updated') return;
+    let last = 0; try { last = Number(sessionStorage.getItem('swReloadAt')) || 0; } catch (err) {}
+    const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    if (performance.now() < 15000 && !typing && !(typeof outbox !== 'undefined' && outbox.length) && Date.now() - last > 30000) {
+      try { sessionStorage.setItem('swReloadAt', String(Date.now())); } catch (err) {}
+      location.reload();
+    }
+  });
+})();
 /* ---------- Storage on this device: IndexedDB, because localStorage on this address is full ---------- */
 let dbHandle = null;
 const saved = new Map();
