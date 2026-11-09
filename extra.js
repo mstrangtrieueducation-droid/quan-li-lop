@@ -936,7 +936,7 @@ viewLenLop = function () {
   orderRows(rows, s);
   const scores = [...new Set(rows.filter(r => !r.off && r.stars).map(r => r.stars))].sort((a, b) => b - a), medal = ['🥇', '🥈', '🥉'];
   const unmarked = rows.filter(r => !r.off && !r.here).length, noStars = !ctx.tracker.blocks.length || (!!ctx.block && !(ctx.block.stars >= 0)), group = isGroup(s);
-  const starOk = !noStars && ctx.block && ctx.block.stars >= 0;
+  const starOk = !noStars && ctx.block && ctx.block.stars >= 0, lateNow = Q.tickStatus(s, today(), minutesNow()) === 'Đến muộn';
   const podium = rows.filter(r => !r.off && r.stars && scores.indexOf(r.stars) < 3).sort((a, b) => b.stars - a.stars).slice(0, 5);
   let h = '<div class="ll-head"><button class="quiet" data-act="llExit" aria-label="' + T('Thoát', 'Exit') + '">‹</button><div class="ll-title"><b>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</b><span>' + sessionTime(s) + ' · ' + rows.filter(r => r.here).length + '/' + rows.length + T(' có mặt', ' here') + '</span></div>' +
     (podium.length ? '<div class="ll-podium" aria-label="' + T('Dẫn đầu', 'Leaders') + '">' + podium.map(r => '<span>' + (medal[scores.indexOf(r.stars)] || '') + ' ' + esc(r.p.eng || r.p.name) + ' <b>' + r.stars + '</b></span>').join('') + '</div>' : '') +
@@ -961,7 +961,12 @@ viewLenLop = function () {
       ticksFor(s).map((t, k) => '<span class="rv-chip"><button class="rv-tick' + (t === PRAISE ? ' rv-praise' : '') + (counts[t] ? ' on' : '') + '" data-act="llTick" data-i="' + r.i + '" data-k="' + k + '" data-v="' + k + '"' + live + '>' + biText(t) + badge(counts[t]) + '</button>' + undoBtn(r, t, counts[t], live, name) + '</span>').join('') +
       '<span class="rv-chip"><button class="rv-warn' + (over ? ' hot' : '') + (warned ? ' on' : '') + '" data-act="llReason" data-i="' + r.i + '"' + live + '>⚠️ Cảnh cáo<small class="rv-en">Warning</small>' + badge(warned) + '</button>' + undoBtn(r, CANH_CAO, warned, live, name) + '</span>' +
       (group && !r.off ? '<button class="rv-here' + (r.here ? ' on' : '') + '" data-act="llHere" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.here + '">✓</button>' : '') +
-      secButtons(ctx, r, live) + ((r.here && !r.off) || secStatus(r) ? '' : '<button class="rv-off' + (r.off ? ' on' : '') + '" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="' + r.off + '">' + (r.off ? 'Nghỉ ✓<small class="rv-en">Absent</small>' : 'Nghỉ<small class="rv-en">Absent</small>') + '</button>') +
+      secButtons(ctx, r, live) +
+      // Owner 09/11: "khi có hs đến tôi lại phải out ra màn điểm danh để điểm danh": a pupil not yet ticked (or marked absent) gets
+      // one tap here; after the roll-call minutes it records "Đến muộn" with the minutes, like the roll call.
+      (!group && !r.here && !secStatus(r) ? '<button class="rv-arrive" data-act="llArrive" data-i="' + r.i + '"' + (can ? '' : ' disabled') + '>🙋 ' + (lateNow ? T('Đến muộn', 'Late') + '<small class="rv-en">Arrived late</small>' : T('Có mặt', 'Here') + '<small class="rv-en">Here</small>') + '</button>' : '') +
+      ((r.here && !r.off) || r.off || secStatus(r) ? '' : '<button class="rv-off" data-act="llOff" data-i="' + r.i + '"' + dis + ' aria-pressed="false">Nghỉ<small class="rv-en">Absent</small></button>') +
+      (r.off ? '<span class="rv-offtag">' + T('Đang ghi nghỉ', 'Marked absent') + '</span>' : '') +
       (histOpen ? histBox(ctx, r) : '') + '</div>';
   }).join('') + '</div>';
   const open = llReason != null ? rows.find(r => r.i === llReason) : null;
@@ -1304,7 +1309,9 @@ ladderBlock = function (week) {
  * so the grade letter stays first and every reader still sees the grade).
  * ▸ beside a pupil shows the last 3 lessons: stars, BTVN, reminders. The screen starts locked; the teacher holds "Giữ để sửa",
  * then "Lưu & khoá". Every tap is kept on this device at once and sent to the sheets in the background, so a power cut loses nothing. */
-const LOCK_IDLE = 5 * 60000, HOLD_MS = 700, REASON_TAG = 'Lý do: ';
+// Owner 09/11: "đừng tự động lock": the screen no longer locks itself after 5 idle minutes, nor when the teacher steps out to another
+// screen and back; it locks only on "Xong, khoá lại" or when another lesson is opened.
+const LOCK_IDLE = Infinity, HOLD_MS = 700, REASON_TAG = 'Lý do: ';
 const GRADE_REASONS = ['Chưa làm bài', 'Làm thiếu', 'Làm ẩu, sai nhiều', 'Quên sách vở', 'Chưa chữa bài'];
 const llLock = { key: '', open: false, at: 0 };
 let llGradeBox = null;
@@ -1369,7 +1376,7 @@ const WRITE_ACTS = ['llStar', 'llDown', 'llTick', 'llWarnGive', 'llWarnAdd', 'll
 const llActionBeforeLock = llAction;
 llAction = function (act, i, v) {
   const ctx = classContext(current), s = ctx.session;
-  if (act === 'llExit') { llLock.open = false; llGradeBox = null; llHist.clear(); }
+  if (act === 'llExit') { llGradeBox = null; llHist.clear(); }
   if (act === 'llClose') llGradeBox = null;
   if (act === 'llHist') { const p = ctx.tracker && ctx.tracker.pupils[Number(i)]; if (p) { if (llHist.has(p.name)) llHist.delete(p.name); else llHist.add(p.name); render(); } return; }
   if (act === 'llUnlock') return;
@@ -2335,7 +2342,7 @@ render = function () {
  * bất tiện thao tác khi đang dạy") ----------
  * On anything wider than a phone, the pupil rows are laid out in 1–3 columns and scaled down just enough that every pupil
  * fits the window (ClassIn's browser box, a half screen, a board) without scrolling; never below 45 %. Phones keep scrolling. */
-const FIT_MIN = 0.45;
+const FIT_MIN = 0.4;
 let fitLast = { key: '', c: 1, s: 1 };
 function fitClassScreen() {
   const list = document.querySelector('.rv-list');
@@ -2351,7 +2358,11 @@ function fitClassScreen() {
     if (s < 0.999) { list.style.transform = 'scale(' + s + ')'; list.style.marginBottom = -(list.offsetHeight * (1 - s)) + 'px'; }
   };
   set(1, 1); list.classList.remove('rv-fit');
-  if (window.innerWidth < 640 || document.querySelector('.ll-sheet')) return;
+  // Owner 09/11: "áp dụng cho tab ở laptop nữa khi tôi bật chia đôi màn hay 1/3 màn": on a computer a narrow window keeps the
+  // full-screen layout (one row per pupil, rv-desk turns off the phone rules) and is scaled to fit. Only a real phone scrolls.
+  const realPhone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+  list.classList.toggle('rv-desk', !realPhone);
+  if (realPhone || document.querySelector('.ll-sheet')) return;
   const top = list.getBoundingClientRect().top + window.scrollY, avail = window.innerHeight - top - 10;
   if (avail < 150) return;
   const n = list.children.length, wide = list.parentElement.clientWidth;
@@ -2526,7 +2537,8 @@ Object.assign(COMMENT_LINES, {
 let llOpenRow = null;
 // IELTS and FIGHTER first (owner 08/11: "phần khung hẹp áp dụng cho ielts và fighter trước"); KIDS keep their usual rows.
 // All classes (IELTS/FIGHTER first on 08/11, KIDS the same evening: "kids cũng cần sửa theo các nút tương ứng").
-const stripOn = () => view === 'lenlop' && window.innerWidth < 640 && !!current;
+// Owner 09/11: also a laptop window split in half or a third gets the icon ("nút tắt") layout that fits the window.
+const stripOn = () => view === 'lenlop' && window.innerWidth < 900 && !!current;
 document.addEventListener('click', e => {
   const n = stripOn() && e.target.closest && e.target.closest('.rv-row .rv-name');
   if (!n) return;
@@ -4064,17 +4076,32 @@ viewClass = function () {
 function fitRoll() {
   const list = document.querySelector('.roll-fit');
   if (!list) return;
-  const width = list.clientWidth, phone = innerWidth < 700, minCol = phone ? 165 : 290, most = Math.max(1, Math.min(6, Math.floor(width / minCol)));
-  const room = innerHeight - (list.getBoundingClientRect().top + scrollY) - 12, n = list.querySelectorAll(':scope > .pupil').length;
-  let cols = 1;
-  for (; cols <= most; cols++) {
-    list.style.setProperty('--roll-cols', cols);
-    list.classList.toggle('multi', cols > 1);
-    list.classList.toggle('narrow', phone && cols > 1);
-    if (list.scrollHeight <= room || cols >= n) break;
+  // Owner 09/11: also when the laptop window is split in half or a third. Only a real phone (touch, small screen) is treated as a
+  // phone; a narrow window on a computer gets more, smaller tiles and, if that is still too tall, the whole list is scaled down.
+  const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+  list.style.zoom = '';
+  const width = list.clientWidth, n = list.querySelectorAll(':scope > .pupil').length;
+  const room = () => innerHeight - (list.getBoundingClientRect().top + scrollY) - 12;
+  const set = (c, narrow) => { list.style.setProperty('--roll-cols', c); list.classList.toggle('multi', c > 1); list.classList.toggle('narrow', !!narrow && c > 1); };
+  // Every layout is tried (tiles with the grade buttons beside the name, then smaller tiles with them underneath); the first that fits
+  // wins, otherwise the shortest one is kept and scaled.
+  let last = [1, false], best = Infinity;
+  for (const [minCol, narrow] of [[290, false], [230, false], [150, true], [118, true]]) {
+    const most = Math.max(1, Math.min(6, Math.floor(width / minCol)));
+    for (let c = 1; c <= most; c++) {
+      set(c, narrow);
+      const h = list.scrollHeight;
+      if (h <= room() || c >= n) return;
+      if (h < best) { best = h; last = [c, narrow]; }
+    }
   }
-  // Nothing fits: a computer keeps the most columns (least scrolling); a phone goes back to one tidy column, easier to scroll than two.
-  if (cols > most) { cols = phone ? 1 : most; list.style.setProperty('--roll-cols', cols); list.classList.toggle('multi', cols > 1); list.classList.toggle('narrow', phone && cols > 1); }
+  // Nothing fits: a phone goes back to one tidy column (easier to scroll than tiny tiles); a computer keeps the densest layout and
+  // shrinks it to fit (not below 50%).
+  if (phone) { set(1, false); return; }
+  set(last[0], last[1]);
+  let z = Math.max(0.5, Math.min(1, room() / list.scrollHeight));
+  list.style.zoom = z;
+  for (let k = 0; k < 6 && z > 0.5 && list.getBoundingClientRect().bottom > innerHeight - 8; k++) { z = Math.max(0.5, z - 0.04); list.style.zoom = z; }
 }
 const renderBeforeRollFit = render;
 render = function () { renderBeforeRollFit(); try { fitRoll(); } catch (e) {} };
@@ -4209,3 +4236,44 @@ document.addEventListener('keydown', e => {
 });
 const renderBeforeFinder = render;
 render = function () { renderBeforeFinder(); try { finderButton(); } catch (e) {} };
+
+// "🙋 Có mặt / Đến muộn" on the class screen (owner 09/11): same mark as a tick on the roll call, without leaving the class screen.
+const llActionBeforeArrive = llAction;
+llAction = function (act, i, v) {
+  if (act !== 'llArrive') return llActionBeforeArrive(act, i, v);
+  const ctx = classContext(current), s = ctx.session, pupil = ctx.tracker && ctx.tracker.pupils[Number(i)];
+  // Owner 09/11: "xong vẫn có các nút tắt ấy": works even after "Xong, khoá lại" (no need to unlock for a late arrival).
+  if (!pupil || !canTeach(s)) return;
+  const m = ctx.marks.get(pupil.name);
+  appendMark(s, pupil, Q.tickStatus(s, today(), minutesNow()), m && m.contact, m && m.note);
+  render();
+};
+
+/* Owner 09/11: "ielts fighter thêm cho tôi lỗi là lười suy nghĩ": one more reminder button for every IELTS and FIGHTER lesson. */
+const LAZY_TICK = 'Lười suy nghĩ';
+Object.assign(BEHAVIOUR_EN, { [LAZY_TICK]: 'Not thinking' });
+COMMENT_LINES[LAZY_TICK] = 'con còn lười suy nghĩ, cần chủ động động não, tự tìm câu trả lời trước khi hỏi.';
+TICK_ICON[LAZY_TICK] = '🧠';
+[FIGHTER_TICKS, IELTS_WRITING_TICKS, IELTS_SPEAKING_TICKS, TEEN_TICKS].forEach(list => { if (list.includes(LAZY_TICK)) return; const p = list.indexOf(PRAISE); if (p >= 0) list.splice(p, 0, LAZY_TICK); else list.push(LAZY_TICK); });
+if (!BEHAVIOURS.includes(LAZY_TICK)) BEHAVIOURS.push(LAZY_TICK);
+
+// The icon layout also gets 🙋 for a pupil not yet ticked or marked absent (owner 09/11: "xong vẫn có các nút tắt ấy"), and the legend says so.
+const paintStripBeforeArrive = paintStrip;
+paintStrip = function () {
+  paintStripBeforeArrive();
+  if (!stripOn()) return;
+  let added = false;
+  document.querySelectorAll('.rv-row').forEach(r => {
+    const old = r.querySelector('.rv-q-arrive');
+    if (old) old.remove();
+    const a = r.querySelector('.rv-arrive');
+    if (!a || r.classList.contains('open')) return;
+    const html = '<button class="rv-q rv-q-arrive" data-act="llArrive" data-i="' + r.dataset.i + '"' + (a.disabled ? ' disabled' : '') + ' title="' + esc(a.textContent) + '">🙋</button>';
+    const q = r.querySelector('.rv-quick'), n = r.querySelector('.rv-name');
+    if (q) q.insertAdjacentHTML('afterbegin', html); else if (n) n.insertAdjacentHTML('afterend', '<span class="rv-quick">' + html + '</span>');
+    added = true;
+  });
+  const legend = document.querySelector('.rv-legend');
+  if (legend && !legend.querySelector('.lg-arrive')) legend.insertAdjacentHTML('afterbegin', '<span class="lg-arrive">🙋 ' + T('Có mặt / đến muộn', 'Arrived') + '<small class="rv-en">Arrived</small></span>');
+  if (added) fitClassScreen();
+};
