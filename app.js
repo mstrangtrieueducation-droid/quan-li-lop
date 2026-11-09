@@ -18,6 +18,8 @@ const minutesNow = () => { const d = new Date(); return d.getHours() * 60 + d.ge
 const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); };
 const ERROR_TYPES = ['Đi muộn', 'Quên điểm danh', 'Chưa nhập A/B/F', 'Chưa mở cột', 'Chấm bài trễ hạn', 'Trả bài trễ hạn', 'Khác'];
 
+// Owner 09/11 ("vẫn có khoảng trắng ban đầu"): the web font is fetched without holding back the first paint.
+(function () { try { const f = document.createElement('link'); f.rel = 'stylesheet'; f.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'; document.head.appendChild(f); } catch (e) {} })();
 /* ---------- Storage on this device: IndexedDB, because localStorage on this address is full ---------- */
 let dbHandle = null;
 const saved = new Map();
