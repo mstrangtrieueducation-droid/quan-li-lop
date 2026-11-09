@@ -2012,7 +2012,11 @@ function hocPhiFrame() {
   if (!show) { if (f) f.hidden = true; return; }
   if (!f) { f = document.createElement('iframe'); f.id = 'hpFrame'; f.title = 'Học phí'; f.src = HOC_PHI_URL; f.setAttribute('allow', 'clipboard-write'); document.body.appendChild(f); }
   f.hidden = false;
+  const bar = document.querySelector('header');
+  f.classList.add('hp-full');
+  f.style.top = (bar ? Math.round(bar.getBoundingClientRect().bottom) : 0) + 'px';
 }
+addEventListener('resize', () => { try { if (view === 'hocphi') hocPhiFrame(); } catch (e) {} });
 
 /* ---------- One person, one name (owner 08/11) ---------- */
 // A short name from the rota (SON) is the staff member whose name ends with it (VAN SON), when exactly one does.

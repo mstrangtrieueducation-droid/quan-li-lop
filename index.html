@@ -550,6 +550,8 @@
   .hp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; }
   #hpFrame { display: block; width: calc(100% - 24px); max-width: 1400px; margin: 0 auto 12px; height: calc(100vh - 170px); min-height: 520px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
   #hpFrame[hidden] { display: none; }
+  /* Owner 09/11: "cho tràn ra hết": the tuition page fills everything under the top bar (top set from the bar height by script). */
+  #hpFrame.hp-full { position: fixed; left: 0; right: 0; bottom: 0; width: 100%; max-width: none; height: auto; min-height: 0; margin: 0; border: 0; border-radius: 0; z-index: 30; }
   /* Phone layout (owner 08/11: màn hình điện thoại hiển thị hơi lộn xộn) */
   @media (max-width: 640px) {
     header { position: static; }
@@ -1303,10 +1305,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109AS"></script>
-<script src="logic.js?v=20261109AS"></script>
-<script src="app.js?v=20261109AS"></script>
-<script src="qrcode.js?v=20261109AS"></script>
-<script src="extra.js?v=20261109AS"></script>
+<script src="config.js?v=20261109AT"></script>
+<script src="logic.js?v=20261109AT"></script>
+<script src="app.js?v=20261109AT"></script>
+<script src="qrcode.js?v=20261109AT"></script>
+<script src="extra.js?v=20261109AT"></script>
 </body>
 </html>
