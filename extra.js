@@ -3737,3 +3737,28 @@ pupilFlags = function (ctx, r) {
   const flag = '<span class="rv-flag debt">⛔ ' + T('Chưa làm bài buổi trước', 'Last homework not done') + ' <i class="rv-en-i">Homework missing</i></span>';
   return html ? html.replace('<span class="rv-flags">', '<span class="rv-flags">' + flag) : '<span class="rv-flags">' + flag + '</span>';
 };
+
+/* ---------- Late minutes everywhere (owner 09/11: "có ghi số phút... từ hôm nay áp dụng đồng bộ và làm chuẩn") ----------
+ * A pupil ticked after the roll call closes is "Đến muộn"; the minutes are counted from the lesson start to the first tick of the
+ * current late streak (later re-marks with the same status do not move it). A tick made after the lesson (fixing the record)
+ * has no minutes, so it shows "Đến muộn" alone rather than a wrong number. */
+function lateMinOf(s, name) {
+  if (!s || !logs.marks) return 0;
+  const prefix = [s.day, s.classKey, s.lesson, Q.clock(s.start)].join('|') + '|';
+  let first = null;
+  logs.marks.rows.forEach(m => { if (m.name !== name || !markKey(m).startsWith(prefix)) return; if (m.status === 'Đến muộn') { if (!first) first = m; } else first = null; });
+  const t = first && stampMinutes(first.at);
+  if (!t || t.day !== s.day || t.min > s.end) return 0;
+  return Math.max(1, t.min - s.start);
+}
+const lateMinText = (s, name) => { const n = lateMinOf(s, name); return n ? ' ' + n + T(' phút', ' min') : ''; };
+const attendTextBeforeMin = attendText;
+attendText = function (m) {
+  if (m && m.status === 'Đến muộn' && current) { const n = lateMinOf(current, m.name); if (n) return '<span class="sum-late">Đến muộn ' + n + ' phút</span>'; }
+  return attendTextBeforeMin(m);
+};
+const pupilFlagsBeforeMin = pupilFlags;
+pupilFlags = function (ctx, r) {
+  const h = pupilFlagsBeforeMin(ctx, r), n = lateMinOf(ctx.session, r.p.name);
+  return n ? h.replace('⏰ Muộn <i class="rv-en-i">Late</i>', '⏰ Muộn ' + n + ' phút <i class="rv-en-i">Late ' + n + ' min</i>') : h;
+};
