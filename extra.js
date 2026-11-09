@@ -2390,7 +2390,7 @@ function fitClassScreen() {
   const set = (c, s) => {
     list.style.gridTemplateColumns = c > 1 ? 'repeat(' + c + ', minmax(0, 1fr))' : '';
     list.style.width = s < 0.999 ? (100 / s) + '%' : '';
-    list.style.transform = ''; list.style.marginBottom = '';
+    list.style.transform = ''; list.style.marginBottom = ''; list.style.gridAutoRows = ''; list.style.transformOrigin = '';
   };
   const apply = (c, s) => {
     set(c, s);
@@ -4333,7 +4333,18 @@ if (!BEHAVIOURS.includes(LAZY_TICK)) BEHAVIOURS.push(LAZY_TICK);
 const paintStripBeforeArrive = paintStrip;
 paintStrip = function () {
   paintStripBeforeArrive();
-  if (!stripOn()) return;
+  // Owner 09/11 (photo, rows on top of each other): back from the narrow icon layout to a wide window, the page kept the narrow
+  // layout's fixed row height, icons and legend (the screen is only redrawn when something changes). Clear them, then fit again.
+  if (!stripOn()) {
+    let had = false;
+    document.querySelectorAll('.rv-quick, .rv-legend, .rv-mini, .rv-q-arrive').forEach(x => { x.remove(); had = true; });
+    document.querySelectorAll('.rv-row.open').forEach(r => r.classList.remove('open'));
+    document.querySelectorAll('.rv-row .ll-name[data-full]').forEach(n => { n.textContent = n.dataset.full; });
+    const list = document.querySelector('.rv-list');
+    if (list && list.style.gridAutoRows) { list.style.gridAutoRows = ''; had = true; }
+    if (had && view === 'lenlop') { fitLast.key = ''; fitClassScreen(); }
+    return;
+  }
   let added = false;
   document.querySelectorAll('.rv-row').forEach(r => {
     const old = r.querySelector('.rv-q-arrive');
