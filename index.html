@@ -1207,7 +1207,7 @@
   .roll-fit .who { min-width: 0; }
   /* Owner 09/11 (board photo, IELTS 50): names were squeezed to "N…" by the Cho về / Ở nhà buttons: the name keeps its room, those
      buttons, the owed line and the gate flag go on their own line under it. */
-  .roll-fit .pupil { grid-template-columns: 40px minmax(120px, 1fr) auto; }
+  .roll-fit .pupil { grid-template-columns: 40px minmax(90px, 1fr) auto; }
   .roll-fit .pupil > :not(.tick):not(.who):not(.grades):not(.sec-marks) { grid-column: 2 / -1; }
   .roll-fit .pupil > .sec-marks { justify-content: flex-end; gap: 4px; }
   .roll-fit .sec-mark { min-height: 30px; padding: 0 8px; font-size: 12px; border-width: 1.5px; }
@@ -1258,6 +1258,15 @@
   .fd-flash { animation: fdFlash 1.8s ease-out 1; }
   @keyframes fdFlash { 0%, 30% { box-shadow: 0 0 0 3px #f59e0b; background-color: rgba(245,158,11,.15); } 100% { box-shadow: 0 0 0 0 transparent; } }
   @media (max-width: 640px) { .fd-modal { top: 0; transform: none; } }
+  /* Roll call icons for IELTS / FIGHTER (owner 09/11: "lúc tôi cho nhỏ lại sao không thành loại biểu tượng như đã chốt"):
+     tiles show 🚪 🏠 📝 beside the name, the words are in the legend above and in each button's tooltip. */
+  .roll-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 6px; font-size: 14px; font-weight: 600; color: var(--ink); }
+  .roll-legend b { font-size: 17px; }
+  .roll-fit .sec-mark .sm-t { display: none; }
+  .roll-fit .sec-mark { min-width: 38px; min-height: 36px; padding: 0 6px; font-size: 19px; line-height: 1; border-radius: 10px; border-width: 2px; }
+  .roll-fit .sec-mark .sm-ok { font-size: 13px; font-weight: 800; }
+  .roll-fit .pupil > .sec-marks { grid-column: 3; grid-row: 1; flex-wrap: nowrap; gap: 3px; justify-content: flex-end; }
+  .roll-fit.narrow .pupil > .sec-marks { grid-column: 1 / -1; grid-row: auto; justify-content: flex-start; }
 </style>
 </head>
 <body class="notranslate">
@@ -1287,10 +1296,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261109AJ"></script>
-<script src="logic.js?v=20261109AJ"></script>
-<script src="app.js?v=20261109AJ"></script>
-<script src="qrcode.js?v=20261109AJ"></script>
-<script src="extra.js?v=20261109AJ"></script>
+<script src="config.js?v=20261109AK"></script>
+<script src="logic.js?v=20261109AK"></script>
+<script src="app.js?v=20261109AK"></script>
+<script src="qrcode.js?v=20261109AK"></script>
+<script src="extra.js?v=20261109AK"></script>
 </body>
 </html>
