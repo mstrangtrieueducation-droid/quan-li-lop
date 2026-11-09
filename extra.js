@@ -556,12 +556,14 @@ function ageGroupOf(cls) {
   if (/DISCOVER [3-6]|SCIENCE G[2-5]|CRITICAL|DEBATE|THINKING/.test(b)) return 'lon';
   return 'giua';
 }
-const ladder = { rows: null, contacts: null, at: 0, tried: 0, copy: null };
+const ladder = { rows: null, contacts: null, at: 0, tried: 0, copy: null, stamp: '', fresh: false };
 const viToIso = s => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : ''; };
 const contactOf = r => ({ at: r[0], cls: Q.clean(r[1]), name: Q.clean(r[2]), level: Number(r[3]) || 0, since: Q.clean(r[4]), action: Q.clean(r[5]), note: r[6] || '', by: r[7] || '' });
 async function loadLadder(force) {
   if (!force && ladder.rows && Date.now() - ladder.at < 300000) return;
-  const [[rows], [contacts]] = await Promise.all([batchGet(CONFIG.scheduleId, ["'AUTO_KIDS_MUC_PHAT'!A2:M400"]), batchGet(CONFIG.diemDanhId, ['LIEN_HE_PH!A2:H'])]);
+  const [[rows, stamp = []], [contacts]] = await Promise.all([batchGet(CONFIG.scheduleId, ["'AUTO_KIDS_MUC_PHAT'!A2:M400", "'AUTO_KIDS_MUC_PHAT'!Q1"]), batchGet(CONFIG.diemDanhId, ['LIEN_HE_PH!A2:H'])]);
+  // The Schedule's own line "Cập nhật 09/11 18:30 · …": shown above the list so everyone sees the levels are the Schedule's and how fresh.
+  ladder.stamp = Q.clean(((stamp || [])[0] || [])[0] || '');
   ladder.rows = rows.map(r => ({ checked: Q.clean(r[0]), cls: Q.clean(r[1]), name: Q.clean(r[2]), level: Number(r[3]) || 0, since: Q.clean(r[4]), reason: Q.clean(r[5]), owed: String(r[6] || '').split('\n').map(Q.clean).filter(Boolean) })).filter(x => x.level >= 1 && x.cls && x.name);
   ladder.contacts = contacts.map(contactOf);
   outbox.filter(x => x.kind === 'append' && x.tab === 'LIEN_HE_PH').forEach(x => ladder.contacts.push(contactOf(x.row)));
@@ -738,7 +740,7 @@ async function bellRefresh() {
     // My check-in is read again only while it can still change (not in yet, or a part-time TA not out yet).
     if (!isOwner() && (!ca.rows || !caPair(ca.rows, today(), me.name, 'Vào ca') || (isPartTime(me.name) && !caPair(ca.rows, today(), me.name, 'Ra ca')))) jobs.push(loadCa(true));
     if (isManager()) jobs.push(loadCaAll(true));
-    if (isManager() || isTaSide(week) || Object.values(homeroom).some(n => isMe(n))) jobs.push(loadLadder(Date.now() - ladder.at > 600000));
+    if (isManager() || isTaSide(week) || Object.values(homeroom).some(n => isMe(n))) jobs.push(loadLadder(Date.now() - ladder.at > 150000));
     if (view !== 'lich' && week) { const saved = day; day = today(); const need = alertSessions(week).length; day = saved; if (need) jobs.push(loadMarks(true).then(() => { const s = day; day = today(); return loadAlerts().finally(() => { day = s; }); })); }
     await Promise.all(jobs.map(j => j.catch(() => {})));
   } finally { bell.busy = false; }
@@ -4026,7 +4028,16 @@ function sentHomeBlock(week) {
   return h;
 }
 const ladderBlockBeforeSent = ladderBlock;
-ladderBlock = function (week) { const a = sentHomeBlock(week), b = ladderBlockBeforeSent(week); return a + (b || ''); };
+ladderBlock = function (week) {
+  // Owner 09/11: "mức nào theo schedule chứ... đúng giờ": levels are re-read from the Schedule at most 2 minutes old while this list shows.
+  if (ladder.rows && Date.now() - ladder.at > 120000 && !ladder.fresh) { ladder.fresh = true; setTimeout(() => loadLadder(true).then(render).catch(() => {}).finally(() => { ladder.fresh = false; }), 0); }
+  const a = sentHomeBlock(week);
+  let b = ladderBlockBeforeSent(week) || '';
+  const m = String(ladder.stamp || '').match(/(\d{1,2}\/\d{1,2})\s+(\d{1,2}:\d{2})/);
+  const src = '<div class="small muted lad-src">' + T('Mức lấy nguyên từ Schedule (AUTO_KIDS_MUC_PHAT)', 'Levels straight from the Schedule') + (m ? T(' · Schedule cập nhật ', ' · Schedule updated ') + m[2] + ' ' + m[1] : '') + T(' · app đọc lúc ', ' · read at ') + new Date(ladder.at || Date.now()).toTimeString().slice(0, 5) + '</div>';
+  if (b) b = b.replace(/(<\/h2>[\s\S]*?<\/div>)/, '$1' + src);
+  return a + b;
+};
 const ladderTodoBeforeSent = ladderTodo;
 ladderTodo = function (week) { return ladderTodoBeforeSent(week) + sentHomeList(week).filter(x => !x.done).length; };
 // Bell: one line for the parents of pupils sent home.
