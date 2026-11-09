@@ -3771,17 +3771,22 @@ pupilFlags = function (ctx, r) {
  * Đoạn văn học thuật never are. On that day the server opens the column pair in the class sheet if it is missing (MoKT.gs).
  * Each pupil row gets a box for the number of correct answers; it is written to the count column of the sheet (the score out of 10
  * is the sheet's own formula). Pupils are ranked by it with the same slide-up as stars, and the summary shows it. */
-const ktG = { map: null, at: 0, loading: false }, ktOpen = {}, ktVals = {};
+const ktG = { map: null, any: null, at: 0, loading: false }, ktOpen = {}, ktVals = {};
 const ktBookKey = s => Q.key(s).replace(/[^A-Z0-9.]+/g, ' ').trim();
 function loadKtGuide() {
   if (ktG.loading || (ktG.map && Date.now() - ktG.at < 21600000)) return;
-  const kept = saved.get('ktguide');
-  if (kept && kept.map && Date.now() - kept.at < 21600000) { ktG.map = kept.map; ktG.at = kept.at; return; }
+  const kept = saved.get('ktguide2');
+  if (kept && kept.map && kept.any && Date.now() - kept.at < 21600000) { ktG.map = kept.map; ktG.any = kept.any; ktG.at = kept.at; return; }
   ktG.loading = true;
   batchGet(CONFIG.scheduleId, ["'AUTO_GUIDELINES_CACHE'!A2:C2000", "'AUTO_GUIDELINES_CACHE'!F2:F2000"]).then(([a, f]) => {
-    const map = {};
-    a.forEach((r, i) => { if (Q.clean(r[0]) !== 'IELTS_FIGHTER') return; const m = Q.key((f[i] || [])[0] || '').match(/^KIEM TRA UNIT\s*([\d.]+)/); if (m) map[ktBookKey(r[1]) + '|' + Q.clean(r[2])] = m[1]; });
-    ktG.map = map; ktG.at = Date.now(); keep('ktguide', { map, at: ktG.at });
+    const map = {}, any = {};
+    a.forEach((r, i) => {
+      if (Q.clean(r[0]) !== 'IELTS_FIGHTER') return;
+      const d = Q.key((f[i] || [])[0] || ''), k = ktBookKey(r[1]) + '|' + Q.clean(r[2]), m = d.match(/^KIEM TRA UNIT\s*([\d.]+)/);
+      if (m) map[k] = m[1];
+      if (/^KIEM TRA\b/.test(d)) any[k] = 1;
+    });
+    ktG.map = map; ktG.any = any; ktG.at = Date.now(); keep('ktguide2', { map, any, at: ktG.at });
   }).catch(() => {}).finally(() => { ktG.loading = false; render(); });
 }
 function ktUnitOf(s) {
@@ -3837,30 +3842,62 @@ starsOf = function (ctx, p) {
   if (!(ctx.block && ctx.block.stars >= 0)) { const k = ktOf(ctx); if (k && k.col >= 0) return ktScore(ctx, k, p) || 0; }
   return starsOfBeforeKt(ctx, p);
 };
-// The box on each pupil row.
+// Owner 09/11: "nhập điểm phải ở màn hình sau màn hình lớp" — the teacher types scores on the roll-call screen (tick, A+/B/F);
+// the class screen pupils look at only shows them and the ranking, nothing to change there.
+const ktPctOf = (k, v) => v != null && k.total ? Math.round(v / k.total * 100) : null;
+const ktPctTag = p => p != null ? '<b class="kt-pct kt-' + ktTone(p) + '">' + p + '%</b>' : '';
+// Class screen: read-only score on each pupil row.
 const gradeSegBeforeKt = gradeSeg;
 gradeSeg = function (ctx, r, live) {
   const h = gradeSegBeforeKt(ctx, r, live), k = ktOf(ctx);
-  if (!k || r.off) return h;
-  if (k.col < 0) return h + '<span class="kt-box muted">' + T('KT Unit ', 'Test Unit ') + esc(k.unit) + T(' · đang mở cột…', ' · opening…') + '</span>';
-  const v = ktScore(ctx, k, r.p), pct = v != null && k.total ? Math.round(v / k.total * 100) : null;
-  return h + '<label class="kt-box"><span>' + T('KT', 'Test') + '</span><input type="number" inputmode="numeric" min="0"' + (k.total ? ' max="' + k.total + '"' : '') + ' data-act="ktScore" data-i="' + r.i + '" value="' + (v == null ? '' : v) + '"' + live + ' aria-label="' + T('Số câu đúng của ', 'Correct answers of ') + esc(r.p.eng || r.p.name) + '"><span>/' + (k.total || '?') + '</span>' +
-    (pct != null ? '<b class="kt-pct kt-' + ktTone(pct) + '">' + pct + '%</b>' : '') + '</label>';
+  if (!k || k.col < 0 || r.off) return h;
+  const v = ktScore(ctx, k, r.p);
+  return h + '<span class="kt-box kt-view"><span>' + T('KT', 'Test') + ' <i class="rv-en-i">Test</i></span><b>' + (v == null ? '…' : v) + '</b><span>/' + (k.total || '?') + '</span>' + ktPctTag(ktPctOf(k, v)) + '</span>';
 };
-// The header line: what is being tested, and the total when no class has done this unit yet.
+// Owner 09/11 (chosen): "khung riêng mở từ màn hình lớp" — a "Nhập điểm KT" button on the class screen opens a box with the whole
+// class; the teacher types each pupil's correct answers there (and the total once when no class has done the unit). Closing the
+// box lets the class screen slide the pupils into their new order.
+let ktSheet = false;
+function ktLine(ctx, k) {
+  const s = ctx.session, vals = ctx.tracker.pupils.map(p => ktScore(ctx, k, p)).filter(v => v != null), edit = canTeach(s) && llUnlocked(s);
+  const avg = vals.length && k.total ? Math.round(vals.reduce((n, v) => n + v, 0) / vals.length / k.total * 100) : null;
+  return '<div class="kt-line"><b>' + T('Kiểm tra ', 'Test ') + esc(Q.clean(s.book)) + ' · Unit ' + esc(k.unit) + '</b>' +
+    '<span>' + (k.total ? T('tổng ', 'out of ') + k.total + T(' câu', '') : T('chưa có tổng số câu', 'total not set')) + '</span>' +
+    (avg != null ? '<span class="chip kt-' + ktTone(avg) + '">' + T('TB ', 'Avg ') + avg + '% · ' + vals.length + T(' em', '') + '</span>' : '') +
+    (canTeach(s) ? '<button class="primary kt-go" data-act="ktOpen"' + (edit ? '' : ' disabled title="' + T('Giữ "Giữ để sửa" để mở khoá trước', 'Unlock with "Hold to edit" first') + '"') + '>📝 ' + T('Nhập điểm KT', 'Enter test scores') + '</button>' : '') + '</div>';
+}
+function ktSheetHtml(ctx, k) {
+  const rows = ctx.tracker.pupils.map((p, i) => ({ p, i, m: ctx.marks.get(p.name) })).filter(r => !(r.m && (r.m.status === NGHI || Q.ABSENT.includes(r.m.status))));
+  return '<div class="ll-veil" data-act="ktClose"></div><div class="ll-sheet kt-sheet" role="dialog" aria-label="' + T('Nhập điểm kiểm tra', 'Test scores') + '">' +
+    '<div class="row-top"><b class="ll-sheet-name">📝 ' + T('Điểm kiểm tra · Unit ', 'Test scores · Unit ') + esc(k.unit) + '</b><span class="spacer"></span><button class="primary" data-act="ktClose">' + T('Xong', 'Done') + '</button></div>' +
+    (k.total ? '<div class="small muted">' + T('Gõ số câu đúng trên tổng ', 'Correct answers out of ') + k.total + T(' câu. Bỏ trống nếu chưa chấm.', '. Leave empty if not marked.') + '</div>'
+      : '<label class="kt-total">' + T('Tổng số câu của bài này: ', 'Total questions: ') + '<input type="number" inputmode="numeric" min="1" max="500" data-act="ktTotal" aria-label="' + T('Tổng số câu', 'Total questions') + '"></label>') +
+    '<div class="kt-list">' + rows.map(r => { const v = ktScore(ctx, k, r.p); return '<label class="kt-row"><b>' + esc(r.p.eng || r.p.name) + '</b><input type="number" inputmode="numeric" min="0"' + (k.total ? ' max="' + k.total + '"' : '') + ' data-act="ktScore" data-i="' + r.i + '" value="' + (v == null ? '' : v) + '" aria-label="' + T('Số câu đúng của ', 'Correct answers of ') + esc(r.p.eng || r.p.name) + '"><span>/' + (k.total || '?') + '</span>' + ktPctTag(ktPctOf(k, v)) + '</label>'; }).join('') + '</div></div>';
+}
 const viewLenLopBeforeKt = viewLenLop;
 viewLenLop = function () {
   const out = viewLenLopBeforeKt();
   const ctx = current ? classContext(current) : null, k = ctx && ctx.tracker ? ktOf(ctx) : null;
-  if (!k || k.col < 0 || !out.includes('<div class="rv-list"')) return out;
-  const vals = ctx.tracker.pupils.map(p => ktScore(ctx, k, p)).filter(v => v != null);
-  const avg = vals.length && k.total ? Math.round(vals.reduce((n, v) => n + v, 0) / vals.length / k.total * 100) : null;
-  const line = '<div class="kt-line"><b>' + T('Kiểm tra ', 'Test ') + esc(Q.clean(current.book)) + ' · Unit ' + esc(k.unit) + '</b>' +
-    (k.total ? '<span>' + T('tổng ', 'out of ') + k.total + T(' câu', '') + '</span>' : (canTeach(current) ? '<span>' + T('Tổng số câu: ', 'Total: ') + '<input type="number" inputmode="numeric" min="1" max="500" data-act="ktTotal" aria-label="' + T('Tổng số câu', 'Total questions') + '"></span>' : '')) +
-    (avg != null ? '<span class="chip kt-' + ktTone(avg) + '">' + T('TB ', 'Avg ') + avg + '% · ' + vals.length + T(' em', '') + '</span>' : '') + '</div>';
+  if (!k || k.col < 0 || !out.includes('<div class="rv-list"')) { ktSheet = false; return out; }
   const at = out.indexOf('<div class="rv-list"');
-  return out.slice(0, at) + line + out.slice(at);
+  return out.slice(0, at) + ktLine(ctx, k) + out.slice(at) + (ktSheet && canTeach(current) ? ktSheetHtml(ctx, k) : '');
 };
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="ktOpen"],[data-act="ktClose"]');
+  if (!b || !current) return;
+  if (b.dataset.act === 'ktOpen') {
+    ktSheet = true;
+    // Keep the order on screen while the box is open; it changes when the box closes.
+    const key = Q.sessionKey(current);
+    if (llOrder.key !== key) { const ctx = classContext(current); llOrder = { key, list: ctx.tracker.pupils.map((p, i) => i) }; }
+    llFreezeUntil = Date.now() + 3600000; clearTimeout(llRankTimer);
+    render();
+  } else {
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    ktSheet = false; render();
+    clearTimeout(llRankTimer); llRankTimer = setTimeout(rerankNow, 350);
+  }
+});
 function ktSave(i, raw) {
   const ctx = current ? classContext(current) : null, k = ctx ? ktOf(ctx) : null, p = ctx && ctx.tracker.pupils[i];
   if (!k || k.col < 0 || !p || !canTeach(ctx.session)) return;
@@ -3872,6 +3909,8 @@ function ktSave(i, raw) {
   if (String(before) === String(v)) return;
   t.set(p.row, k.col, v === '' ? '' : String(v));
   queue({ kind: 'cell', file: cls.tracker, classKey: cls.key, range: quote(t.tab) + '!' + Q.colName(k.col) + p.row, row: p.row, col: k.col, expected: before, value: v, label: (p.eng || p.name) + ' · KT' });
+  // In the box the order waits until it closes; a short delay lets a tap on Xong land before the box is redrawn.
+  if (ktSheet) { setTimeout(render, 250); return; }
   llFreezeUntil = Date.now() + RANK_WAIT; clearTimeout(llRankTimer); llRankTimer = setTimeout(rerankNow, RANK_WAIT);
   render();
 }
@@ -3894,3 +3933,14 @@ summaryView = function (ctx) {
       return all + '<td class="sum-kt">' + (v == null ? '<span class="sum-muted">—</span>' : '<b>' + v + (k.total ? '/' + k.total : '') + '</b>' + (pct != null ? ' <span class="chip kt-' + ktTone(pct) + '">' + pct + '%</span>' : '')) + '</td>';
     });
 };
+
+/* Owner 09/11: "buổi học nào kiểm tra thì thêm 1 cái là làm bài kiểm tra không nghiêm túc... practice test cũng có... chỉ là không có màn
+ * nhập điểm". Every IELTS / FIGHTER lesson whose lesson text starts "kiểm tra" (unit tests, practice tests, IELTS speaking and
+ * listening-reading-writing tests) gets one more reminder button; it counts towards the warning limit like the others. */
+const KT_TICK = 'Làm bài KT không nghiêm túc';
+Object.assign(BEHAVIOUR_EN, { [KT_TICK]: 'Not serious in the test' });
+COMMENT_LINES[KT_TICK] = 'con làm bài kiểm tra chưa nghiêm túc, cần tập trung và tự giác hơn.';
+if (!BEHAVIOURS.includes(KT_TICK)) BEHAVIOURS.push(KT_TICK);
+const isTestLesson = s => { if (!s || !isSecondary(s)) return false; if (!ktG.any) { loadKtGuide(); return false; } return !!ktG.any[ktBookKey(s.book) + '|' + Q.clean(s.lesson)]; };
+const tickSetOfBeforeKt = tickSetOf;
+tickSetOf = function (s) { const list = tickSetOfBeforeKt(s); return isTestLesson(s) && !list.includes(KT_TICK) ? list.concat([KT_TICK]) : list; };
