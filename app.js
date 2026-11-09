@@ -204,7 +204,7 @@ async function loadTracker(cls, force, light) {
   }
   const cell = (row, col) => ((values[col] || [])[row - 1] || [])[0] || '';
   const set = (row, col, v) => { const list = values[col] = values[col] || []; list[row - 1] = [v]; };
-  return (trackers[cls.key] = { at: Date.now(), light: Boolean(light), tab: tabName, pupils, blocks, practices, cell, set });
+  return (trackers[cls.key] = { at: Date.now(), light: Boolean(light), tab: tabName, pupils, blocks, practices, cell, set, head });
 }
 
 /* ---------- Writing: everything goes through one outbox kept on the device ---------- */
@@ -310,7 +310,7 @@ function setAbsence(ctx, pupil, status) {
 }
 /* ---------- Lên lớp: stars and absence on the classroom touch screen ---------- */
 const NGHI = 'GV báo nghỉ';
-const starsOf = (ctx, p) => { const v = ctx.block && ctx.block.stars >= 0 ? Q.clean(ctx.tracker.cell(p.row, ctx.block.stars)) : ''; return /^\d+$/.test(v) ? Number(v) : 0; };
+let starsOf = (ctx, p) => { const v = ctx.block && ctx.block.stars >= 0 ? Q.clean(ctx.tracker.cell(p.row, ctx.block.stars)) : ''; return /^\d+$/.test(v) ? Number(v) : 0; };
 // Owner 08/11: 30 minutes after a lesson ends it locks for teachers and TAs (A/B/F, stars, attendance), so nothing is tapped by mistake later; managers can still correct.
 const CLOSE_AFTER = 30;
 const lessonClosed = s => s.day < today() || (s.day === today() && minutesNow() > s.end + CLOSE_AFTER);

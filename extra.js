@@ -3764,3 +3764,133 @@ pupilFlags = function (ctx, r) {
   const h = pupilFlagsBeforeMin(ctx, r), n = lateMinOf(ctx.session, r.p.name);
   return n ? h.replace('⏰ Muộn <i class="rv-en-i">Late</i>', '⏰ Muộn ' + n + ' phút <i class="rv-en-i">Late ' + n + ' min</i>') : h;
 };
+
+/* ---------- FIGHTER test scores on the class screen (owner 09/11: "lúc nào tôi có bài kiểm tra là tôi có điểm ngay hôm ấy... tự mở cột
+ * cho tôi... trừ Practice test"; "nhập điểm ở đây thì cũng ghi vào sheet... nhập xong thì cũng nhảy thứ tự cho hs thấy") ----------
+ * A FIGHTER lesson is a test when its lesson text (Schedule AUTO_GUIDELINES_CACHE) starts "kiểm tra Unit N"; practice tests and
+ * Đoạn văn học thuật never are. On that day the server opens the column pair in the class sheet if it is missing (MoKT.gs).
+ * Each pupil row gets a box for the number of correct answers; it is written to the count column of the sheet (the score out of 10
+ * is the sheet's own formula). Pupils are ranked by it with the same slide-up as stars, and the summary shows it. */
+const ktG = { map: null, at: 0, loading: false }, ktOpen = {}, ktVals = {};
+const ktBookKey = s => Q.key(s).replace(/[^A-Z0-9.]+/g, ' ').trim();
+function loadKtGuide() {
+  if (ktG.loading || (ktG.map && Date.now() - ktG.at < 21600000)) return;
+  const kept = saved.get('ktguide');
+  if (kept && kept.map && Date.now() - kept.at < 21600000) { ktG.map = kept.map; ktG.at = kept.at; return; }
+  ktG.loading = true;
+  batchGet(CONFIG.scheduleId, ["'AUTO_GUIDELINES_CACHE'!A2:C2000", "'AUTO_GUIDELINES_CACHE'!F2:F2000"]).then(([a, f]) => {
+    const map = {};
+    a.forEach((r, i) => { if (Q.clean(r[0]) !== 'IELTS_FIGHTER') return; const m = Q.key((f[i] || [])[0] || '').match(/^KIEM TRA UNIT\s*([\d.]+)/); if (m) map[ktBookKey(r[1]) + '|' + Q.clean(r[2])] = m[1]; });
+    ktG.map = map; ktG.at = Date.now(); keep('ktguide', { map, at: ktG.at });
+  }).catch(() => {}).finally(() => { ktG.loading = false; render(); });
+}
+function ktUnitOf(s) {
+  if (!s || !/^FIGHTER/i.test(Q.clean(s.cls))) return '';
+  if (!ktG.map) { loadKtGuide(); return ''; }
+  return ktG.map[ktBookKey(s.book) + '|' + Q.clean(s.lesson)] || '';
+}
+// The pair inside "Điểm Kiểm tra" of the class sheet header (same rule as the server).
+function ktFindCol(t, book, unit) {
+  const head = t.head || [], r1 = head[0] || [], r2 = head[1] || [], r3 = head[2] || [], width = Math.max(r1.length, r2.length, r3.length);
+  const sc = r1.findIndex(v => /DIEM\s*KIEM\s*TRA/.test(Q.key(v)));
+  if (sc < 0) return null;
+  let end = width;
+  for (let c = sc + 1; c < width; c++) if (Q.clean(r1[c])) { end = c; break; }
+  const bk = ktBookKey(book), re = new RegExp('\\bUNIT ' + unit.replace('.', '\\.') + '(?![0-9.])');
+  for (let c = sc; c < end; c++) { const k = ktBookKey(r2[c]); if (k && k.includes(bk) && re.test(k)) { const m = Q.key(r3[c]).match(/TONG\s*:?\s*(\d+)/); return { col: c, total: m ? Number(m[1]) : 0 }; } }
+  return null;
+}
+function ktOf(ctx) {
+  const s = ctx && ctx.session, t = ctx && ctx.tracker;
+  if (!t || !t.head) return null;
+  const unit = ktUnitOf(s);
+  if (!unit) return null;
+  const hit = ktFindCol(t, s.book, unit), key = Q.sessionKey(s);
+  if (!hit) { if (s.day === today()) ktOpenNow(s); return { unit, col: -1, total: 0, opening: !!ktOpen[key] }; }
+  ktLoadVals(ctx, hit.col);
+  return { unit, col: hit.col, total: hit.total };
+}
+function ktOpenNow(s, total) {
+  const key = Q.sessionKey(s), c = classOf(s);
+  if (!c || (ktOpen[key] && !total)) return;
+  ktOpen[key] = 'opening';
+  call('motkt', { cls: s.cls, book: s.book, lesson: s.lesson, total: total || 0 })
+    .then(() => loadTracker(c, true)).then(() => { ktOpen[key] = 'done'; })
+    .catch(e => { ktOpen[key] = 'failed'; say(T('Chưa mở được cột điểm kiểm tra: ', 'Could not open the test column: ') + e.message, 'bad'); })
+    .finally(render);
+}
+// The count column is read once per class-sheet read; this device's unsent scores stay on top.
+function ktLoadVals(ctx, col) {
+  const t = ctx.tracker, c = classOf(ctx.session), k = c.key + '|' + t.at + '|' + col;
+  if (ktVals[k]) return;
+  ktVals[k] = 'loading';
+  batchGet(c.tracker, [quote(t.tab) + '!' + Q.colName(col) + '1:' + Q.colName(col) + ROSTER_LAST]).then(([rows]) => {
+    rows.forEach((r, i) => t.set(i + 1, col, Q.clean((r || [])[0])));
+    outbox.filter(x => x.kind === 'cell' && x.classKey === c.key && x.col === col).forEach(x => t.set(x.row, x.col, x.value === '' ? '' : String(x.value)));
+    ktVals[k] = 'ok';
+  }).catch(() => { ktVals[k] = null; }).finally(render);
+}
+const ktScore = (ctx, k, p) => { const v = Q.clean(ctx.tracker.cell(p.row, k.col)).replace(',', '.'); return /^\d+(\.\d+)?$/.test(v) ? Number(v) : null; };
+// Ranking: with no star column in a test lesson, the test score is what the class screen ranks by.
+const starsOfBeforeKt = starsOf;
+starsOf = function (ctx, p) {
+  if (!(ctx.block && ctx.block.stars >= 0)) { const k = ktOf(ctx); if (k && k.col >= 0) return ktScore(ctx, k, p) || 0; }
+  return starsOfBeforeKt(ctx, p);
+};
+// The box on each pupil row.
+const gradeSegBeforeKt = gradeSeg;
+gradeSeg = function (ctx, r, live) {
+  const h = gradeSegBeforeKt(ctx, r, live), k = ktOf(ctx);
+  if (!k || r.off) return h;
+  if (k.col < 0) return h + '<span class="kt-box muted">' + T('KT Unit ', 'Test Unit ') + esc(k.unit) + T(' · đang mở cột…', ' · opening…') + '</span>';
+  const v = ktScore(ctx, k, r.p), pct = v != null && k.total ? Math.round(v / k.total * 100) : null;
+  return h + '<label class="kt-box"><span>' + T('KT', 'Test') + '</span><input type="number" inputmode="numeric" min="0"' + (k.total ? ' max="' + k.total + '"' : '') + ' data-act="ktScore" data-i="' + r.i + '" value="' + (v == null ? '' : v) + '"' + live + ' aria-label="' + T('Số câu đúng của ', 'Correct answers of ') + esc(r.p.eng || r.p.name) + '"><span>/' + (k.total || '?') + '</span>' +
+    (pct != null ? '<b class="kt-pct kt-' + ktTone(pct) + '">' + pct + '%</b>' : '') + '</label>';
+};
+// The header line: what is being tested, and the total when no class has done this unit yet.
+const viewLenLopBeforeKt = viewLenLop;
+viewLenLop = function () {
+  const out = viewLenLopBeforeKt();
+  const ctx = current ? classContext(current) : null, k = ctx && ctx.tracker ? ktOf(ctx) : null;
+  if (!k || k.col < 0 || !out.includes('<div class="rv-list"')) return out;
+  const vals = ctx.tracker.pupils.map(p => ktScore(ctx, k, p)).filter(v => v != null);
+  const avg = vals.length && k.total ? Math.round(vals.reduce((n, v) => n + v, 0) / vals.length / k.total * 100) : null;
+  const line = '<div class="kt-line"><b>' + T('Kiểm tra ', 'Test ') + esc(Q.clean(current.book)) + ' · Unit ' + esc(k.unit) + '</b>' +
+    (k.total ? '<span>' + T('tổng ', 'out of ') + k.total + T(' câu', '') + '</span>' : (canTeach(current) ? '<span>' + T('Tổng số câu: ', 'Total: ') + '<input type="number" inputmode="numeric" min="1" max="500" data-act="ktTotal" aria-label="' + T('Tổng số câu', 'Total questions') + '"></span>' : '')) +
+    (avg != null ? '<span class="chip kt-' + ktTone(avg) + '">' + T('TB ', 'Avg ') + avg + '% · ' + vals.length + T(' em', '') + '</span>' : '') + '</div>';
+  const at = out.indexOf('<div class="rv-list"');
+  return out.slice(0, at) + line + out.slice(at);
+};
+function ktSave(i, raw) {
+  const ctx = current ? classContext(current) : null, k = ctx ? ktOf(ctx) : null, p = ctx && ctx.tracker.pupils[i];
+  if (!k || k.col < 0 || !p || !canTeach(ctx.session)) return;
+  const text = Q.clean(raw).replace(',', '.');
+  if (text !== '' && !/^\d+(\.\d+)?$/.test(text)) return say(T('Điểm kiểm tra phải là số câu đúng.', 'Enter the number of correct answers.'), 'bad');
+  const v = text === '' ? '' : Number(text);
+  if (v !== '' && k.total && v > k.total) return say(T('Số câu đúng lớn hơn tổng ' + k.total + ' câu.', 'More than the total of ' + k.total + '.'), 'bad');
+  const cls = classOf(ctx.session), t = ctx.tracker, before = t.cell(p.row, k.col);
+  if (String(before) === String(v)) return;
+  t.set(p.row, k.col, v === '' ? '' : String(v));
+  queue({ kind: 'cell', file: cls.tracker, classKey: cls.key, range: quote(t.tab) + '!' + Q.colName(k.col) + p.row, row: p.row, col: k.col, expected: before, value: v, label: (p.eng || p.name) + ' · KT' });
+  llFreezeUntil = Date.now() + RANK_WAIT; clearTimeout(llRankTimer); llRankTimer = setTimeout(rerankNow, RANK_WAIT);
+  render();
+}
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (!el || !el.dataset) return;
+  if (el.dataset.act === 'ktScore') ktSave(Number(el.dataset.i), el.value);
+  if (el.dataset.act === 'ktTotal' && current && Number(el.value) > 0) ktOpenNow(current, Math.min(500, Number(el.value)));
+});
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.dataset && /^kt(Score|Total)$/.test(e.target.dataset.act || '')) e.target.blur(); });
+// The summary for parents: the test score next to attendance.
+const summaryViewBeforeKt = summaryView;
+summaryView = function (ctx) {
+  const h = summaryViewBeforeKt(ctx), k = ktOf(ctx);
+  if (!k || k.col < 0) return h;
+  const rows = ctx.tracker.pupils;
+  return h.replace('<th>Điểm danh</th>', '<th>Điểm danh</th><th>KT Unit ' + esc(k.unit) + (k.total ? ' · ' + k.total + ' câu' : '') + '</th>')
+    .replace(/(<td class="sum-name"><b>([^<]*)<\/b><\/td><td>[\s\S]*?<\/td>)/g, (m0, all, name) => {
+      const p = rows.find(q => esc(q.eng || q.name) === name), v = p ? ktScore(ctx, k, p) : null, pct = v != null && k.total ? Math.round(v / k.total * 100) : null;
+      return all + '<td class="sum-kt">' + (v == null ? '<span class="sum-muted">—</span>' : '<b>' + v + (k.total ? '/' + k.total : '') + '</b>' + (pct != null ? ' <span class="chip kt-' + ktTone(pct) + '">' + pct + '%</span>' : '')) + '</td>';
+    });
+};
