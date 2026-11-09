@@ -4632,7 +4632,7 @@ function nsSummary(g, r) {
     if (r.ch) p.push('chấm bài ' + m(r.ch) + '/bài');
     if (r.npt) p.push(r.npt + ' người phụ thuộc');
   }
-  p.push(r.bh ? 'đóng BH ' + String(r.bhRate || 10.5).replace('.', ',') + '% trên ' + m(r.bh) : 'không đóng BH');
+  p.push(r.bhMode === 'tt' ? 'đóng BH ' + String(r.bhRate || 10.5).replace('.', ',') + '% trên lương thực tế khi tháng đó từ 2.340.000 đ' : r.bh ? 'đóng BH ' + String(r.bhRate || 10.5).replace('.', ',') + '% trên ' + m(r.bh) : 'không đóng BH');
   if (r.thue) p.push((NS_TAX_MODES.find(x => x[0] === r.thue) || ['', ''])[1].split(' (')[0]);
   return p.join(' · ');
 }
@@ -4702,7 +4702,8 @@ function nsFormHtml() {
     '</div><h4>Lương</h4><div class="form-grid">';
   if (g === 'NVVN') {
     h += money('c', 'Lương cố định / tháng (đ)') + money('d', 'Thưởng hoàn thành CV / tháng (đ)') + money('gs', 'Gia sư (đ/công)') + money('dl', 'Dạy - đứng lớp (đ/công)') + money('tg', 'Trợ giảng theo giờ (đ/giờ)') + money('ch', 'Chấm, chữa bài (đ/bài)') +
-      money('bh', 'Đóng bảo hiểm trên mức (đ, để trống = không đóng)') + inp('r.npt', 'Người phụ thuộc', r.npt || '', ' type="number" min="0" max="9"') + '</div>' +
+      '<label>Đóng bảo hiểm<select data-act="nsF" data-k="r.bhMode">' + [['', 'Không đóng'], ['co', 'Trên mức cố định'], ['tt', 'Theo lương thực tế từng tháng (part-time)']].map(([v, t]) => '<option value="' + v + '"' + ((r.bhMode || (r.bh ? 'co' : '')) === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select></label>' +
+      ((r.bhMode || (r.bh ? 'co' : '')) === 'co' ? money('bh', 'Mức đóng bảo hiểm (đ)') : '') + inp('r.npt', 'Người phụ thuộc', r.npt || '', ' type="number" min="0" max="9"') + '</div>' +
       (r.gs ? kinds('gsK', 'Gia sư tính các buổi:') : '') + (r.dl ? kinds('dlK', 'Dạy - đứng lớp tính các buổi:') : '') +
       (r.tg ? '<p class="small muted">Giờ trợ giảng lấy từ ô chấm công part-time của Schedule (app ghi từ Vào ca / Ra ca).</p>' : '') + (r.ch ? '<p class="small muted">Số bài lấy từ bảng chấm bài (CHẤM CÔNG TỔNG HỢP, cột R:W).</p>' : '');
   } else {
@@ -4734,7 +4735,8 @@ function nsField(k, v) {
   const f = ns.form; if (!f) return;
   if (k.startsWith('id.')) { f.id = f.id || {}; f.id[k.slice(3)] = Q.clean(v); return false; }
   if (k.startsWith('r.')) {
-    const key = k.slice(2), textKeys = ['het', 'thue', 'bhRate'], flags = ['usd', 'nhaUsd', 'nhaFree'];
+    const key = k.slice(2), textKeys = ['het', 'thue', 'bhRate', 'bhMode'], flags = ['usd', 'nhaUsd', 'nhaFree'];
+    if (key === 'bhMode') { f.rate.bhMode = v === 'co' ? '' : v; if (v !== 'co') f.rate.bh = ''; if (v === 'co' && !f.rate.bh) f.rate.bh = 4730000; return true; }
     f.rate[key] = flags.includes(key) ? (v ? 1 : 0) : textKeys.includes(key) ? v : (f.group === 'GVNN' && f.rate.usd && ['r', 'r101', 'ielts'].includes(key)) || (key === 'nha' && f.rate.nhaUsd) || ['npt', 'baseH'].includes(key) ? (v === '' ? '' : Number(String(v).replace(',', '.'))) : nsNum(v);
     return flags.includes(key) || ['gs', 'dl', 'tg', 'ch'].includes(key);
   }
@@ -4801,6 +4803,8 @@ async function nsDecide(name, pass) {
 // 20% trên thu nhập chịu thuế với người không cư trú (dưới 183 ngày ở Việt Nam).
 const NS_TAX_MODES = [['', 'Lũy tiến (HĐLĐ từ 3 tháng, cư trú)'], ['k10', 'Khấu trừ 10% (không HĐLĐ hoặc HĐ dưới 3 tháng)'], ['k20', '20% (người nước ngoài không cư trú)']];
 const NS_K10_FROM = 5000000;
+// Lowest monthly pay that must be insured = lương cơ sở / mức tham chiếu (2.340.000 đ from 1/7/2024; change here if the state raises it).
+const NS_BH_FLOOR = 2340000;
 const nsTaxCell = (mode, taxable, gross) => mode === 'k20' ? '=ROUND(MAX(0;' + gross + ')*20%;0)' : mode === 'k10' ? '=IF(' + gross + '>=' + NS_K10_FROM + ';ROUND(' + gross + '*10%;0);0)' : NS_TAX(taxable);
 const nsBhPct = a => String(a.bhRate || 10.5).replace('.', ',') + '%';
 const NS_TAX = x => '=ROUND(MAX(0;' + x + '*5%;' + x + '*10%-500000;' + x + '*20%-3500000;' + x + '*30%-9500000;' + x + '*35%-14500000);0)';
@@ -4891,7 +4895,9 @@ function nsBuild(month, people, pay, fx) {
           dl ? dl.all : '', dl ? nsRateCell(a.dl, dl, pct) : '', dl ? '=ROUND(I' + R + '*J' + R + ';0)' : '',
           tg ? '=' + tg.minutes + '/60' : '', tg ? nsRateCell(a.tg, tg, pct) : '', tg ? '=ROUND(L' + R + '*M' + R + ';0)' : '',
           ch ? ch.all : '', ch ? nsRateCell(a.ch, ch, pct) : '', ch ? '=ROUND(O' + R + '*P' + R + ';0)' : '',
-          '=SUM(C' + R + ';D' + R + ';E' + R + ';H' + R + ';K' + R + ';N' + R + ';Q' + R + ')', a.bh || '', a.bh ? '=ROUND(S' + R + '*' + nsBhPct(a) + ';0)' : '', a.npt ? '=' + a.npt + '*6200000' : '',
+          '=SUM(C' + R + ';D' + R + ';E' + R + ';H' + R + ';K' + R + ';N' + R + ';Q' + R + ')',
+          // Part-time on actual pay: insured only in a month whose pay reaches the lowest insurance base (Luật BHXH 2024, Điều 2 và 31).
+          a.bhMode === 'tt' ? '=IF(R' + R + '>=' + NS_BH_FLOOR + ';R' + R + ';0)' : a.bh || '', a.bhMode === 'tt' || a.bh ? '=ROUND(S' + R + '*' + nsBhPct(a) + ';0)' : '', a.npt ? '=' + a.npt + '*6200000' : '',
           '=MAX(0;R' + R + '-T' + R + '-U' + R + '-15500000)', nsTaxCell(a.thue, 'V' + R, 'R' + R), '', '=T' + R + '+W' + R + '+X' + R, '=R' + R + '-Y' + R, '', '=Z' + R + '-AA' + R, src.join(' · ')];
       } else {
         const usd = !!a.usd, sep = !!a.ielts, all = NS_KINDS.filter(k => !(sep && k === 'IELTS'));
