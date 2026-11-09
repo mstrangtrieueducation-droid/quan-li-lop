@@ -664,8 +664,43 @@ document.addEventListener('click', e => {
   if (b.dataset.act === 'ladMode') { filters.lad = b.dataset.v; render(); }
   if (b.dataset.act === 'ladCopy') { ladder.copy = { cls: b.dataset.cls, name: b.dataset.name }; render(); }
   if (b.dataset.act === 'ladCopyClose') { ladder.copy = null; render(); }
-  if (b.dataset.act === 'ladPrint') window.print();
+  if (b.dataset.act === 'ladPrint') printCopySheet(ladder.copy);
 });
+/* Owner 09/11: "nút in chép phạt có thể in được thật ý chứ không phải chỉ là cho có". The button prints a real A4 worksheet in a
+ * hidden frame (not the app page): pupil, class, date, level and reason from the Schedule ladder, the instruction, each sentence with
+ * ruled lines to copy on (2 lines per sentence for the younger groups, 1 for the oldest plus 3 lines for the written self-review),
+ * and signatures. */
+function printCopySheet(c) {
+  if (!c) return;
+  const group = ageGroupOf(c.cls), t = COPY_TEXTS[group], reps = group === 'lon' ? 1 : 2;
+  const x = (ladder.rows || []).find(r => sameName(r.cls, c.cls) && Q.key(r.name).includes(Q.key(c.name))) || {};
+  const ln = n => '<div class="ln"></div>'.repeat(n);
+  const body = '<div class="top"><div class="brand">Ms. Trang Trieu Education</div><div class="no">' + esc(viDate(today())) + '</div></div>' +
+    '<h1>' + esc(t.title) + '</h1>' +
+    '<div class="meta"><div>Học sinh: <b>' + esc(x.name || c.name) + '</b></div><div>Lớp: <b>' + esc(c.cls) + '</b></div>' +
+    '<div>Mức: <b>' + (x.level ? 'M' + x.level : '—') + '</b></div><div>Lý do: ' + esc(x.reason || '') + '</div></div>' +
+    (x.owed && x.owed.length ? '<div class="owed">Còn nợ: ' + esc(x.owed.join('; ')) + '</div>' : '') +
+    '<div class="how">' + esc(t.how) + '</div>' +
+    t.lines.map((l, i) => '<div class="item"><div class="en">' + (i + 1) + '. ' + esc(l[0]) + '</div><div class="vi">' + esc(l[1]) + '</div>' + ln(reps) + '</div>').join('') +
+    (group === 'lon' ? '<div class="item"><div class="en">Con còn nợ bài nào, vì sao, và con sẽ bù vào lúc nào?</div>' + ln(3) + '</div>' : '') +
+    '<div class="sign"><div>Học sinh ký tên<br><br>………………………</div><div>TA / Giáo viên<br><br>………………………</div></div>';
+  const html = '<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Bài chép phạt · ' + esc(c.name) + '</title><style>' +
+    '@page{size:A4;margin:9mm 12mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0}' +
+    '.top{display:flex;justify-content:space-between;font-size:10pt;color:#555;border-bottom:2px solid #111;padding-bottom:2mm;margin-bottom:3mm}.brand{font-weight:700}' +
+    'h1{font-size:17pt;margin:0 0 2mm}.meta{display:grid;grid-template-columns:1fr 1fr;gap:1.5mm 8mm;font-size:12pt;margin-bottom:2mm}.owed{font-size:10.5pt;color:#333;margin-bottom:2mm}' +
+    '.how{font-style:italic;font-size:11.5pt;margin:0 0 4mm;padding:2mm 3mm;border:1px solid #999;border-radius:2mm}' +
+    '.item{break-inside:avoid;page-break-inside:avoid;margin-bottom:2mm}.en{font-size:12.5pt;font-weight:700}.vi{font-size:10pt;color:#444;margin:0.3mm 0 0.5mm}' +
+    '.ln{border-bottom:1px solid #777;height:6.5mm}.sign{display:flex;justify-content:space-between;margin-top:8mm;font-size:12pt;break-inside:avoid}' +
+    '</style></head><body>' + body + '</body></html>';
+  const old = document.getElementById('copyPrintFrame');
+  if (old) old.remove();
+  const f = document.createElement('iframe');
+  f.id = 'copyPrintFrame'; f.setAttribute('aria-hidden', 'true');
+  f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  f.onload = () => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (err) { say(T('Không mở được hộp in, thử lại hoặc dùng Ctrl+P.', 'Could not open printing.'), 'bad'); } };
+  f.srcdoc = html;
+  document.body.appendChild(f);
+}
 
 function ladderTodo(week) {
   if (!ladder.rows) return 0;
@@ -4384,40 +4419,70 @@ attendText = function (m) { return m && m.status === OUT_MAKEUP ? '<span class="
  * TIẾT (one number, a list "12, 13" or a range "12-14"), TÊN TÀI LIỆU, LINK DRIVE. A lesson with a matching row gets 🖨 buttons on
  * its class page, and the printing card lists the documents for today and the next two days, so the person printing opens them
  * straight from the app. Read again every 10 minutes. */
-const printDocs = { map: null, at: 0, loading: false, tried: 0 };
-const docBook = b => Q.key(b).replace(/^SACH\s*:?\s*/, '').replace(/\bOXFORD\s+/, '').replace(/\s+/g, ' ').trim();
-function docLessons(v) {
-  const out = [];
-  String(v || '').split(/[,;\n]/).forEach(part => {
-    const m = part.trim().match(/^(\d+)\s*(?:-|–|đến)\s*(\d+)$/i);
-    if (m) { for (let n = Number(m[1]); n <= Number(m[2]) && n - Number(m[1]) < 200; n++) out.push(String(n)); }
-    else if (/^\d+$/.test(part.trim())) out.push(String(Number(part.trim())));
-  });
-  return out;
-}
+const printDocs = { list: null, at: 0, loading: false, tried: 0, stamp: '' };
+// Owner 09/11: "đừng dùng file riêng... mò vào các sách xong tìm file in... lấy link đó trực tiếp ra". The Schedule scans CLASS RESOURCES
+// once a day into AUTO_TAI_LIEU_IN (folder path, name, kind, id, link); the lesson's print file is looked up there.
+const docPlain = s => Q.key(s).replace(/[_\-–:,.()+]/g, ' ').replace(/\s+/g, ' ').trim();
 async function loadPrintDocs(force) {
-  if (printDocs.loading || (!force && printDocs.map && Date.now() - printDocs.at < 600000)) return;
+  if (printDocs.loading || (!force && printDocs.list && Date.now() - printDocs.at < 1800000)) return;
   printDocs.loading = true;
   try {
-    // Owner 09/11: "đừng dùng file riêng... mò vào các sách tìm file in": the separate sheet is gone; the file index will come from the
-    // Schedule (a tab filled by scanning CLASS RESOURCES) once the owner allows that install. Until then nothing is read.
-    const rows = [];
-    const map = new Map();
-    rows.forEach(r => {
-      const book = docBook(r[0]), link = Q.clean(r[3]);
-      if (!book || !/^https:\/\//i.test(link)) return;
-      docLessons(r[1]).forEach(n => { const k = book + '|' + n; if (!map.has(k)) map.set(k, []); map.get(k).push({ name: Q.clean(r[2]) || T('Tài liệu in', 'Print document'), link, note: Q.clean(r[4]) }); });
+    const [rows, head = []] = await batchGet(CONFIG.scheduleId, ["'AUTO_TAI_LIEU_IN'!A2:F9000", "'AUTO_TAI_LIEU_IN'!G1"]);
+    printDocs.stamp = Q.clean(((head || [])[0] || [])[0] || '');
+    printDocs.list = rows.filter(r => r[1] && /^https:\/\//.test(String(r[4] || ''))).map(r => {
+      const path = Q.clean(r[0]), name = Q.clean(r[1]), full = path ? path + ' / ' + name : name;
+      return { path, name, full, kind: Q.clean(r[2]), link: Q.clean(r[4]), keyFull: ' ' + docPlain(full) + ' ', keyName: ' ' + docPlain(name) + ' ', keyPath: ' ' + docPlain(path) + ' ' };
     });
-    printDocs.map = map; printDocs.at = Date.now();
+    printDocs.at = Date.now();
   } finally { printDocs.loading = false; }
+}
+// The book as it is named in the folders: "DISCOVER 3", "FAMILY AND FRIENDS 1" (FF1), "PHONICS 3", "IELTS SPEAKING"…
+function docBookKeys(book) {
+  const b = docPlain(book).replace(/^SACH /, '').replace(/^OXFORD /, '');
+  const out = [b];
+  let m;
+  if ((m = b.match(/^FF ?(\d)$/))) out.push('FAMILY AND FRIENDS ' + m[1]);
+  if ((m = b.match(/^FAMILY AND FRIENDS (\d)$/))) out.push('FF' + m[1], 'FF ' + m[1]);
+  if (/^DISCOVER FUTURES?$/.test(b)) out.push('FUTURE');
+  if ((m = b.match(/^CRITICAL THINKING (?:& )?SCIENCE (\d)$/))) out.push('CRITICAL THINKING ' + m[1], 'SCIENCE ' + m[1]);
+  return out;
+}
+// What is printed in this lesson, from the Schedule's lesson text: written tests, Phonics tests, interviews, reviews, projects.
+function docItems(s) {
+  const d = docPlain(s.detail || ''), out = [];
+  let m;
+  if ((m = d.match(/WRITTEN TEST (\d+)/))) out.push('WRITTEN TEST ' + m[1]);
+  if ((m = d.match(/\bTEST (\d+ \d+)/))) out.push('TEST ' + m[1]);
+  if ((m = d.match(/INTERVIEW (\d+)/))) out.push('INTERVIEW ' + m[1]);
+  // "REVIEW 4" on its own (not "REVIEW (15-20 MINS)").
+  if ((m = String(s.detail || '').toUpperCase().match(/\bREVIEW[ \t]+(\d+)[ \t]*(?:$|\n|,|;)/m))) out.push('REVIEW ' + m[1]);
+  if ((m = d.match(/FLUENCY TIME (\d+)/))) out.push('FLUENCY TIME ' + m[1]);
+  if (/MID COURSE REVISION/.test(d)) out.push('MID COURSE REVISION', 'MID COURSE');
+  if (/FINAL COURSE/.test(d)) out.push('FINAL COURSE');
+  return out;
 }
 function docsFor(s) {
   if (!s) return [];
-  if ((!printDocs.map || Date.now() - printDocs.at > 600000) && Date.now() - printDocs.tried > 60000) { printDocs.tried = Date.now(); if (!printDocs.loading) loadPrintDocs(true).then(render).catch(() => {}); }
-  if (!printDocs.map) return [];
-  return printDocs.map.get(docBook(s.book) + '|' + String(Number(s.lesson) || Q.clean(s.lesson))) || [];
+  if ((!printDocs.list || Date.now() - printDocs.at > 1800000) && Date.now() - printDocs.tried > 60000) { printDocs.tried = Date.now(); if (!printDocs.loading) loadPrintDocs(true).then(render).catch(() => {}); }
+  if (!printDocs.list || !Q.clean(s.book)) return [];
+  const items = docItems(s);
+  if (!items.length) return [];
+  const books = docBookKeys(s.book).map(b => ' ' + b + ' ');
+  const inBook = printDocs.list.filter(e => books.some(b => e.keyFull.includes(b)));
+  for (const item of items) {
+    const it = ' ' + item + ' ';
+    // A folder named after the item ("Written Test 3"): its link and the files directly in it.
+    const folder = inBook.find(e => e.kind === 'folder' && e.keyName.trim() === item) || inBook.find(e => e.kind === 'folder' && e.keyName.includes(it));
+    if (folder) {
+      const files = printDocs.list.filter(e => e.kind === 'file' && e.path === folder.full).slice(0, 6);
+      return [{ name: folder.name, link: folder.link, note: folder.full, folder: true }].concat(files.map(f => ({ name: f.name, link: f.link, note: f.full })));
+    }
+    const files = inBook.filter(e => e.kind === 'file' && e.keyName.includes(it)).slice(0, 6);
+    if (files.length) return files.map(f => ({ name: f.name, link: f.link, note: f.full }));
+  }
+  return [];
 }
-const docButtons = list => list.map(d => '<a class="doc-btn" href="' + esc(d.link) + '" target="_blank" rel="noopener" title="' + esc(d.note || d.name) + '">🖨 ' + esc(d.name) + '</a>').join('');
+const docButtons = list => list.map(d => '<a class="doc-btn" href="' + esc(d.link) + '" target="_blank" rel="noopener" title="' + esc(d.note || d.name) + '">' + (d.folder ? '📁 ' : '🖨 ') + esc(d.name) + '</a>').join('');
 // Class page: the documents of this lesson right under the lesson header.
 const viewClassBeforeDocs = viewClass;
 viewClass = function () {
