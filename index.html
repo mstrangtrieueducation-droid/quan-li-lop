@@ -1213,6 +1213,10 @@
   .kt-sheet .kt-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin-top: 10px; max-height: 60vh; overflow: auto; }
   .kt-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line, #e2e8f0); border-radius: 12px; }
   .kt-row b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Owner 10/11: the general "label > * { width: 100% }" stretched "/58" over the whole box and hid the pupil's name. */
+  .kt-sheet .kt-row > span { width: auto; flex: none; }
+  .kt-sheet .kt-row > b { width: auto; font-size: 16px; font-weight: 700; }
+  .kt-sheet .kt-row > b.kt-pct { flex: none; font-size: 13px; }
   .kt-row input, .kt-total input { width: 4.5em; padding: 6px; font-size: 18px; font-weight: 800; text-align: center; border-radius: 8px; }
   .kt-total { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-weight: 700; }
   /* Roll call fits the screen (owner 09/11: "màn hình điểm danh cần vừa khung hình k phải kéo"): pupils flow into as many columns as
@@ -1353,10 +1357,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261110W"></script>
-<script src="logic.js?v=20261110W"></script>
-<script src="app.js?v=20261110W"></script>
-<script src="qrcode.js?v=20261110W"></script>
-<script src="extra.js?v=20261110W"></script>
+<script src="config.js?v=20261110X"></script>
+<script src="logic.js?v=20261110X"></script>
+<script src="app.js?v=20261110X"></script>
+<script src="qrcode.js?v=20261110X"></script>
+<script src="extra.js?v=20261110X"></script>
 </body>
 </html>
