@@ -5250,7 +5250,7 @@ nsLap = async function (auto) {
   try {
     let fx, src = '';
     if (mode === 'fixed') { fx = nsNum(ns.fx || saved.get('nsFx') || ''); if (!fx) throw Error('Nhập tỷ giá cố định trước.'); src = 'cố định'; }
-    else { ns.fxInfo = await call('tygia', {}); fx = ns.fxInfo[mode]; src = 'Vietcombank ' + (mode === 'sell' ? 'bán ra' : 'mua CK') + ' ' + ns.fxInfo.at; }
+    else { ns.fxInfo = await nsReadFx(); const lastFx = nsLastRun(month); if (!ns.fxInfo && !(auto && lastFx && lastFx.fx)) throw Error('Chưa đọc được tỷ giá Vietcombank. Thử lại sau ít phút, hoặc chọn Cố định và nhập tay.'); fx = ns.fxInfo ? ns.fxInfo[mode] : lastFx.fx; src = ns.fxInfo ? 'Vietcombank ' + (mode === 'sell' ? 'bán ra' : 'mua CK') + ' ' + ns.fxInfo.at : 'giữ tỷ giá lần trước, chưa đọc được Vietcombank'; }
     const pd = await loadPay(month, true);
     const built = nsBuild(month, nsActive().concat([...nsLatest().values()].filter(r => r.status === 'Đã nghỉ' && r.rate.het && r.rate.het >= month + '-01')), pd, fx);
     const done = [];
@@ -5285,3 +5285,15 @@ document.addEventListener('change', e => {
   const b = e.target;
   if (b && b.dataset && b.dataset.act === 'nsFxMode') { ns.fxMode = b.value; keep('nsFxMode', b.value); render(); }
 });
+
+// Vietcombank answers this page directly (it allows this site), which is quicker than going through the Google server; the server read is the fallback.
+async function nsReadFx() {
+  try {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 12000);
+    const r = await fetch('https://www.vietcombank.com.vn/api/exchangerates?date=' + today(), { signal: ctl.signal });
+    clearTimeout(timer);
+    const j = await r.json(), u = (j.Data || []).find(d => d.currencyCode === 'USD'), n = v => Math.round(Number(String(v).replace(/,/g, '')));
+    if (u && n(u.transfer) > 1000) { const d = new Date(); return { cash: n(u.cash), transfer: n(u.transfer), sell: n(u.sell), source: 'Vietcombank', at: String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + viDate(today()) }; }
+  } catch (e) {}
+  return null;
+}
