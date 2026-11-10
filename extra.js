@@ -4960,7 +4960,7 @@ slipCard = function (d) {
   if (!isOwner() || !d || !d.slip || !/\(NHÁP\)\s*$/.test(d.slip.tab)) return h;
   const s = d.slip, g = /^GVNN/.test(s.tab) ? 'GVNN' : 'NVVN', have = c => { const it = s.items.find(x => x.col === c); return it ? it.value : ''; };
   return h + '<div class="card row ns-manual"><b>✏️ Ô cô nhập (bảng nháp)</b><div class="form-grid">' + NS_MANUAL[g].map(([c, t]) => '<label>' + t + '<input inputmode="numeric" data-act="nsCell" data-tab="' + esc(s.tab) + '" data-row="' + s.row + '" data-col="' + c + '" value="' + esc(String(have(c)).replace(/\s*đ$/, '')) + '"></label>').join('') + '</div>' +
-    '<p class="small muted">Gõ số rồi bấm ra ngoài ô, app ghi vào bảng nháp và tính lại thực nhận. Để trống là 0.</p></div>';
+    '<p class="small muted">Gõ số rồi bấm Enter (hoặc bấm ra ngoài ô): ô hiện "✓ Đã lưu" và thực nhận tự tính lại. Để trống là 0.</p></div>';
 };
 document.addEventListener('change', async e => {
   const b = e.target;
@@ -5297,3 +5297,55 @@ async function nsReadFx() {
   } catch (e) {}
   return null;
 }
+
+/* ---------- Owner 10/11: "thao tác chưa nuột... kéo lên kéo xuống, trái phải nó tràn, xô lệch... nút lưu ở bảng lương... nhân sự
+ * không nhanh nuột" ----------
+ * - A redraw keeps the open panel's scroll position, the page scroll and the box that had focus (a dropdown in the staff form
+ *   used to send the panel back to the top and drop focus).
+ * - Draft payroll cells: Enter saves, the box itself shows "đang lưu / đã lưu", nothing pops in at the top of the page, and the
+ *   total is read again once in the background. */
+const paintMainBeforeKeep = paintMain;
+const keepSel = el => {
+  if (!el || !el.dataset || !el.dataset.act) return '';
+  return ['act', 'k', 'v', 'n', 'tab', 'row', 'col'].filter(k => el.dataset[k] != null).map(k => '[data-' + k + '="' + CSS.escape(el.dataset[k]) + '"]').join('');
+};
+paintMain = function (h) {
+  const main = $('main');
+  if (main._html === h) return;
+  const box = main.querySelector('.dash-modal'), body = box && box.querySelector('.dash-body'), label = box && box.getAttribute('aria-label'), top = body ? body.scrollTop : 0;
+  const a = document.activeElement, sel = a && main.contains(a) ? keepSel(a) : '', y = window.scrollY;
+  paintMainBeforeKeep(h);
+  const now = main.querySelector('.dash-modal'), nb = now && now.querySelector('.dash-body');
+  if (nb && box && now.getAttribute('aria-label') === label && !keepTop) nb.scrollTop = top;
+  keepTop = false;
+  if (Math.abs(window.scrollY - y) > 1) window.scrollTo(0, y);
+  if (sel) { const el = main.querySelector(sel); if (el && el !== document.activeElement) try { el.focus({ preventScroll: true }); } catch (e) {} }
+};
+let keepTop = false;
+// After saving or leaving a staff record the list starts from the top, where the "Đã lưu" line is.
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act]');
+  if (b && ['nsCancel', 'nsTab', 'nsNew', 'nsEdit', 'nsSec'].includes(b.dataset.act)) keepTop = true;
+}, true);
+const nsSaveBeforeTop = nsSave;
+nsSave = async function () { await nsSaveBeforeTop.apply(this, arguments); if (!ns.form) { keepTop = true; render(); } };
+// Draft payroll cells.
+document.addEventListener('keydown', e => {
+  const b = e.target;
+  if (e.key === 'Enter' && b && b.dataset && b.dataset.act === 'nsCell') { e.preventDefault(); b.blur(); }
+}, true);
+document.addEventListener('change', async e => {
+  const b = e.target;
+  if (!b || !b.dataset || b.dataset.act !== 'nsCell') return;
+  e.stopImmediatePropagation();
+  b.classList.remove('ns-ok', 'ns-err'); b.classList.add('ns-busy'); b.readOnly = true;
+  const tip = b.parentElement && b.parentElement.querySelector('.ns-st') || (() => { const s = document.createElement('small'); s.className = 'ns-st'; b.after(s); return s; })();
+  tip.textContent = 'Đang lưu…';
+  try {
+    await call('luongo', { tab: b.dataset.tab, row: Number(b.dataset.row), col: Number(b.dataset.col), value: b.value }, 1);
+    b.classList.add('ns-ok'); tip.textContent = '✓ Đã lưu';
+    clearTimeout(nsCellReload); nsCellReload = setTimeout(() => loadLuong(true).then(render).catch(() => {}), 900);
+  } catch (err) { b.classList.add('ns-err'); tip.textContent = 'Chưa lưu được: ' + err.message; }
+  finally { b.classList.remove('ns-busy'); b.readOnly = false; }
+}, true);
+let nsCellReload = 0;

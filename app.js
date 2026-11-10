@@ -111,7 +111,10 @@ let lang = 'vi';
 const T = (vi, en) => lang === 'en' ? en : vi;
 const dayLabel = s => Q.dayText(s, lang);
 
-function say(text, kind) { notices = notices.filter(n => n.text !== text); notices.push({ text, kind: kind || '' }); render(); }
+function say(text, kind) {
+  notices = notices.filter(n => n.text !== text); const it = { text, kind: kind || '' }; notices.push(it); render();
+  if (it.kind !== 'bad') setTimeout(() => { if (notices.includes(it)) { notices = notices.filter(x => x !== it); render(); } }, 5000);
+}
 
 /* ---------- Reading ---------- */
 // Owner 09/11: a new week tab once kept last week's dates in its rota header ("Thứ 2 02.11" in the 09.11 tab), so every staff member
@@ -1168,9 +1171,9 @@ function render() {
   $('nav').innerHTML = items.map(([k, t], i) => '<button class="' + (view === k ? 'on' : '') + (i >= 5 ? ' nav-x' : '') + '" data-act="view" data-v="' + k + '">' + t + '</button>').join('') +
     (items.length > 5 ? '<button class="nav-more' + (items.slice(5).some(([k]) => k === view) ? ' on' : '') + '" data-act="navMore" aria-label="' + T('Mục khác', 'More') + '" aria-expanded="' + $('nav').classList.contains('open') + '">⋯</button>' : '');
   const week = weeks[Q.weekTab(tabs, day)] || null;
-  let h = notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('');
+  let h = notices.length ? '<div class="toasts">' + notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('') + '</div>' : '';
   if (loadError) h += '<div class="notice bad">' + esc(loadError) + '</div>';
-  if (view === 'lenlop' && current) h =notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('') + viewLenLop();
+  if (view === 'lenlop' && current) h = (notices.length ? '<div class="toasts">' + notices.map((n, i) => '<div class="notice ' + n.kind + '" role="alert">' + esc(n.text) + ' <button class="quiet" data-act="dismiss" data-i="' + i + '">' + T('Đóng', 'Close') + '</button></div>').join('') + '</div>' : '') + viewLenLop();
   else if (view === 'lop' && current) h += viewClass();
   else if (view === 'dieuhanh' && isManager()) h += viewManager(week);
   else if (view === 'nguoi' && isOwner()) h += viewNguoi();
