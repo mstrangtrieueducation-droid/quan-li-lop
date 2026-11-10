@@ -313,7 +313,7 @@ function setAbsence(ctx, pupil, status) {
   // Owner 09/11 (TT: "giáo viên có tích nghỉ nhưng không hiện trong file theo dõi"): lessons without a paper-homework column
   // (Discover Futures, KIDS 8) get the absence in the lesson's comment column instead.
   const col = !ctx.block ? -1 : ctx.block.grade >= 0 ? ctx.block.grade : ctx.block.comment >= 0 ? ctx.block.comment : -1;
-  if (col >= 0 && !ctx.tracker.cell(pupil.row, col)) gradeCell(ctx.cls, ctx.tracker, Object.assign({}, ctx.block, { grade: col }), pupil, '/\nCon vắng mặt!', pupil.eng + ' · ' + ctx.session.lesson);
+  if (col >= 0 && !ctx.tracker.cell(pupil.row, col)) gradeCell(ctx.cls, ctx.tracker, Object.assign({}, ctx.block, { grade: col }), pupil, /^(IELTS|FIGHTER)/.test(Q.key(ctx.session.cls)) ? '/\nVắng mặt' : '/\nCon vắng mặt!', pupil.eng + ' · ' + ctx.session.lesson);
   render();
 }
 /* ---------- Lên lớp: stars and absence on the classroom touch screen ---------- */
