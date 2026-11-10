@@ -5596,3 +5596,33 @@ setInterval(async () => {
   try { if (logs.marks) await liveMarks(); } catch (e) {}
   try { paintPhPop(); } catch (e) {}
 }, 60000);
+
+/* ---------- Owner 10/11: "tất cả mọi loại update phải được thực hiện không cần F5" ----------
+ * Every page now follows what others do, without reloading (a new app version still needs F5):
+ * - roll call, ticks (printing, tutor done, absences, parent contacts): the roll-call log tail every 30 s;
+ * - the Schedule week shown (lessons, rota, tasks, penalty list): every 2 minutes;
+ * - check-ins and approvals: every 2 minutes on Lịch, Công and Điều hành; payslip states every 2 minutes on Lương;
+ * - and at once when the tab comes back to the front.
+ * The class page and class screen keep their own faster refresh; Điều hành panels keep theirs. The server keeps each read for
+ * 10-90 s and shares it between all phones, so many open pages still cost Google only a few reads a minute.
+ * A redraw waits while someone is typing and keeps the scroll and the box in focus. */
+const LIVE_EVERY = { marks: 30000, week: 120000, ca: 120000, pay: 120000 };
+const liveAll = { marks: Date.now(), week: Date.now(), ca: Date.now(), pay: Date.now(), busy: false };
+async function liveTick(now) {
+  if (liveAll.busy || !me || isBoard() || document.visibilityState !== 'visible' || ['lop', 'lenlop'].includes(view)) return;
+  // Coming back to the tab reads at once, but not more than once every 15 s.
+  if (now && Date.now() - (liveAll.front || 0) < 15000) now = false; else if (now) liveAll.front = Date.now();
+  const t = Date.now(), due = k => now || t - liveAll[k] >= LIVE_EVERY[k], jobs = [];
+  if (due('marks')) { liveAll.marks = t; jobs.push(logs.marks ? liveMarks() : loadMarks(true)); }
+  if (due('week')) { liveAll.week = t; jobs.push(weekOf(day, true)); if (day !== today()) jobs.push(weekOf(today(), true)); }
+  if (due('ca') && ['lich', 'cong', 'dieuhanh'].includes(view)) { liveAll.ca = t; jobs.push(loadCa(true)); }
+  if (due('pay') && view === 'luong') { liveAll.pay = t; jobs.push(loadLuong(true)); }
+  if (!jobs.length) return;
+  liveAll.busy = true;
+  try { await Promise.allSettled(jobs); } finally { liveAll.busy = false; }
+  const a = document.activeElement;
+  if (!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) render();
+}
+setInterval(() => { liveTick(false).catch(() => {}); }, 15000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') liveTick(true).catch(() => {}); });
+window.addEventListener('focus', () => { liveTick(true).catch(() => {}); });
