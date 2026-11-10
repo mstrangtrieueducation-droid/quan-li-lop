@@ -2188,7 +2188,8 @@ const attendTextBeforeMk = attendText;
 attendText = function (m) { return m && m.status === MAKEUP ? '<span class="sum-sent">Bù bài ngoài lớp (mức 3)</span>' : attendTextBeforeMk(m); };
 
 /* ---------- IELTS / FIGHTER owed work, short (owner 08/11: "hiển thị thiếu bài gì bên fighter ielts còn dài dòng... ngắn gọn hơn") ---------- */
-const SKILLS = [[/writing|viết/i, 'Viết'], [/speaking|nói/i, 'Nói'], [/reading|đọc/i, 'Đọc'], [/listening|nghe/i, 'Nghe'], [/vocab|từ vựng/i, 'Từ vựng'], [/grammar|ngữ pháp/i, 'Ngữ pháp'], [/test|kiểm tra/i, 'Kiểm tra']];
+// Owner 10/11 (F6): FIGHTER practice tests have two parts, the notebooks and redoing the test on the web; a "Practice Test" is not a "Kiểm tra".
+const SKILLS = [[/sổ luyện đề|sổ từ vựng/i, 'Sổ luyện đề'], [/làm lại trên web/i, 'Làm lại đề web'], [/luyện đề|practice test/i, 'Luyện đề'], [/đoạn văn/i, 'Đoạn văn'], [/writing|viết/i, 'Viết'], [/speaking|nói/i, 'Nói'], [/reading|đọc/i, 'Đọc'], [/listening|nghe/i, 'Nghe'], [/vocab|từ vựng/i, 'Từ vựng'], [/grammar|ngữ pháp/i, 'Ngữ pháp'], [/test|kiểm tra/i, 'Kiểm tra']];
 const skillOf = o => { const t = Q.clean(o.label); const hit = SKILLS.find(([re]) => re.test(t)); return hit ? hit[1] : t.split(' ').slice(0, 2).join(' '); };
 const skillSummary = owed => { const n = {}; owed.forEach(o => { const k = skillOf(o); n[k] = (n[k] || 0) + 1; }); return Object.entries(n).map(([k, c]) => k + (c > 1 ? ' ×' + c : '')).join(', '); };
 const pupilFlagsBeforeShort = pupilFlags;
