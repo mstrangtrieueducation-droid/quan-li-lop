@@ -5626,3 +5626,57 @@ async function liveTick(now) {
 setInterval(() => { liveTick(false).catch(() => {}); }, 15000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') liveTick(true).catch(() => {}); });
 window.addEventListener('focus', () => { liveTick(true).catch(() => {}); });
+
+/* ---------- Owner 10/11: "app mới có cách nào không cần F5... vì tôi phải sửa liên tục" ----------
+ * A page left open now takes a new version by itself. Every 2 minutes (and when the tab comes back to the front) it reads the
+ * published index.html; when its version differs from the running one, the page reloads at a safe moment: nothing typed half-way,
+ * nothing waiting to be saved, no sheet or staff form open, and never on the class screen (it waits until the teacher leaves it).
+ * Before reloading it notes the page, day, panel and scroll; after the reload it comes back there and says "Đã cập nhật bản mới". */
+const APP_V = ((document.querySelector('script[src*="extra.js"]') || {}).src || '').replace(/^.*[?&]v=/, '');
+let appNewV = '', appCheckAt = 0;
+async function appCheck(now) {
+  if (!APP_V || document.visibilityState !== 'visible' || (!now && Date.now() - appCheckAt < 110000)) return;
+  appCheckAt = Date.now();
+  try {
+    const r = await fetch('index.html?check=' + Date.now(), { cache: 'no-store' });
+    const v = ((await r.text()).match(/extra\.js\?v=([\w.-]+)/) || [])[1] || '';
+    if (v && v !== APP_V) appNewV = v;
+  } catch (e) {}
+  appSwap();
+}
+function appSafe() {
+  const a = document.activeElement;
+  if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return false;
+  if (typeof outbox !== 'undefined' && outbox.length) return false;
+  if (view === 'lenlop' || document.querySelector('.ll-sheet, .sum-sheet, #chotPop')) return false;
+  if (typeof ns !== 'undefined' && ns && (ns.form || ns.busy)) return false;
+  return true;
+}
+function appSwap() {
+  if (!appNewV || !appSafe()) return;
+  try {
+    const box = document.querySelector('.dash-modal .dash-body');
+    sessionStorage.setItem('qllBack', JSON.stringify({ at: Date.now(), view, day, panel, y: window.scrollY, from: APP_V, to: appNewV, row: current ? current.row : '', cday: current ? current.day : '' }));
+  } catch (e) {}
+  location.reload();
+}
+setInterval(() => { appCheck(false); if (appNewV) appSwap(); }, 30000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') appCheck(true); });
+// After the reload: back to where the person was.
+(function () {
+  let back = null;
+  try { back = JSON.parse(sessionStorage.getItem('qllBack') || 'null'); } catch (e) {}
+  if (!back || Date.now() - back.at > 120000) { try { sessionStorage.removeItem('qllBack'); } catch (e) {} return; }
+  // The device's stored page may still be the old one for this open; the worker then reloads once more, and the note waits for it.
+  if (back.to && APP_V !== back.to) return;
+  try { sessionStorage.removeItem('qllBack'); } catch (e) {}
+  const until = Date.now() + 20000, t = setInterval(() => {
+    if (Date.now() > until) return clearInterval(t);
+    if (!me) return;
+    clearInterval(t);
+    if (back.day) day = back.day;
+    if (back.panel) panel = back.panel;
+    if (back.view && back.view !== 'lenlop') view = back.view;
+    Promise.resolve(weekOf(day)).catch(() => {}).then(() => { if (view === 'lop') { const s = back.row && findSession(back.row, back.cday); if (s) current = s; else view = 'lich'; } render(); setTimeout(() => window.scrollTo(0, back.y || 0), 50); if (view === 'dieuhanh') guarded(loadPanel); say('Đã tự cập nhật bản mới của app.'); });
+  }, 300);
+})();
