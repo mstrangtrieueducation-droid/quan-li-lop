@@ -4714,7 +4714,7 @@ function nsFormHtml() {
       inp('r.nha', 'Trợ cấp nhà ở (' + (r.nhaUsd ? '$' : 'đ') + ')', r.nhaUsd ? r.nha || '' : nsMoney(r.nha)) +
       '<label>Nhà ở tính bằng<select data-act="nsF" data-k="r.nhaUsd"><option value="">đ</option><option value="1"' + (r.nhaUsd ? ' selected' : '') + '>$ × tỷ giá</option></select></label>' +
       '<label>Nhà ở chịu thuế?<select data-act="nsF" data-k="r.nhaFree"><option value="">Có tính thuế</option><option value="1"' + (r.nhaFree ? ' selected' : '') + '>Không tính thuế</option></select></label>' +
-      (r.usd ? '' : inp('r.fx', 'Tỷ giá cố định ghi trong hợp đồng (nếu có)', r.fx || '')) + money('bh', 'Đóng bảo hiểm trên mức (đ, trống = không)') + '</div>';
+      inp('r.fx', 'Tỷ giá cố định ghi trong hợp đồng (đ/$, trống = Vietcombank lúc lập)', r.fx || '') + money('bh', 'Đóng bảo hiểm trên mức (đ, trống = không)') + '</div>';
   }
   const id = f.id || (f.id = {});
   h += '<h4>Bảo hiểm và thuế</h4><div class="form-grid">' +
@@ -4907,12 +4907,12 @@ function nsBuild(month, people, pay, fx) {
         src.push('Giờ thường: ' + (hrs.all ? nsBy(hrs) + ' giờ' : 'chưa có giờ trong tháng'));
         if (!hrs.all) missing.push([row, 2]);
         if (ie) src.push('IELTS: ' + nsDec(ie.all) + ' giờ');
-        cells = [rules.join('\n'), '', '=' + hrs.minutes + '/60', usd ? (fx || '') : (a.fx || '-'), nsFixed(a.base, w, pct), a.baseH || '', rateCell(a.r, hrs),
+        cells = [rules.join('\n'), '', '=' + hrs.minutes + '/60', usd ? (a.fx || fx || '') : (a.fx || '-'), nsFixed(a.base, w, pct), a.baseH || '', rateCell(a.r, hrs),
           '=ROUND(MAX(0;IF(I' + R + '="";C' + R + ';MIN(C' + R + ';100))-F' + R + ')*G' + R + ';0)', a.r101 ? money(a.r101) : '', '=IF(I' + R + '="";0;ROUND(MAX(0;C' + R + '-100)*I' + R + ';0))',
           ie ? '=' + ie.minutes + '/60' : '', ie ? rateCell(a.ielts, ie) : '', ie ? '=ROUND(K' + R + '*L' + R + ';0)' : '', nsFixed(a.bonus, w, 100), a.nha ? (a.nhaUsd ? money(a.nha) : a.nha) : '', '',
           '=SUM(E' + R + ';H' + R + ';J' + R + ';M' + R + ';N' + R + ';O' + R + ';P' + R + ')', a.nhaFree && a.nha ? '=O' + R : '', a.bh ? '=ROUND(' + a.bh + '*' + nsBhPct(a) + ';0)' : '',
           '=MAX(0;Q' + R + '-R' + R + '-S' + R + '-15500000)', nsTaxCell(a.thue, 'T' + R, 'Q' + R + '-R' + R), '', '=S' + R + '+U' + R + '+V' + R, '=Q' + R + '-W' + R, '', '=X' + R + '-Y' + R, src.join(' · ')];
-        if (usd && !fx) missing.push([row, 3]);
+        if (usd && !(a.fx || fx)) missing.push([row, 3]);
       }
       grid.push(cells.map(v => typeof v === 'number' && !Number.isInteger(v) ? nsDec(v) : v));
       const id = r.id || {}, hasId = id.cccd || id.stk;
