@@ -205,8 +205,8 @@ function slipCard(d) {
   const s = d.slip, isTotal = x => /^(TỔNG|CỘNG)/i.test(x.label), totals = s.items.map((x, i) => isTotal(x) ? i : -1).filter(i => i >= 0);
   const cut1 = totals[0] != null ? totals[0] : s.items.length, cut2 = totals[1] != null ? totals[1] : s.items.length;
   const income = s.items.slice(0, cut1 + 1), deduct = s.items.slice(cut1 + 1, cut2 + 1), paid = s.items.slice(cut2 + 1);
-  const label = l => { const words = String(l).split(' '); let k = 0; while (k < words.length && !/[a-z]/.test(words[k])) k++; const vi = words.slice(0, k).join(' ').trim(), en = words.slice(k).join(' ').replace(/^\(|\)$/g, '').trim(); const pick = lang === 'en' ? (en || vi) : (vi || en); return pick.charAt(0) + pick.slice(1).toLowerCase().replace(/\bielts\b/i, 'IELTS').replace(/\btncn\b/i, 'TNCN').replace(/\bbhxh\b/i, 'BHXH'); };
-  const row = x => '<div class="slip-row' + (isTotal(x) ? ' total' : '') + (/^0 đ$/.test(x.value) ? ' zero' : '') + '"><span>' + esc(label(x.label)) + '</span><b>' + esc(x.value) + '</b></div>';
+  const label = l => slipLabel(l, lang === 'en');
+  const row = x => '<div class="slip-row' + (isTotal(x) ? ' total' : '') + (/^0 đ$/.test(x.value) ? ' zero' : '') + '"><span>' + esc(label(x.label)) + '</span><b>' + esc(slipValue(x.label, x.value, lang === 'en')) + '</b></div>';
   const section = (title, list, cls) => list.length ? '<div class="slip-sec ' + cls + '"><h3>' + title + '</h3>' + list.map(row).join('') + '</div>' : '';
   const net = paid.find(x => /CÒN LẠI/i.test(x.label)) || paid.find(x => /THỰC NHẬN/i.test(x.label)), rest = paid.filter(x => x !== net);
   return '<div class="card slip"><div class="slip-head"><div><div class="small muted">' + esc(s.tab) + '</div><b class="slip-name">' + esc(s.name) + '</b>' + (s.role ? '<div class="small muted">' + esc(s.role) + '</div>' : '') + '</div>' +
@@ -5493,3 +5493,33 @@ document.addEventListener('click', e => {
   appendMark({ day: s.day, cls: Q.clean(s.cls), lesson: '', start: s.start }, { row: '', name: TUTOR_DONE, eng: '' }, b.dataset.v === 'Bỏ' ? 'Bỏ dạy xong' : 'Đã dạy');
   render();
 }, true);
+
+// Owner 10/11: one language at a time. Payroll labels are "Vietnamese / English", sometimes with a class group
+// "(giờ dạy thường / regular teaching)"; the chosen side is shown in sentence case, acronyms kept.
+const SLIP_KEEP = /^(IELTS|KIDS|BHXH|BHYT|BHTN|TNCN|FIGHTER|TA|CK)$/;
+function slipCase(t) {
+  t = String(t || '').trim();
+  if (!t) return t;
+  t = t.split(' ').map(w => { const c = w.replace(/[(),.%\d\/$]/g, ''); return c && c === c.toUpperCase() && c !== c.toLowerCase() && !SLIP_KEEP.test(c) ? w.toLowerCase() : w; }).join(' ');
+  t = t.replace(/\bielts\b/gi, 'IELTS');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function slipSide(t, en) {
+  const parts = String(t).split(/\s+\/\s+/);
+  const vi = parts[0] || '', eng = parts.length > 1 ? parts.slice(1).join(' / ') : '';
+  return en ? (eng || '') : vi;
+}
+function slipLabel(l, en) {
+  let main = String(l || '').trim(), group = '';
+  const g = main.match(/^(.*\S)\s*\(([^()]*\/[^()]*)\)\s*$/);
+  if (g) { main = g[1]; group = g[2]; }
+  if (/^NGUỒN SỐ/i.test(main)) return en ? 'Hours by class' : 'Nguồn số giờ';
+  let pick = slipSide(main, en) || slipSide(main, !en);
+  pick = pick.replace(/\s*\(nhập tay\)/gi, '').trim();
+  let gp = group ? (slipSide(group, en) || slipSide(group, !en)) : '';
+  return slipCase(pick) + (gp ? ' (' + slipCase(gp).replace(/^./, c => en ? c.toUpperCase() : c.toLowerCase()).replace(/\bielts\b/gi, 'IELTS') + ')' : '');
+}
+function slipValue(label, v, en) {
+  if (!en || !/^NGUỒN SỐ/i.test(String(label))) return v;
+  return String(v).replace(/Giờ thường/g, 'Regular').replace(/chưa có giờ trong tháng/g, 'no hours this month').replace(/(\d)\s*giờ/g, '$1 h').replace(/·/g, '·');
+}
