@@ -235,7 +235,7 @@ function viewLuong() {
       const rows = d.rows || [], checked = rows.filter(r => r.state && r.state.check && r.state.check.action === 'Đúng' && !r.state.check.stale).length, wrong = rows.filter(r => r.state && r.state.check && r.state.check.action === 'Báo sai').length, paid = rows.filter(r => r.state && r.state.paid).length;
       h += '<div class="count"><span>' + rows.length + T(' người', ' people') + '</span><span class="tag ok">' + checked + T(' xác nhận đúng', ' confirmed') + '</span>' + (wrong ? '<span class="tag bad">' + wrong + T(' báo sai', ' wrong') + '</span>' : '') + '<span class="tag">' + paid + T(' đã trả', ' paid') + '</span></div>';
       if (!rows.length) h += '<div class="card empty">' + T('Chưa có tab NVVN/GVNN của ' + monthName(d.month) + ' trong file bảng lương.', 'No payroll tab for this month.') + '</div>';
-      h += '<div class="list">' + rows.map(r => '<div class="card row"><div class="row-top"><b>' + esc(r.name) + '</b><span class="muted small">' + esc(r.tab) + (r.person ? ' · ' + T('link ', 'app ') + esc(r.person) : ' · ' + T('chưa có người dùng khớp tên', 'no app user')) + '</span><span class="spacer"></span><b>' + esc(r.net) + '</b></div>' +
+      h += '<div class="list">' + rows.map(r => '<div class="card row"><div class="row-top"><b>' + esc(r.name) + '</b><span class="muted small">' + esc(r.tab) + (r.person ? ' · ' + T('link ', 'app ') + esc(r.person) : ' · ' + T('chưa có link app (tạo trong Nhân sự & lương, hồ sơ, mục Hợp đồng & link app)', 'no app link')) + '</span><span class="spacer"></span><b>' + esc(r.net) + '</b></div>' +
         '<div>' + payStateLine(r.state) + '</div>' + (r.person ? '<div class="choices"><button class="quiet" data-act="payOpen" data-p="' + esc(r.person) + '">' + T('Xem chi tiết', 'Open') + '</button>' +
         (r.state && r.state.paid ? '<button class="quiet" data-act="payPaid" data-v="Bỏ đã trả" data-p="' + esc(r.person) + '">' + T('Bỏ đánh dấu đã trả', 'Unmark paid') + '</button>' : '<button class="good" data-act="payPaid" data-v="Đã trả" data-p="' + esc(r.person) + '">' + T('Đã trả lương', 'Mark paid') + '</button>') + '</div>' : '') + '</div>').join('') + '</div>';
     }
@@ -5094,3 +5094,122 @@ document.addEventListener('click', e => {
 }, true);
 // render() waits while a box has focus, so the search hides rows in place.
 document.addEventListener('input', e => { const b = e.target; if (!(b && b.dataset && b.dataset.act === 'nsQ')) return; ns.q = b.value; const q = Q.key(b.value); document.querySelectorAll('.ns-table tr[data-n]').forEach(tr => { tr.style.display = !q || Q.key(tr.textContent).includes(q) ? '' : 'none'; }); });
+
+/* ---------- Owner 10/11: contracts by year and the app link, inside each staff record ----------
+ * "Ngày vào làm" is the first day at the centre and never moves; every signing (a new one-year contract from 1/10, say)
+ * is one more HOP_DONG row. Law kept in view: a fixed-term contract is at most 36 months and may be signed again only once,
+ * the next must be open-ended (Điều 20 BLLĐ 2019); a foreign teacher's term follows the work permit, at most 2 years (Điều 151). */
+ns.hdf = null; ns.newLink = null;
+const NS_TERMS = [['12', '1 năm'], ['24', '2 năm'], ['36', '3 năm'], ['0', 'Không thời hạn'], ['date', 'Đến ngày…']];
+const nsLinkOf = name => nguoi && (nguoi.people || []).find(p => Q.key(p.name) === Q.key(name) && !/chủ/i.test(p.role || ''));
+const nsHasLink = name => !!nsLinkOf(name);
+const nsHdList = name => (ns.hd || []).filter(x => Q.key(x.person) === Q.key(name) && x.status !== 'Đã xoá').sort((a, b) => String(a.start).localeCompare(String(b.start)));
+const nsFixedTerm = t => /xác định thời hạn\)/.test(t) && !/không xác định/.test(t);
+function nsHdBlank(f) {
+  const list = nsHdList(f.name), last = list[list.length - 1];
+  const start = last && last.end ? Q.addDays(last.end, 1) : '';
+  const d = { type: f.group === 'GVNN' ? 'Giáo viên nước ngoài' : 'Toàn thời gian (xác định thời hạn)', term: '12', start, end: '', no: '', signed: '', note: '' };
+  nsHdEnd(d);
+  return d;
+}
+function nsHdEnd(d) {
+  if (d.term === '0') d.end = '';
+  else if (d.term !== 'date' && d.start) d.end = Q.addDays(nsAddMonths(d.start, Number(d.term)), -1);
+}
+function nsHdWarn(f, d) {
+  const prior = nsHdList(f.name).filter(x => nsFixedTerm(x.type) && x.start < (d.start || '9999'));
+  const out = [];
+  if (nsFixedTerm(d.type) && d.term !== '0' && prior.length >= 2) out.push(['bad', 'Đã ký ' + prior.length + ' hợp đồng xác định thời hạn. Luật chỉ cho ký xác định thời hạn thêm 1 lần; lần này phải là hợp đồng không xác định thời hạn (Điều 20 khoản 2 BLLĐ 2019).']);
+  else if (nsFixedTerm(d.type) && d.term !== '0' && prior.length === 1) out.push(['warn', 'Đây là lần ký xác định thời hạn thứ 2. Hết hợp đồng này mà vẫn làm tiếp thì lần sau phải ký không xác định thời hạn.']);
+  if (d.end && d.start && d.end > Q.addDays(d.start, 36 * 31)) out.push(['bad', 'Hợp đồng xác định thời hạn không quá 36 tháng.']);
+  if (d.type === 'Giáo viên nước ngoài') out.push(['', 'Giáo viên nước ngoài: thời hạn không dài hơn giấy phép lao động (tối đa 2 năm). Ghi số giấy phép vào ô Ghi chú.']);
+  return out;
+}
+function nsHdHtml(f) {
+  if (f.isNew) return '<p class="small">Người mới: khi bấm Lưu, app ghi hợp đồng thử việc (nếu chọn) và tạo link app theo lựa chọn ở mục Thông tin chung. Lưu xong mở lại hồ sơ để ký hợp đồng chính thức ở đây.</p>';
+  const d = ns.hdf = ns.hdf || nsHdBlank(f), list = nsHdList(f.name), t = today();
+  const inp = (k, label, v, extra) => '<label>' + label + '<input data-act="nsH" data-k="' + k + '" value="' + esc(v || '') + '"' + (extra || '') + '></label>';
+  let h = '<p class="small muted">Ngày vào làm (' + (f.start ? viDate(f.start) : 'chưa ghi') + ') là ngày bắt đầu làm ở trung tâm, giữ nguyên khi ký lại. Mỗi lần ký hợp đồng mới (VD: hợp đồng năm mới từ 1/10) thêm một dòng ở đây.</p>';
+  h += list.length ? '<div class="card table"><table><thead><tr><th>Loại</th><th>Từ</th><th>Đến</th><th>Số HĐ</th><th></th></tr></thead><tbody>' + list.map(x => {
+    const tone = x.end && x.end < t ? ['bad', 'Hết hạn'] : x.start > t ? ['', 'Chưa bắt đầu'] : x.end && x.end <= Q.addDays(t, 30) ? ['warn', 'Sắp hết'] : ['ok', 'Đang hiệu lực'];
+    return '<tr><td>' + esc(x.type) + (x.note ? '<div class="small muted">' + esc(x.note) + '</div>' : '') + '</td><td>' + esc(viDate(x.start)) + '</td><td>' + (x.end ? esc(viDate(x.end)) : 'Không thời hạn') + '</td><td>' + esc(x.no || '') + '</td><td><span class="tag ' + tone[0] + '">' + tone[1] + '</span></td></tr>';
+  }).join('') + '</tbody></table></div>' : '<div class="notice">Chưa ghi hợp đồng nào cho ' + esc(f.full || f.name) + '.</div>';
+  h += '<h4>' + (list.length ? 'Ký hợp đồng mới / gia hạn' : 'Ghi hợp đồng đang có') + '</h4><div class="form-grid">' +
+    '<label>Loại<select data-act="nsH" data-k="type">' + CONTRACT_TYPES.map(x => '<option' + (d.type === x ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select></label>' +
+    '<label>Thời hạn<select data-act="nsH" data-k="term">' + NS_TERMS.map(([v, tx]) => '<option value="' + v + '"' + (d.term === v ? ' selected' : '') + '>' + tx + '</option>').join('') + '</select></label>' +
+    inp('start', 'Hiệu lực từ ngày', d.start, ' type="date"') +
+    (d.term === '0' ? '' : inp('end', 'Đến hết ngày', d.end, ' type="date"' + (d.term === 'date' ? '' : ' readonly'))) +
+    inp('no', 'Số hợp đồng', d.no, ' placeholder="VD: 12/2026/HĐLĐ"') + inp('signed', 'Ngày ký', d.signed, ' type="date"') +
+    inp('note', 'Ghi chú (lương ghi trong HĐ, giấy phép LĐ…)', d.note) + '</div>';
+  h += nsHdWarn(f, d).map(([tone, tx]) => '<div class="notice ' + tone + '">' + esc(tx) + '</div>').join('');
+  h += '<div class="choices"><button class="good" data-act="nsHSave"' + (ns.busy ? ' disabled' : '') + '>' + (ns.busy === 'hd' ? 'Đang lưu…' : 'Lưu hợp đồng') + '</button></div>';
+  h += '<h4>Link app</h4>';
+  const lk = nsLinkOf(f.name);
+  if (ns.newLink && ns.newLink.name === f.name) h += '<div class="notice ok">Link của ' + esc(f.name) + ' chỉ hiện lần này. Gửi riêng cho người đó, đừng dán vào nhóm.<p style="word-break:break-all;user-select:all">' + esc(ns.newLink.link) + '</p><button class="primary" data-act="nsLinkCopy">Copy link</button></div>';
+  else if (!nguoi) h += '<p class="small muted">Đang đọc danh sách link…</p>';
+  else if (lk) h += '<p><span class="tag ok">Có link app</span> vai trò ' + esc(lk.role) + '. Phiếu lương và công của ' + esc(f.name) + ' hiện trong app của họ.</p>';
+  else h += '<p><span class="tag bad">Chưa có link app</span> ' + esc(f.name) + ' chưa xem được phiếu lương, chưa chấm công trên app.</p><div class="choices">' + [['GV', 'Tạo link GV'], ['TA', 'Tạo link TA'], ['Quản lí', 'Tạo link Quản lí']].map(([v, tx]) => '<button class="quiet" data-act="nsLink" data-v="' + v + '"' + (ns.busy ? ' disabled' : '') + '>' + tx + '</button>').join('') + '</div>';
+  return h;
+}
+async function nsHSave() {
+  const f = ns.form, d = ns.hdf; if (!f || !d) return;
+  if (!d.start) return say('Chọn ngày hiệu lực.', 'bad');
+  if (d.term !== '0' && !d.end) return say('Chọn ngày hết hạn.', 'bad');
+  if (d.end && d.end < d.start) return say('Ngày hết hạn phải sau ngày hiệu lực.', 'bad');
+  if (d.end && d.end > Q.addDays(d.start, 36 * 31)) return say('Hợp đồng xác định thời hạn không quá 36 tháng.', 'bad');
+  const type = d.term === '0' && nsFixedTerm(d.type) ? 'Toàn thời gian (không xác định thời hạn)' : d.type;
+  const row = [stamp(), f.name, type, Q.clean(d.no || ''), d.signed || '', d.start, d.term === '0' ? '' : d.end, '', Q.clean(d.note || ''), 'Hiệu lực', me.name];
+  ns.busy = 'hd'; render();
+  try { await appendRows(CONFIG.quanLiId, 'HOP_DONG', [row]); ns.hd.push(hdRow(row)); hd.rows = ns.hd; ns.hdf = null; say('Đã lưu hợp đồng của ' + (f.full || f.name) + ': ' + viDate(row[5]) + (row[6] ? ' – ' + viDate(row[6]) : ', không thời hạn') + '.'); }
+  catch (e) { say('Chưa lưu được: ' + e.message, 'bad'); }
+  finally { ns.busy = ''; render(); }
+}
+async function nsLinkMake(role) {
+  const f = ns.form; if (!f) return;
+  if (!window.confirm('Tạo link app vai trò ' + role + ' cho ' + f.name + '? Ai có link là vào được với tên này.')) return;
+  ns.busy = 'link'; render();
+  try { const r = await call('them', { name: f.name, role }); ns.newLink = { name: f.name, link: location.origin + location.pathname + '#k=' + r.key }; nguoiMoi = { name: r.name, link: ns.newLink.link }; nguoi = await call('nguoi', {}); }
+  catch (e) { say('Chưa tạo được link: ' + e.message, 'bad'); }
+  finally { ns.busy = ''; render(); }
+}
+const nsFormHtmlSec = nsFormHtml;
+nsFormHtml = function () {
+  const f = ns.form, onHd = ns.sec === 'hd';
+  if (onHd) ns.sec = 'chung';
+  let h = nsFormHtmlSec();
+  if (onHd) {
+    ns.sec = 'hd';
+    const a = h.indexOf('<div class="ns-sec-body">'), b = h.indexOf('<div class="ns-save">');
+    if (a >= 0 && b > a) h = h.slice(0, a) + '<div class="ns-sec-body">' + nsHdHtml(f) + '</div></div>';
+    h = h.replace('<button class="on" data-act="nsSec" data-v="chung">', '<button class="" data-act="nsSec" data-v="chung">');
+  }
+  const tab = '<button class="' + (onHd ? 'on' : '') + '" data-act="nsSec" data-v="hd">Hợp đồng &amp; link app</button>';
+  return h.replace(/(<button class="[^"]*" data-act="nsSec" data-v="hoso">[^<]*<\/button>)/, '$1' + tab);
+};
+// The staff table shows who has no app link, so the owner sees it before payroll day.
+const nsPanelLink = nsPanel;
+nsPanel = function () {
+  if (isOwner() && !nguoi && !ns.nguoiAsked) { ns.nguoiAsked = true; call('nguoi', {}).then(r => { nguoi = r; render(); }).catch(() => { ns.nguoiAsked = false; }); }
+  let h = nsPanelLink();
+  if (nguoi && !ns.form && ns.tab !== 'luong') h = h.replace(/<tr data-act="nsEdit" data-n="([^"]*)"><td><b>([^<]*)<\/b>/g, (m, n) => nsHasLink(n.replace(/&amp;/g, '&')) ? m : m + ' <span class="tag bad">Chưa có link app</span>');
+  return h;
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act]');
+  if (!b || b.tagName === 'SELECT' || b.tagName === 'INPUT') return;
+  const act = b.dataset.act;
+  if (act === 'nsNew' || act === 'nsEdit') { ns.hdf = null; ns.newLink = null; }
+  if (act === 'nsHSave') nsHSave();
+  if (act === 'nsLink') nsLinkMake(b.dataset.v);
+  if (act === 'nsLinkCopy' && ns.newLink) navigator.clipboard.writeText(ns.newLink.link).then(() => { b.textContent = 'Đã copy'; }).catch(() => {});
+}, true);
+const nsHField = (b, redraw) => {
+  if (!(b && b.dataset && b.dataset.act === 'nsH') || !ns.form) return;
+  const d = ns.hdf = ns.hdf || nsHdBlank(ns.form), k = b.dataset.k;
+  d[k] = b.value;
+  if (k === 'type' && d.type === 'Toàn thời gian (không xác định thời hạn)') d.term = '0';
+  if (k === 'term' || k === 'start' || k === 'type') nsHdEnd(d);
+  if (redraw && ['type', 'term', 'start'].includes(k)) render();
+};
+document.addEventListener('input', e => nsHField(e.target, false));
+document.addEventListener('change', e => nsHField(e.target, true));
