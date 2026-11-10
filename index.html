@@ -953,6 +953,12 @@
   @media (max-width: 640px) { .kpis.many { grid-template-columns: repeat(4, minmax(0, 1fr)); } .kpis.many .kc { padding: 7px 8px; } .kpis.many .kc span { font-size: 11px; } .kc b em { display: block; margin: 0; font-size: 10px; line-height: 1.2; white-space: normal; } .tl-now i { display: none; } }
   /* Nothing disappears, it fades (owner 09/11) */
   .card.row.task-done, .card.row.faded, details.done-list .rp-row { opacity: .55; }
+  /* Owner 10/11 "TA trả bài thì k có chỗ tick đã trả": the return button sat inside the ✓ box area and took its square, empty look. */
+  .check .ret-wait, .check .ret-done { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+  .check .ret-wait button, .check .ret-done button { width: auto; height: auto; min-height: 38px; padding: 0 14px; font-size: 15px; font-weight: 800; color: inherit; border-radius: 10px; border-width: 1px; }
+  .check .ret-wait button.good { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .check .ret-done button { min-height: 30px; font-size: 13px; font-weight: 600; }
+  .card.row.ret-todo { border-left: 4px solid var(--ok); }
   .trail { margin-top: 2px; }
   /* Lịch, inside: flat lines, pills, class card (owner 09/11) */
   svg.i { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; }
@@ -1365,10 +1371,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261110Y"></script>
-<script src="logic.js?v=20261110Y"></script>
-<script src="app.js?v=20261110Y"></script>
-<script src="qrcode.js?v=20261110Y"></script>
-<script src="extra.js?v=20261110Y"></script>
+<script src="config.js?v=20261110Z"></script>
+<script src="logic.js?v=20261110Z"></script>
+<script src="app.js?v=20261110Z"></script>
+<script src="qrcode.js?v=20261110Z"></script>
+<script src="extra.js?v=20261110Z"></script>
 </body>
 </html>
