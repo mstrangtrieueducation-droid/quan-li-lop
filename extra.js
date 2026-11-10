@@ -5250,7 +5250,7 @@ nsLap = async function (auto) {
   try {
     let fx, src = '';
     if (mode === 'fixed') { fx = nsNum(ns.fx || saved.get('nsFx') || ''); if (!fx) throw Error('Nhập tỷ giá cố định trước.'); src = 'cố định'; }
-    else { ns.fxInfo = await nsReadFx(); const lastFx = nsLastRun(month); if (!ns.fxInfo && !(auto && lastFx && lastFx.fx)) throw Error('Chưa đọc được tỷ giá Vietcombank. Thử lại sau ít phút, hoặc chọn Cố định và nhập tay.'); fx = ns.fxInfo ? ns.fxInfo[mode] : lastFx.fx; src = ns.fxInfo ? 'Vietcombank ' + (mode === 'sell' ? 'bán ra' : 'mua CK') + ' ' + ns.fxInfo.at : 'giữ tỷ giá lần trước, chưa đọc được Vietcombank'; }
+    else { ns.fxInfo = ns.fxPreset || await nsReadFx(); ns.fxPreset = null; const lastFx = nsLastRun(month); if (!ns.fxInfo && !(auto && lastFx && lastFx.fx)) throw Error('Chưa đọc được tỷ giá Vietcombank. Thử lại sau ít phút, hoặc chọn Cố định và nhập tay.'); fx = ns.fxInfo ? ns.fxInfo[mode] : lastFx.fx; src = ns.fxInfo ? 'Vietcombank ' + (mode === 'sell' ? 'bán ra' : 'mua CK') + ' ' + ns.fxInfo.at : 'giữ tỷ giá lần trước, chưa đọc được Vietcombank'; }
     const pd = await loadPay(month, true);
     const built = nsBuild(month, nsActive().concat([...nsLatest().values()].filter(r => r.status === 'Đã nghỉ' && r.rate.het && r.rate.het >= month + '-01')), pd, fx);
     const done = [];
@@ -5349,3 +5349,46 @@ document.addEventListener('change', async e => {
   finally { b.classList.remove('ns-busy'); b.readOnly = false; }
 }, true);
 let nsCellReload = 0;
+
+/* ---------- Owner 10/11: "không được phép không kịp, tự động và chính xác" ----------
+ * The rate is the Vietcombank board in force at the moment of the run: today's newest board, or, before the bank posts today's
+ * (early morning, Sunday, holidays), the last board it posted. Network trouble is retried; an old run's rate is never reused.
+ * An automatic run that still cannot read the board tries again by itself every 2 minutes and says so on screen. */
+nsReadFx = async function () {
+  const n = v => Math.round(Number(String(v).replace(/,/g, '')));
+  const board = async day => {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 10000);
+    try {
+      const r = await fetch('https://www.vietcombank.com.vn/api/exchangerates?date=' + day, { signal: ctl.signal, cache: 'no-store' });
+      if (!r.ok) throw Error('HTTP ' + r.status);
+      const j = await r.json(), u = (j.Data || []).find(d => d.currencyCode === 'USD');
+      if (!u || !(n(u.transfer) > 1000)) return null;
+      const m = String(j.UpdatedDate || '').match(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)/);
+      return { cash: n(u.cash), transfer: n(u.transfer), sell: n(u.sell), source: 'Vietcombank', at: m ? m[4] + ':' + m[5] + ' ' + m[3] + '/' + m[2] + '/' + m[1] : viDate(day) };
+    } finally { clearTimeout(timer); }
+  };
+  let last = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt) await new Promise(r => setTimeout(r, 2000 * attempt));
+    try {
+      for (let back = 0; back < 10; back++) { const got = await board(Q.addDays(today(), -back)); if (got) return got; }
+      last = Error('Vietcombank chưa có bảng giá 10 ngày gần đây.');
+    } catch (e) { last = e; }
+  }
+  throw Error('Chưa đọc được tỷ giá Vietcombank (' + (last ? last.message : 'không rõ') + ').');
+};
+const nsLapSure = nsLap;
+nsLap = async function (auto) {
+  const month = ns.month || nsDefaultMonth(), mode = nsFxMode();
+  if (mode !== 'fixed') {
+    try { ns.fxInfo = await nsReadFx(); }
+    catch (e) {
+      if (!auto) return say(e.message + ' Kiểm tra mạng rồi bấm Lập lại.', 'bad');
+      ns.auto = e.message + ' App tự thử lại sau 2 phút.'; render();
+      clearTimeout(ns.autoRetry); ns.autoRetry = setTimeout(() => { ns.auto = ''; nsAutoLap(month).catch(() => {}); }, 120000);
+      return;
+    }
+  }
+  ns.fxPreset = ns.fxInfo;
+  return nsLapSure(auto);
+};
