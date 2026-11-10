@@ -5523,3 +5523,76 @@ function slipValue(label, v, en) {
   if (!en || !/^NGUỒN SỐ/i.test(String(label))) return v;
   return String(v).replace(/Giờ thường/g, 'Regular').replace(/chưa có giờ trong tháng/g, 'no hours this month').replace(/(\d)\s*giờ/g, '$1 h').replace(/·/g, '·');
 }
+
+/* ---------- Owner 10/11: "part time lịch như trong schedule, nhưng nếu có ca thêm ghi ở đi quay hay đi trông kiểm tra vẫn phải có giờ" ----------
+ * A part-time TA's due time is the rota shift (or 17:00 on a weekday rota day); on a day off the rota, or listed under "Nghỉ",
+ * an extra duty written for them in column F (video, invigilation) or a class they teach still sets a due time: that duty's own. */
+const myDueBeforeExtra = myDue;
+myDue = function (week, d) {
+  if (!me || isOwner() || !isPartTime(me.name)) return myDueBeforeExtra(week, d);
+  const x = dutyOf(week, d), off = x && x.off.some(p => isMe(p.name)), mine = !off && x && x.work.find(p => isMe(p.name));
+  const wd = new Date(d + 'T12:00:00').getDay(), weekday = wd >= 1 && wd <= 5, sh = mine && Q.shiftOf(mine.note);
+  let due = sh ? sh.start : mine ? (weekday ? PART_DUE : rotaDue(week, d)) : null;
+  (week ? week.data.sessions : []).filter(s => s.day === d && !s.off).forEach(s => Q.staffOf(s).forEach(p => {
+    if (p.role !== 'TA' && isMe(p.name) && (due === null || p.due < due)) due = p.due;
+  }));
+  return due;
+};
+
+/* ---------- Owner 10/11: "quá 15 phút mà có người không có thông tin nghỉ học, cần nhắn PH thì phải nổi tin lên... popup thật nổi bật" ----------
+ * From 15 minutes after a lesson starts until 2 hours after it ends, a pupil with no roll-call mark and no decision ("Vắng chờ
+ * xác minh", parent not contacted yet) puts up a red pop-up for managers and the class's homeroom (CN): name, phone, and the same
+ * buttons as the HS vắng tab (Có phép / Không phép / Đã liên hệ PH). A lesson with no roll call at all after 15 minutes is shown
+ * too, and also to the teacher who takes the roll. "Để 10 phút" hides it for 10 minutes; it never covers the class screen. */
+const PH_SNOOZE_MS = 10 * 60 * 1000;
+let phSnoozeUntil = 0, phTried = new Set();
+function phItems() {
+  if (!me) return [];
+  const t = today(), now = minutesNow(), w = weeks[Q.weekTab(tabs, t)], out = [];
+  (w ? w.data.sessions : []).filter(s => s.day === t && !s.off && classOf(s) && now >= s.start + Q.ROLL_CALL_MINUTES && now <= s.end + 120).forEach(s => {
+    const mineCn = isMe(s.ta), mineRoll = takesRoll(s);
+    if (!(isManager() || mineCn || mineRoll)) return;
+    const c = classOf(s);
+    if (!trackers[c.key]) { if (!phTried.has(c.key)) { phTried.add(c.key); loadTracker(c, false, true).then(render).catch(() => {}); } return; }
+    const ctx = classContext(s);
+    if (!ctx.tracker) return;
+    const roll = Q.rollCall(s, ctx.marks, t, now);
+    if (roll.noRollCall) { out.push({ s, none: true, list: [] }); return; }
+    if (!(isManager() || mineCn)) return;
+    const list = ctx.tracker.pupils.map(p => ({ p, m: ctx.marks.get(p.name), st: Q.pupilState(ctx.marks.get(p.name), roll) })).filter(x => x.st === 'Vắng chờ xác minh' && !(x.m && x.m.contact));
+    if (list.length) out.push({ s, list });
+  });
+  return out;
+}
+function paintPhPop() {
+  let box = document.getElementById('phPop');
+  const items = view === 'lenlop' || Date.now() < phSnoozeUntil ? [] : phItems();
+  if (!items.length) { if (box) box.remove(); return; }
+  if (!box) { box = document.createElement('div'); box.id = 'phPop'; document.body.appendChild(box); }
+  const phone = p => { const ph = (String(p.phone || '').match(/[\d ]{9,}/) || [''])[0].trim(); return ph ? '<a href="tel:' + esc(ph.replace(/\s/g, '')) + '">📞 ' + esc(ph) + '</a>' : ''; };
+  const btn = (s, x, act, v, cls, label) => '<button class="' + cls + '" data-act="' + act + '" data-v="' + v + '" data-row="' + s.row + '" data-day="' + s.day + '" data-name="' + esc(x.p.name) + '">' + label + '</button>';
+  const body = items.map(it => '<div class="ph-cls"><b>' + esc(it.s.cls) + '</b> <span class="muted small">' + Q.clock(it.s.start) + ' · ' + T('CN ', 'Homeroom ') + esc(titleCase(it.s.ta || '—')) + '</span>' +
+    (it.none ? '<div class="ph-none">' + T('Chưa điểm danh cả lớp sau 15 phút', 'No roll call 15 minutes in') + ' · ' + esc(titleCase(it.s.teacher || '')) + '</div>'
+      : it.list.map(x => '<div class="ph-line"><span class="ph-who"><b>' + esc(x.p.eng || x.p.name) + '</b> <small>' + esc(x.p.name) + '</small> ' + phone(x.p) + '</span><span class="ph-btns">' +
+        btn(it.s, x, 'absence', 'Có phép', 'mid', T('Có phép', 'Excused')) + btn(it.s, x, 'absence', 'Không phép', 'low', T('Không phép', 'Unexcused')) + btn(it.s, x, 'contact', '', 'good', '📞 ' + T('Đã liên hệ PH', 'Parent contacted')) + '</span></div>').join('')) + '</div>').join('');
+  const n = items.reduce((k, it) => k + (it.none ? 1 : it.list.length), 0);
+  box.innerHTML = '<div class="pair-veil"></div><div class="pair-sheet ph-pop" role="alertdialog" aria-label="' + T('Cần nhắn phụ huynh', 'Parents to contact') + '">' +
+    '<b class="ph-t">🚨 ' + T('Cần nhắn phụ huynh ngay', 'Contact parents now') + ' · ' + n + '</b>' +
+    '<p class="small">' + T('Quá 15 phút vào lớp mà chưa có thông tin nghỉ học. Gọi hoặc nhắn phụ huynh rồi bấm Đã liên hệ PH, hoặc chọn Có phép / Không phép.', 'Fifteen minutes in with no news. Contact the parents, then mark it.') + '</p>' +
+    body + '<div class="chot-row"><button class="primary" data-act="phOpen">' + T('Mở mục HS vắng', 'Open absences') + '</button><button class="quiet" data-act="phLater">' + T('Để 10 phút', 'In 10 minutes') + '</button></div></div>';
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('#phPop [data-act]');
+  if (!b) return;
+  if (b.dataset.act === 'phLater') { phSnoozeUntil = Date.now() + PH_SNOOZE_MS; paintPhPop(); }
+  if (b.dataset.act === 'phOpen') { phSnoozeUntil = Date.now() + 2 * 60 * 1000; if (isManager()) { view = 'dieuhanh'; panel = 'vang'; filters.person = ''; render(); guarded(loadPanel); } else { view = 'lopcn'; render(); } }
+  setTimeout(paintPhPop, 300);
+});
+const renderBeforePh = render;
+render = function () { renderBeforePh(); try { paintPhPop(); } catch (e) {} };
+// The roll-call log is re-read once a minute for this, while the page is open and someone it concerns is signed in.
+setInterval(async () => {
+  if (!me || document.visibilityState !== 'visible' || view === 'lenlop') return;
+  try { if (logs.marks) await liveMarks(); } catch (e) {}
+  try { paintPhPop(); } catch (e) {}
+}, 60000);
