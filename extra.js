@@ -5826,3 +5826,54 @@ function ladTodayClass(x) {
   return !!w && !!x.line && w.data.sessions.some(s => s.day === today() && !s.off && Q.key(s.cls) === Q.key(x.cls));
 }
 function contactDay(c) { const m = String(c.at || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : ''; }
+
+
+/* ---------- Owner 10/11 "sao tối qua Kids 8 k có màn hình nhập điểm": KIDS paper tests get the same score box as FIGHTER ----------
+ * A KIDS lesson that takes or returns a written test ("UNIT 1 - WRITTEN TEST", "UNIT 1 TEST RETURN", "BÀI KIỂM TRA VIẾT", "TRẢ BÀI
+ * KIỂM TRA VIẾT", "TEST - UNIT 4,5,6") opens the class's newest "KIỂM TRA GIẤY ĐỊNH KÌ" column whose test date is within the last
+ * three weeks. Scores go into that column (the one with the title; the cell next to it is left alone). When the header has no
+ * "Tổng: N câu hỏi" yet, the box asks once and adds that line under the test date, where the reports already read it. */
+const KIDS_PAPER_DAYS = 21;
+const kidsTestLesson = s => { const d = Q.key(s.detail || ''); return /WRITTEN TEST|TEST RETURN|KIEM TRA VIET/.test(d) || (/\bTEST\b/.test(d) && !/TEST\s*\d+\s*-\s*\d+/.test(d)); };
+function kidsPaperCols(t) {
+  const head = t.head || [], width = Math.max(0, ...head.map(r => (r || []).length)), out = [], two = n => ('0' + n).slice(-2);
+  for (let c = 0; c < width; c++) {
+    const cells = head.map(r => String((r || [])[c] || ''));
+    if (!cells.some(v => /KIEM TRA GIAY/.test(Q.key(v)))) continue;
+    const text = cells.join('\n'), d = text.match(/Ngày kiểm tra:?\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})/i), tot = text.match(/Tổng:?\s*(\d+)/i);
+    const u = Q.key(text).match(/UNITS?\s*(\d+(?:\s*[,+&]\s*\d+)*)/);
+    out.push({ col: c, date: d ? d[3] + '-' + two(d[2]) + '-' + two(d[1]) : '', total: tot ? Number(tot[1]) : 0,
+      unit: u ? u[1].replace(/\s*[,+&]\s*/g, '+') : '', dateRow: cells.findIndex(v => /Ngày kiểm tra/i.test(v)) });
+  }
+  return out;
+}
+function kidsPaperOf(ctx) {
+  const s = ctx && ctx.session, t = ctx && ctx.tracker;
+  if (!s || !t || !t.head || !kidsTestLesson(s)) return null;
+  const from = Q.addDays(s.day, -KIDS_PAPER_DAYS);
+  return kidsPaperCols(t).filter(c => c.date && c.date <= s.day && c.date >= from).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+}
+const ktOfBeforeKids = ktOf;
+ktOf = function (ctx) {
+  const s = ctx && ctx.session;
+  if (!s || isSecondary(s) || isGroup(s)) return ktOfBeforeKids(ctx);
+  const hit = kidsPaperOf(ctx);
+  if (!hit) return null;
+  ktLoadVals(ctx, hit.col);
+  return { unit: hit.unit || '?', col: hit.col, total: hit.total, kids: true, dateRow: hit.dateRow };
+};
+// The total for a KIDS test is written into the sheet header (FIGHTER keeps its own server path).
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (!el || !el.dataset || el.dataset.act !== 'ktTotal' || !current) return;
+  const ctx = classContext(current), k = ctx && ctx.tracker ? ktOf(ctx) : null;
+  if (!k || !k.kids) return;
+  e.stopImmediatePropagation();
+  const n = Math.min(500, Math.round(Number(el.value)));
+  if (!(n > 0) || !canTeach(ctx.session)) return;
+  const t = ctx.tracker, cls = classOf(ctx.session), r = k.dateRow >= 0 ? k.dateRow : 2, row = (t.head[r] = t.head[r] || []);
+  const before = String(row[k.col] || ''), value = (before.trim() ? before.replace(/\s+$/, '') + '\n' : '') + 'Điểm Tổng: ' + n + ' câu hỏi';
+  row[k.col] = value;
+  queue({ kind: 'cell', file: cls.tracker, classKey: cls.key, range: quote(t.tab) + '!' + Q.colName(k.col) + (r + 1), row: r + 1, col: k.col, expected: before, value, label: T('Tổng số câu KT', 'Test total') });
+  render();
+}, true);
