@@ -228,7 +228,7 @@ function viewLuong() {
   if (pay.loading && !pay.mine && !pay.all) return h + '<div class="card empty">' + T('Đang đọc bảng lương…', 'Reading…') + '</div>';
   const d = isOwner() ? pay.all : pay.mine;
   if (!d) return h;
-  h += '<p class="small muted">' + T('Ngày ' + viDate(d.dates.show) + ' bảng lương hiện cho từng người; mỗi người kiểm tra dòng của mình đến hết ngày ' + viDate(d.dates.check) + '; cô trả lương ngày ' + viDate(d.dates.pay) + '.', 'Shows ' + viDate(d.dates.show) + ', check by ' + viDate(d.dates.check) + ', paid ' + viDate(d.dates.pay) + '.') + '</p>';
+  h += '<p class="small muted">' + T('Ngày ' + viDate(d.dates.show) + ' bảng lương hiện cho từng người; mỗi người kiểm tra dòng của mình đến ' + (d.dates.by ? d.dates.by + ' ' : 'hết ') + 'ngày ' + viDate(d.dates.check) + '; cô trả lương ngày ' + viDate(d.dates.pay) + '.', 'Shows ' + viDate(d.dates.show) + ', check by ' + viDate(d.dates.check) + ', paid ' + viDate(d.dates.pay) + '.') + '</p>';
   if (isOwner()) {
     if (pay.person && pay.mine) h += '<div><button class="quiet" data-act="payBack">‹ ' + T('Cả bảng', 'Everyone') + '</button></div>' + slipCard(pay.mine) + '<div class="card row">' + payStateLine(pay.mine.state) + '</div>';
     else {
@@ -267,6 +267,9 @@ async function payAct(action, person) {
 }
 // On the 8th and 9th everyone is reminded on the Schedule page until they have checked.
 let payNudge = null, payNudgeAt = 0;
+// Owner 10/11: a month closed late is confirmed until 17:00 on pay day (dates.by from the server).
+function payBy(d) { return (d.dates.by ? d.dates.by + ' ' : 'hết ') + 'ngày ' + viDate(d.dates.check); }
+function payPast(d) { if (!d.dates.by || today() !== d.dates.check) return false; const n = new Date(); return String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0') >= d.dates.by; }
 function payNoticeBlock() {
   const d = Number(today().slice(8, 10));
   if (!me || d < 8 || d > 10) return '';
@@ -277,8 +280,8 @@ function payNoticeBlock() {
     return rows.length ? '<div class="notice' + (wrong ? ' bad' : '') + '">💰 ' + T('Lương ' + monthName(payNudge.month) + ': ' + left + ' người chưa xác nhận' + (wrong ? ', ' + wrong + ' người báo sai' : '') + '. Trả lương ngày ' + viDate(payNudge.dates.pay) + '.', 'Pay: ' + left + ' not checked.') + ' <button class="quiet" data-act="view" data-v="luong">' + T('Mở', 'Open') + '</button></div>' : '';
   }
   const st = payNudge.state, c = st && st.check;
-  if (!payNudge.slip || (c && !c.stale) || today() > payNudge.dates.check) return '';
-  return '<div class="notice">💰 ' + T('Bảng lương ' + monthName(payNudge.month) + ' đã có. Bạn kiểm tra và xác nhận trước hết ngày ' + viDate(payNudge.dates.check) + '.', 'Your payslip is ready, please check it.') + ' <button class="primary" data-act="view" data-v="luong">' + T('Xem lương', 'Open') + '</button></div>';
+  if (!payNudge.slip || (c && !c.stale) || today() > payNudge.dates.check || payPast(payNudge)) return '';
+  return '<div class="notice">💰 ' + T('Bảng lương ' + monthName(payNudge.month) + ' đã có. Bạn kiểm tra và bấm xác nhận trước ' + payBy(payNudge) + '. Cô Trang chuyển lương sau khi bạn xác nhận.', 'Your payslip is ready. Please check and confirm before ' + (payNudge.dates.by ? payNudge.dates.by + ' on ' : 'the end of ') + viDate(payNudge.dates.check) + '; pay is sent after you confirm.') + ' <button class="primary" data-act="view" data-v="luong">' + T('Xem lương', 'Open') + '</button></div>';
 }
 
 /* ---------- KPI (owner 07/11: from tasks, Important Task, on time, etc.) ----------
@@ -761,7 +764,7 @@ function bellItems() {
         if (left) add('pleft', '💰', left + T(' người chưa xác nhận lương', ' payslips not confirmed'), 1, false, { view: 'luong' });
       } else if (payNudge && payNudge.slip) {
         const c = payNudge.state && payNudge.state.check;
-        if ((!c || c.stale) && t <= payNudge.dates.check) add('pay', '💰', T('Bảng lương đã có, xác nhận trước ' + viDate(payNudge.dates.check), 'Payslip ready, please confirm'), 1, t === payNudge.dates.check, { view: 'luong' });
+        if ((!c || c.stale) && t <= payNudge.dates.check && !payPast(payNudge)) add('pay', '💰', T('Bảng lương đã có, xác nhận trước ' + payBy(payNudge), 'Payslip ready, please confirm'), 1, t === payNudge.dates.check, { view: 'luong' });
       }
     }
   } catch (e) { /* the bell never breaks the page */ }
@@ -4949,7 +4952,7 @@ async function nsLap() {
 }
 async function nsChot() {
   const month = ns.month || Q.addDays(today().slice(0, 7) + '-01', -1).slice(0, 7);
-  if (!window.confirm('Chốt bảng lương ' + monthName(month) + '? Nhân viên sẽ thấy lương của mình từ ngày 8; sau khi chốt muốn sửa thì sửa trong file.')) return;
+  if (!window.confirm('Chốt bảng lương ' + monthName(month) + '? Nhân viên thấy lương của mình từ ngày 8 (chốt sau ngày 9 thì thấy ngay, xác nhận đến 17:00 ngày 10); sau khi chốt muốn sửa thì sửa trong file.')) return;
   ns.busy = 'chot'; render();
   try { const r = await call('luongchot', { month }, 1); ns.msg = 'Đã chốt: ' + r.tabs.join(', ') + '.'; pay.all = null; }
   catch (e) { say('Chưa chốt được: ' + e.message, 'bad'); }
