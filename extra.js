@@ -601,14 +601,14 @@ async function loadLadder(force) {
 }
 // Ticks began on 07/11: a level entered earlier may have been handled outside the app, so it is never shown as overdue.
 const CONTACT_START = '2026-11-07';
-const contactOld = x => { const d = viToIso(x.since); return x.level < 4 && !!d && d < CONTACT_START; };
+const contactOld = x => { const d = viToIso(x.since); return x.level < 4 && !!d && d < CONTACT_START && !ladTodayClass(x); };
 const isFriday = d => new Date(d + 'T12:00:00').getDay() === 5;
 function contactRule(x) {
   const since = viToIso(x.since) || today();
   if (x.level >= 4) return { action: 'Đã gọi PH', who: x.level === 4 ? (homeroom[Q.key(x.cls)] || T('Chủ nhiệm', 'Homeroom')) : T('Quản lí', 'Manager'), due: Q.addDays(since, 2), call: true };
   return { action: 'Đã nhắn PH', who: isFriday(today()) ? 'THUY TRANG' : T('Quản lí', 'Manager'), due: since, call: false };
 }
-const contactDone = (x, rule) => (ladder.contacts || []).filter(c => sameName(c.cls, x.cls) && c.name === x.name && c.level === x.level && c.since === x.since && c.action === rule.action).pop();
+const contactDone = (x, rule) => { const list = (ladder.contacts || []).filter(c => sameName(c.cls, x.cls) && c.name === x.name && c.level === x.level && c.since === x.since && c.action === rule.action); return !rule.call && ladTodayClass(x) ? list.filter(c => contactDay(c) === today()).pop() : list.pop(); };
 function canContact(x, rule) {
   if (isManager()) return true;
   if (rule.call) return x.level === 4 && isMe(homeroom[Q.key(x.cls)] || '');
@@ -5790,3 +5790,14 @@ viewLuong = function () {
   }
   return viewLuongBeforeOpen();
 };
+
+/* ---------- Owner 10/11 (Văn Sơn: "nay nó không cập nhật để em nhắn nhắc PH") ----------
+ * A message to parents was counted once per level: Bush and Mia, on level since 08/11 and messaged that day, showed "done" on
+ * 10/11 although KIDS 11 had class and both were still on that day's Schedule list. Now a pupil who is on today's Schedule list and
+ * whose class meets today needs today's message; earlier messages show in the trail but do not count for today. Pupils with no class
+ * today keep one message per level. Calls (level 4 and up) are unchanged. */
+function ladTodayClass(x) {
+  const w = weeks[Q.weekTab(tabs, today())];
+  return !!w && !!x.line && w.data.sessions.some(s => s.day === today() && !s.off && Q.key(s.cls) === Q.key(x.cls));
+}
+function contactDay(c) { const m = String(c.at || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : ''; }
