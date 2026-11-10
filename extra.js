@@ -4908,7 +4908,7 @@ function nsBuild(month, people, pay, fx) {
         if (!hrs.all) missing.push([row, 2]);
         if (ie) src.push('IELTS: ' + nsDec(ie.all) + ' giờ');
         cells = [rules.join('\n'), '', '=' + hrs.minutes + '/60', usd ? (a.fx || fx || '') : (a.fx || '-'), nsFixed(a.base, w, pct), a.baseH || '', rateCell(a.r, hrs),
-          '=ROUND(MAX(0;IF(I' + R + '="";C' + R + ';MIN(C' + R + ';100))-F' + R + ')*G' + R + ';0)', a.r101 ? money(a.r101) : '', '=IF(I' + R + '="";0;ROUND(MAX(0;C' + R + '-100)*I' + R + ';0))',
+          '=ROUND(MAX(0;IF(I' + R + '="";C' + R + ';MIN(C' + R + ';100))-F' + R + ')*G' + R + ';0)', a.r101 ? money(a.r101) : '', a.r101 ? '=ROUND(MAX(0;C' + R + '-100)*I' + R + ';0)' : '',
           ie ? '=' + ie.minutes + '/60' : '', ie ? rateCell(a.ielts, ie) : '', ie ? '=ROUND(K' + R + '*L' + R + ';0)' : '', nsFixed(a.bonus, w, 100), a.nha ? (a.nhaUsd ? money(a.nha) : a.nha) : '', '',
           '=SUM(E' + R + ';H' + R + ';J' + R + ';M' + R + ';N' + R + ';O' + R + ';P' + R + ')', a.nhaFree && a.nha ? '=O' + R : '', a.bh ? '=ROUND(' + a.bh + '*' + nsBhPct(a) + ';0)' : '',
           '=MAX(0;Q' + R + '-R' + R + '-S' + R + '-15500000)', nsTaxCell(a.thue, 'T' + R, 'Q' + R + '-R' + R), '', '=S' + R + '+U' + R + '+V' + R, '=Q' + R + '-W' + R, '', '=X' + R + '-Y' + R, src.join(' · ')];
