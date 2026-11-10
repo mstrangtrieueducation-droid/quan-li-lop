@@ -2288,7 +2288,7 @@ setInterval(async () => {
  * On "Xác nhận đúng, chốt buổi", each present pupil's "Nhận xét" cell of the lesson gets one line per reminder, in Vietnamese for
  * parents; a pupil with none gets a short praise line. Lines the teacher typed in the sheet are kept under ours; our own lines
  * (they start with ⚠️ ⛔ 👍 ⏰ ✓) are replaced, so closing again after a reopen never doubles them. The server colours warnings red. */
-const AUTO_LINE = /^(⚠️|⛔|👍|⏰|✓|🏆|🌟)/u;
+const AUTO_LINE = /^(⚠️|⛔|👍|⏰|✓|🏆|🌟|🚪|🏠|📝)/u;
 const COMMENT_LINES = {
   'Mất tập trung': 'con còn mất tập trung, cần chú ý nghe giảng hơn.',
   'Mất trật tự': 'con còn mất trật tự, cần giữ trật tự trong lớp.',
@@ -2299,6 +2299,9 @@ function lessonComment(counts, m, extra) {
   const x = n => n > 1 ? ' (' + n + ' lần)' : '', out = [];
   // Owner 09/11: IELTS / FIGHTER comments name the reminders only, as on the close sheet ("không phải phiên ra như KIDS").
   if (extra && extra.short) {
+    // Owner 10/11: sent home, stayed home without homework and make-up outside the room are written in the lesson comment too.
+    const st = m && m.status, lead = st === SEND_HOME ? '🚪 Cho về (thiếu bài)' : st === HOME_NO_HW ? '🏠 Nghỉ ở nhà (chưa làm bài)' : st === OUT_MAKEUP ? '📝 Ra ngoài bù bài, không vào học' : '';
+    if (lead) out.push(lead);
     if (counts[CANH_CAO]) out.push('⛔ Cảnh cáo' + x(counts[CANH_CAO]));
     Object.entries(counts).forEach(([k, n]) => { if (k !== CANH_CAO && k !== PRAISE) out.push('⚠️ ' + k + x(n)); });
     if (counts[PRAISE]) out.push('👍 ' + PRAISE + x(counts[PRAISE]));
@@ -2321,9 +2324,10 @@ function writeLessonComments(ctx) {
   const here = p => { const m = ctx.marks.get(p.name); return m && Q.PRESENT.includes(m.status); };
   const scores = block.stars >= 0 ? [...new Set(tracker.pupils.filter(here).map(p => starsOf(ctx, p)).filter(Boolean))].sort((a, b) => b - a) : [];
   let n = 0;
+  const short = /^(IELTS|FIGHTER)/.test(Q.key(session.cls)), offRoom = [SEND_HOME, HOME_NO_HW, OUT_MAKEUP];
   tracker.pupils.forEach(p => {
     const m = ctx.marks.get(p.name);
-    if (!m || !Q.PRESENT.includes(m.status)) return;
+    if (!m || !(Q.PRESENT.includes(m.status) || (short && offRoom.includes(m.status)))) return;
     const b = behave.get(p.name), st = block.stars >= 0 ? starsOf(ctx, p) : 0, rank = st ? scores.indexOf(st) + 1 : 0;
     const auto = lessonComment(tagCounts(b ? b.tags : []), m, { stars: st, rank: rank && rank <= 3 ? rank : 0, seed: p.name + '|' + session.day, short: /^(IELTS|FIGHTER)/.test(Q.key(session.cls)) });
     const now = String(tracker.cell(p.row, block.comment) || ''), mine = now.split('\n').filter(l => l.trim() && !AUTO_LINE.test(l.trim()));
@@ -5391,4 +5395,45 @@ nsLap = async function (auto) {
   }
   ns.fxPreset = ns.fxInfo;
   return nsLapSure(auto);
+};
+
+/* ---------- Owner 10/11: IELTS lessons in the sheet ----------
+ * The app only knew the KIDS header ("Buổi học ngày …"), so on IELTS sheets it found no lesson: absences and the close
+ * comments were never written there. IELTS headers are read as they are: row 1 the skill (Speaking / Writing), row 2
+ * "Buổi học số N / date(s)", row 3 "Nhận xét Buổi học" (where absences and reminders go) and "Nhận xét Bài tập về nhà".
+ * A session finds its block by skill and lesson number; groups .1 / .2 share one block ("05-06/11/2026"). Test blocks are
+ * found but never written by the close. */
+function ieltsBlocks(head) {
+  const rows = head || [], width = Math.max(0, ...rows.map(r => (r || []).length)), at = (r, c) => String((rows[r] || [])[c] || ''), out = [];
+  if (rows.length < 3) return out;
+  let area = '';
+  const starts = [];
+  for (let c = 0; c < width; c++) {
+    const r1 = Q.key(at(0, c));
+    if (r1) area = /SPEAKING|KI NANG NOI/.test(r1) ? 'NOI' : /WRITING|KI NANG VIET/.test(r1) ? 'VIET' : '';
+    const k = Q.key(at(1, c)), m = k.match(/^BUOI (?:HOC )?SO\s*0*(\d+)/);
+    if (area && m) starts.push({ col: c, area, lesson: m[1], test: /KIEM TRA/.test(k), text: at(1, c) });
+    else if (r1 && starts.length && !starts[starts.length - 1].end) starts[starts.length - 1].end = c;
+  }
+  starts.forEach((s, n) => {
+    const end = Math.min(s.end || width, n + 1 < starts.length ? starts[n + 1].col : width), dates = [];
+    const re = /(\d{1,2})(?:\s*-\s*(\d{1,2}))?\/(\d{1,2})\/(20\d{2})/g;
+    for (let m; (m = re.exec(s.text));) { [m[1], m[2]].filter(Boolean).forEach(d => { const iso = Q.dateIn(d + '/' + m[3] + '/' + m[4]); if (iso) dates.push(iso); }); }
+    let comment = -1, hw = -1;
+    for (let c = s.col; c < end; c++) { const t = Q.key(at(2, c)); if (t === 'NHAN XET BUOI HOC' && comment < 0) comment = c; if (t === 'NHAN XET BAI TAP VE NHA' && hw < 0) hw = c; }
+    out.push({ col: s.col, date: dates[0] || '', dates, head: Q.clean(s.text), videos: [], grade: -1, stars: -1, comment: s.test ? -1 : comment, homework: hw, lesson: s.lesson, topic: '', skill: s.area, test: s.test });
+  });
+  return out;
+}
+const trackerBlocksKids = Q.trackerBlocks;
+Q.trackerBlocks = function (head, year) { const kids = trackerBlocksKids(head, year); return kids.length ? kids : ieltsBlocks(head); };
+const findBlockKids = Q.findBlock;
+Q.findBlock = function (blocks, session) {
+  if (!blocks.some(b => b.skill)) return findBlockKids(blocks, session);
+  const bk = Q.key(session.book || ''), skill = /SPEAKING/.test(bk) ? 'NOI' : /VIET|WRITING/.test(bk) ? 'VIET' : '';
+  const num = x => String(x == null ? '' : x).trim().replace(/^0+(?=\d)/, ''), want = num(session.lesson);
+  const hit = blocks.find(b => (!skill || b.skill === skill) && num(b.lesson) === want);
+  if (!hit) return { block: null, problem: 'thieu' };
+  if (hit.dates.length && !hit.dates.includes(session.day)) return { block: hit, problem: 'ngay' };
+  return { block: hit, problem: '' };
 };
