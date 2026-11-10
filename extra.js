@@ -5213,3 +5213,75 @@ const nsHField = (b, redraw) => {
 };
 document.addEventListener('input', e => nsHField(e.target, false));
 document.addEventListener('change', e => nsHField(e.target, true));
+
+/* ---------- Owner 10/11: dollar rate read live at each run, and the draft keeps itself up to date ----------
+ * Each Lập reads Vietcombank's board at that moment (mua chuyển khoản by default) and writes it over the old draft's rate;
+ * "Cố định" keeps the number the owner types. Counts are re-read every run. Opening the payroll (Nhân sự › Bảng lương or the
+ * Lương page) re-lays an unclosed draft from 11/2026 on by itself when the last run is over 20 minutes old.
+ * October 2026 was finished by hand, so it is never re-laid by itself and a manual Lập asks first. */
+const NS_FX_MODES = [['transfer', 'Vietcombank mua chuyển khoản lúc lập (theo quy định thuế)'], ['sell', 'Vietcombank bán ra lúc lập'], ['fixed', 'Cố định, số cô nhập']];
+const NS_AUTO_FROM = '2026-11';
+ns.fxInfo = null; ns.auto = '';
+const nsFxMode = () => ns.fxMode || saved.get('nsFxMode') || 'transfer';
+const nsDefaultMonth = () => { const t = today(); return Number(t.slice(8)) <= 10 ? Q.addDays(t.slice(0, 7) + '-01', -1).slice(0, 7) : t.slice(0, 7); };
+const nsLastRun = m => { try { return JSON.parse(saved.get('nsRun_' + m) || 'null'); } catch (e) { return null; } };
+nsPayCard = function () {
+  if (!ns.month) ns.month = nsDefaultMonth();
+  const m = ns.month, mode = nsFxMode(), last = nsLastRun(m), fi = ns.fxInfo;
+  let h = '<div class="card ns-pay"><h3>💰 Bảng lương tháng</h3><div class="form-grid">' +
+    '<label>Tháng<input type="month" data-act="nsF0" data-k="month" value="' + esc(m) + '"></label>' +
+    '<label>Tỷ giá $ (GV tính lương bằng $)<select data-act="nsFxMode">' + NS_FX_MODES.map(([v, t]) => '<option value="' + v + '"' + (mode === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select></label>' +
+    (mode === 'fixed' ? '<label>Tỷ giá cố định (đ/$)<input data-act="nsF0" data-k="fx" inputmode="numeric" value="' + esc(ns.fx || (saved.get('nsFx') || '')) + '"></label>' : '') + '</div>';
+  if (fi) h += '<p class="small">Vietcombank lúc ' + esc(fi.at) + ': mua chuyển khoản <b>' + nsMoney(fi.transfer) + '</b> · bán ra <b>' + nsMoney(fi.sell) + '</b> đ/$.</p>';
+  if (ns.auto) h += '<div class="notice">⏳ ' + esc(ns.auto) + '</div>';
+  if (last) h += '<p class="small muted">Bảng nháp ' + esc(monthName(m)) + ' cập nhật lần cuối ' + esc(last.at) + (last.fx ? ', tỷ giá ' + nsMoney(last.fx) + ' đ/$' + (last.src ? ' (' + esc(last.src) + ')' : '') : '') + '.</p>';
+  h += '<p class="small muted">1. Bấm Lập: app đếm lại công từ Schedule và bảng chấm bài đến lúc bấm, lấy tỷ giá ngay lúc đó, ghi thành tab nháp. Ô cô đã nhập (thưởng, trừ khác, tạm ứng) được giữ. ' +
+    (m >= NS_AUTO_FROM ? 'Mở phần này hoặc trang Lương, app tự cập nhật nếu lần trước đã quá 20 phút. ' : '') +
+    '2. Mở trang Lương: xem từng người. 3. Bấm Chốt: số công và tỷ giá đứng yên, nhân viên thấy lương của mình từ ngày 8.</p>' +
+    '<div class="choices"><button class="primary" data-act="nsLap"' + (ns.busy ? ' disabled' : '') + '>' + (ns.busy === 'lap' ? 'Đang lập…' : 'Lập / cập nhật bảng nháp') + '</button>' +
+    '<button data-act="view" data-v="luong">Mở trang Lương</button><button class="good" data-act="nsChot"' + (ns.busy ? ' disabled' : '') + '>Chốt bảng ' + esc(monthName(m)) + '</button></div></div>';
+  return h;
+};
+nsLap = async function (auto) {
+  const month = ns.month || nsDefaultMonth(), mode = nsFxMode();
+  if (!ns.rows || ns.busy) return;
+  if (!auto && month < NS_AUTO_FROM && !window.confirm('Bảng ' + monthName(month) + ' cô đã sửa tay trong file. Lập lại sẽ viết lại các ô công thức và số công (ô cô nhập được giữ). Vẫn lập lại?')) return;
+  ns.busy = 'lap'; if (!auto) ns.msg = ''; ns.auto = auto ? 'Đang tự cập nhật công và tỷ giá của ' + monthName(month) + '…' : ''; render();
+  try {
+    let fx, src = '';
+    if (mode === 'fixed') { fx = nsNum(ns.fx || saved.get('nsFx') || ''); if (!fx) throw Error('Nhập tỷ giá cố định trước.'); src = 'cố định'; }
+    else { ns.fxInfo = await call('tygia', {}); fx = ns.fxInfo[mode]; src = 'Vietcombank ' + (mode === 'sell' ? 'bán ra' : 'mua CK') + ' ' + ns.fxInfo.at; }
+    const pd = await loadPay(month, true);
+    const built = nsBuild(month, nsActive().concat([...nsLatest().values()].filter(r => r.status === 'Đã nghỉ' && r.rate.het && r.rate.het >= month + '-01')), pd, fx);
+    const done = [];
+    for (const g of Object.keys(built)) {
+      const b = built[g], r = await call('luonglap', { group: g, month, grid: b.grid, layout: b.layout, people: b.people, fxAuto: mode !== 'fixed' ? 1 : '' }, 1);
+      done.push(r.tab + ': ' + r.rows + ' người' + (r.kept ? ', giữ ' + r.kept + ' ô cô đã nhập' : '') + (r.fresh.length ? '; người mới chưa có CCCD, STK: ' + r.fresh.join(', ') : '') + (b.layout.missing.length ? '; ' + b.layout.missing.length + ' ô cam cần xem' : ''));
+    }
+    if (mode === 'fixed') keep('nsFx', String(fx));
+    keep('nsRun_' + month, JSON.stringify({ at: Q.clean(stamp()), t: Date.now(), fx, src }));
+    pay.all = null;
+    if (!auto) ns.msg = done.length ? 'Đã lập ' + done.join(' · ') + '. Tỷ giá ' + nsMoney(fx) + ' đ/$ (' + src + '). Mở trang Lương để xem từng người.' : 'Không có ai để lập lương tháng này.';
+  } catch (e) { if (!auto) { ns.msg = ''; say('Chưa lập được: ' + e.message, 'bad'); } else if (!/đã chốt/i.test(e.message)) say('Chưa tự cập nhật được bảng lương: ' + e.message, 'bad'); else keep('nsRun_' + month, JSON.stringify({ at: 'đã chốt', t: Date.now() + 864e5 * 365 })); }
+  finally { ns.busy = ''; ns.auto = ''; render(); }
+};
+// Re-lays the draft when the payroll is opened and the last run is stale. Never for October 2026 or a future month.
+async function nsAutoLap(month) {
+  if (!isOwner() || ns.busy || !month || month < NS_AUTO_FROM || month > today().slice(0, 7)) return false;
+  const last = nsLastRun(month);
+  if (last && Date.now() - (last.t || 0) < 20 * 60e3) return false;
+  if (!ns.rows) await loadNs();
+  ns.month = month;
+  await nsLap(true);
+  return true;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act]');
+  if (!b || b.tagName === 'SELECT' || b.tagName === 'INPUT') return;
+  if (b.dataset.act === 'nsTab' && b.dataset.v === 'luong') setTimeout(() => nsAutoLap(ns.month || nsDefaultMonth()).catch(() => {}), 0);
+  if (b.dataset.act === 'view' && b.dataset.v === 'luong' && isOwner()) setTimeout(() => nsAutoLap(pay.month || nsDefaultMonth()).then(ran => { if (ran) loadLuong(true); }).catch(() => {}), 0);
+});
+document.addEventListener('change', e => {
+  const b = e.target;
+  if (b && b.dataset && b.dataset.act === 'nsFxMode') { ns.fxMode = b.value; keep('nsFxMode', b.value); render(); }
+});
