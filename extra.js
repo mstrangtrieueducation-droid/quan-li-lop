@@ -5440,3 +5440,56 @@ Q.findBlock = function (blocks, session) {
   if (hit.dates.length && !hit.dates.includes(session.day)) return { block: hit, problem: 'ngay' };
   return { block: hit, problem: '' };
 };
+
+/* ---------- Owner 10/11: arrival time by contract, not by the earliest class with one's name ----------
+ * "THUY TRANG, VAN SON, MY LINH là 3h30 phải có mặt, trừ ngày nghỉ... mấy ca tutor không cần check in, chỉ tick dạy xong...
+ * THU HIEN là TA part-time nên là 5h". Before, the due time was the earliest session naming the person, tutor sessions and the
+ * homeroom column (CM/TA) included: Thùy Trang was "316 minutes late" on Saturday 07/11 because of a morning tutor class, and
+ * Thu Hiền, homeroom of every IELTS/FIGHTER class, was due at 09:20 on Sunday.
+ * - Full-time staff: Mon-Fri 15:30; weekends keep the rota rule of 07/11 (morning 8:45, Saturday afternoon 14:30, Sunday
+ *   afternoon 13:30). Their own classes and tutor sessions never move it; a day listed under "Nghỉ" in the rota has no due time.
+ * - Part-time TAs: the shift written beside their name in the rota, else 17:00 on weekdays (weekends by the rota rule); only a
+ *   class they teach or assist in the room (columns E and F) can make it earlier, never the homeroom column G.
+ * - Everyone else (teachers) as before: 10 minutes before their first class. */
+const FULL_TIME_STAFF = ['THUY TRANG', 'VAN SON', 'MY LINH'], FULL_DUE = 15 * 60 + 30, PART_DUE = 17 * 60;
+const isFullTimeStaff = name => FULL_TIME_STAFF.some(n => sameName(n, name));
+const myDueBeforeContract = myDue;
+myDue = function (week, d) {
+  if (!me || isOwner()) return null;
+  const x = dutyOf(week, d);
+  if (x && x.off.some(p => isMe(p.name))) return null;
+  const wd = new Date(d + 'T12:00:00').getDay(), weekday = wd >= 1 && wd <= 5;
+  if (isFullTimeStaff(me.name)) return weekday ? FULL_DUE : rotaDue(week, d);
+  if (isPartTime(me.name)) {
+    const mine = x && x.work.find(p => isMe(p.name)), sh = mine && Q.shiftOf(mine.note);
+    let due = sh ? sh.start : weekday ? PART_DUE : rotaDue(week, d);
+    (week ? week.data.sessions : []).filter(s => s.day === d && !s.off).forEach(s => Q.staffOf(s).forEach(p => {
+      if (p.role !== 'TA' && isMe(p.name) && (due === null || p.due < due)) due = p.due;
+    }));
+    return due;
+  }
+  return myDueBeforeContract(week, d);
+};
+// Tutor sessions: no check-in, one tick "Đã dạy xong" on the card (owner 10/11). The tick is a DIEM_DANH row of that session.
+const TUTOR_DONE = '— DẠY XONG —';
+const tutorDoneOf = s => { const rows = (logs.marks ? logs.marks.rows : []).filter(r => r.cls === Q.clean(s.cls) && r.day === s.day && r.name === TUTOR_DONE); const l = rows[rows.length - 1]; return l && l.status === 'Đã dạy' ? l : null; };
+const scardBeforeTutor = sessionCard;
+sessionCard = function (s) {
+  const h = scardBeforeTutor(s), group = s.merged || [s], f = group[0];
+  if (group.length > 1 || kindOf(f) !== 'tutor' || f.off || f.day > today() || !(isMe(f.teacher) || isManager())) return h;
+  if (!logs.marks) setTimeout(() => loadMarks().then(render).catch(() => {}), 0);
+  const done = tutorDoneOf(f);
+  const bar = '<div class="c4-done">' + (done ? '<span class="tag ok">✓ ' + T('Đã dạy xong', 'Taught') + ' · ' + esc(String(done.at || '').slice(11, 16)) + '</span>' + (isManager() || isMe(done.by) ? ' <button class="quiet" data-act="tutorDone" data-row="' + f.row + '" data-day="' + f.day + '" data-v="Bỏ">' + T('Bỏ', 'Undo') + '</button>' : '')
+    : '<button class="good" data-act="tutorDone" data-row="' + f.row + '" data-day="' + f.day + '" data-v="Đã dạy">✓ ' + T('Đã dạy xong', 'Mark as taught') + '</button>') + '</div>';
+  const at = h.lastIndexOf('</div>');
+  return at > 0 ? h.slice(0, at) + bar + h.slice(at) : h + bar;
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="tutorDone"]');
+  if (!b) return;
+  e.stopPropagation();
+  const s = findSession(b.dataset.row, b.dataset.day);
+  if (!s) return;
+  appendMark({ day: s.day, cls: Q.clean(s.cls), lesson: '', start: s.start }, { row: '', name: TUTOR_DONE, eng: '' }, b.dataset.v === 'Bỏ' ? 'Bỏ dạy xong' : 'Đã dạy');
+  render();
+}, true);
