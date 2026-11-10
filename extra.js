@@ -2063,7 +2063,8 @@ function secClassButtons(ctx, p, i, canEdit) {
   const st = (ctx.marks.get(p.name) || {}).status || '', dis = canEdit ? '' : ' disabled';
   // Icon and words apart, so the tiled roll call can show the icon alone (owner 09/11: "biểu tượng như đã chốt"), with a legend above.
   const btn = (v, label, on) => { const sp = label.indexOf(' '), ic = label.slice(0, sp), tx = label.slice(sp + 1); return '<button class="sec-mark' + (on ? ' on' : '') + '" data-act="secMark" data-i="' + i + '" data-v="' + esc(on ? 'Bỏ tick' : v) + '" title="' + esc(tx) + (on ? ' ✓' : '') + '" aria-label="' + esc(tx) + '"' + dis + '><span class="sm-ic">' + ic + '</span><span class="sm-t"> ' + tx + '</span>' + (on ? '<span class="sm-ok"> ✓</span>' : '') + '</button>'; };
-  return '<div class="sec-marks">' + btn(SEND_HOME, '🚪 ' + T('Cho về · thiếu bài', 'Sent home'), st === SEND_HOME) + btn(HOME_NO_HW, '🏠 ' + T('Ở nhà · chưa làm bài', 'Stayed home'), st === HOME_NO_HW) +
+  // Owner 10/11: classes taught by Vietnamese teachers already got the parents' message, so "Nghỉ · đã báo" is on the roll call too.
+  return '<div class="sec-marks">' + btn('Đã báo nghỉ', '✉️ ' + T('Nghỉ · đã báo', 'Absent, notified'), st === 'Đã báo nghỉ') + btn(SEND_HOME, '🚪 ' + T('Cho về · thiếu bài', 'Sent home'), st === SEND_HOME) + btn(HOME_NO_HW, '🏠 ' + T('Ở nhà · chưa làm bài', 'Stayed home'), st === HOME_NO_HW) +
     // Owner 09/11: "IELTS FIGHTER cũng cần có nút ở ngoài bù bài không được học... cùng với sent home".
     btn(OUT_MAKEUP, '📝 ' + T('Ra ngoài bù bài · không vào học', 'Makes up work outside'), st === OUT_MAKEUP) + '</div>';
 }
@@ -2073,6 +2074,8 @@ document.addEventListener('click', e => {
   const ctx = classContext(current), pupil = ctx.tracker && ctx.tracker.pupils[Number(b.dataset.i)];
   if (!pupil || !classCanEdit(ctx.session)) return;
   const m = ctx.marks.get(pupil.name);
+  // An absence also goes into the sheet ("/ Vắng mặt" in the lesson comment), like the absence choice of the HS vắng tab.
+  if (b.dataset.v === 'Đã báo nghỉ') return setAbsence(ctx, pupil, 'Đã báo nghỉ');
   appendMark(ctx.session, pupil, b.dataset.v, m && m.contact, m && m.note);
   render();
 });
@@ -2601,12 +2604,12 @@ setInterval(() => { if (view === 'lenlop' && current) paintChotPop(); }, 20000);
 
 /* ---------- Reminder buttons by class (owner 08/11) ----------
  * FIGHTER: Mất trật tự · Mất tập trung · Trả lời sai · Phát biểu tốt. IELTS writing (Schedule book "IELTS VIẾT"): Mất trật tự ·
- * Mất tập trung · Ngủ gật · Viết không kịp · Viết linh tinh tùy ý. IELTS speaking ("IELTS SPEAKING"): Mất trật tự · Mất tập trung ·
+ * (Owner 10/11: "Ngủ gật" is now "Buồn ngủ", also for FIGHTER; older records keep their word.) Mất tập trung · Buồn ngủ · Viết không kịp · Viết linh tinh tùy ý. IELTS speaking ("IELTS SPEAKING"): Mất trật tự · Mất tập trung ·
  * Ngủ gật · Làm việc riêng. KIDS keep Mất trật tự · Mất tập trung. Praise and wrong answers never count towards the warning limit. */
 const NOT_COUNTED = [PRAISE, 'Trả lời sai'];
-const FIGHTER_TICKS = ['Mất trật tự', 'Mất tập trung', 'Trả lời sai', PRAISE];
-const IELTS_WRITING_TICKS = ['Mất trật tự', 'Mất tập trung', 'Ngủ gật', 'Viết không kịp', 'Viết linh tinh tùy ý'];
-const IELTS_SPEAKING_TICKS = ['Mất trật tự', 'Mất tập trung', 'Ngủ gật', 'Làm việc riêng'];
+const FIGHTER_TICKS = ['Mất trật tự', 'Mất tập trung', 'Buồn ngủ', 'Trả lời sai', PRAISE];
+const IELTS_WRITING_TICKS = ['Mất trật tự', 'Mất tập trung', 'Buồn ngủ', 'Viết không kịp', 'Viết linh tinh tùy ý'];
+const IELTS_SPEAKING_TICKS = ['Mất trật tự', 'Mất tập trung', 'Buồn ngủ', 'Làm việc riêng'];
 function tickSetOf(s) {
   if (!s) return TICKS;
   const c = Q.key(s.cls), b = Q.key(s.book || '');
@@ -2614,11 +2617,12 @@ function tickSetOf(s) {
   if (/^IELTS/.test(c)) return /SPEAKING|NOI\b/.test(b) ? IELTS_SPEAKING_TICKS : IELTS_WRITING_TICKS;
   return isSecondary(s) ? TEEN_TICKS : TICKS;
 }
-Object.assign(BEHAVIOUR_EN, { 'Trả lời sai': 'Wrong answer', 'Ngủ gật': 'Dozing off', 'Viết không kịp': 'Writing too slowly', 'Viết linh tinh tùy ý': 'Off-task writing', 'Làm việc riêng': 'Off-task' });
+Object.assign(BEHAVIOUR_EN, { 'Trả lời sai': 'Wrong answer', 'Ngủ gật': 'Dozing off', 'Buồn ngủ': 'Sleepy', 'Viết không kịp': 'Writing too slowly', 'Viết linh tinh tùy ý': 'Off-task writing', 'Làm việc riêng': 'Off-task' });
 [...FIGHTER_TICKS, ...IELTS_WRITING_TICKS, ...IELTS_SPEAKING_TICKS].forEach(t => { if (!BEHAVIOURS.includes(t)) BEHAVIOURS.push(t); });
 Object.assign(COMMENT_LINES, {
   'Trả lời sai': 'con còn trả lời sai, cần ôn lại bài.',
   'Ngủ gật': 'con ngủ gật trong giờ học, cần nghỉ ngơi đủ trước buổi học.',
+  'Buồn ngủ': 'con buồn ngủ trong giờ học, cần nghỉ ngơi đủ trước buổi học.',
   'Viết không kịp': 'con viết chưa kịp thời gian, cần luyện tốc độ viết.',
   'Viết linh tinh tùy ý': 'con viết chưa theo yêu cầu của đề, cần bám sát đề bài.'
 });
@@ -2712,7 +2716,7 @@ classContext = function (session) {
  * reminder of this class plus ⚠️ for a warning, each with its count. A legend above the list says what the icons mean, in Vietnamese
  * with English under it. Touching the name still opens the full line (with "−", absent). */
 // Owner 09/11 (staff idea, ML): 🗣️ reads better than 🔊 for "Mất trật tự".
-const TICK_ICON = { 'Mất trật tự': '🗣️', 'Mất tập trung': '👀', 'Ngủ gật': '😴', 'Viết không kịp': '⏳', 'Viết linh tinh tùy ý': '✏️', 'Làm việc riêng': '📱', 'Trả lời sai': '❌', 'Phát biểu tốt': '👍', 'Dùng điện thoại': '📵' };
+const TICK_ICON = { 'Mất trật tự': '🗣️', 'Mất tập trung': '👀', 'Ngủ gật': '😴', 'Buồn ngủ': '😴', 'Viết không kịp': '⏳', 'Viết linh tinh tùy ý': '✏️', 'Làm việc riêng': '📱', 'Trả lời sai': '❌', 'Phát biểu tốt': '👍', 'Dùng điện thoại': '📵' };
 const shortName = full => { const w = String(full || '').trim().split(/\s+/); return w.length > 2 ? w.slice(-2).join(' ') : full; };
 const paintStripBeforeQuick = paintStrip;
 paintStrip = function () {
@@ -4067,7 +4071,7 @@ function sentHomeList(week) {
   const t = today(), back = Q.addDays(t, -7), from = back > SENT_START ? back : SENT_START, last = new Map();
   logs.marks.rows.forEach(m => { if (m.day >= from && m.day <= t) last.set(markKey(m), m); });
   const mine = cls => isManager() || isTaSide(week) || isMe(homeroom[Q.key(cls)] || '') || isMe(homeroom[Q.key(String(cls).replace(/\.\d+$/, ''))] || '');
-  return [...last.values()].filter(m => (m.status === SEND_HOME || m.status === OUT_MAKEUP) && mine(m.cls)).map(m => {
+  return [...last.values()].filter(m => m.status === SEND_HOME && mine(m.cls)).map(m => {
     const x = { m, cls: Q.clean(m.cls), name: Q.clean(m.name), eng: Q.clean(m.eng), day: m.day, since: viDate(m.day), level: 0 };
     x.done = (ladder.contacts || []).filter(c => sameName(c.cls, x.cls) && c.name === x.name && c.since === x.since && c.action === SENT_ACT).pop() || null;
     return x;
@@ -4098,7 +4102,7 @@ function sentHomeBlock(week) {
   const list = sentHomeList(week);
   if (!list.length) return '';
   const todo = list.filter(x => !x.done).length;
-  let h = '<div class="part p-alert"><h2>' + T('Cho về / ra ngoài bù bài · cần nhắn phụ huynh', 'Sent home or making up outside · message the parents') + '</h2><span>' + (todo ? todo + T(' chưa nhắn', ' to message') : T('Đã nhắn đủ', 'All messaged')) + '</span></div>';
+  let h = '<div class="part p-alert"><h2>' + T('Cho về · cần nhắn phụ huynh', 'Sent home · message the parents') + '</h2><span>' + (todo ? todo + T(' chưa nhắn', ' to message') : T('Đã nhắn đủ', 'All messaged')) + '</span></div>';
   h += '<div class="small muted sent-who">' + T('Người nhắn hôm nay: ', 'Messages today: ') + '<b>' + (isFriday(today()) ? 'THUY TRANG' : T('quản lí', 'managers')) + '</b></div>';
   h += '<div class="grid">' + list.map((x, i) => {
     const owed = sentOwed(x), late = !x.done && today() > x.day;
@@ -4175,7 +4179,7 @@ viewClass = function () {
   // The back button joins the bar under the header instead of taking its own line.
   const back = (h.match(/^<div>(<button class="quiet" data-act="back">[\s\S]*?<\/button>)<\/div>/) || [])[1] || '';
   if (back && /<button class="primary ll-open"/.test(h)) h = h.slice(back.length + 11);
-  const legend = current && isSecondary(current) ? '<div class="roll-legend">' + [['🚪', T('Cho về · thiếu bài', 'Sent home')], ['🏠', T('Ở nhà · chưa làm bài', 'Stayed home')], ['📝', T('Ra ngoài bù bài · không vào học', 'Making up work outside')]].map(([i, t]) => '<span><b>' + i + '</b> ' + t + '</span>').join('') + '</div>' : '';
+  const legend = current && isSecondary(current) ? '<div class="roll-legend">' + [['✉️', T('Nghỉ · đã báo', 'Absent, notified')], ['🚪', T('Cho về · thiếu bài', 'Sent home')], ['🏠', T('Ở nhà · chưa làm bài', 'Stayed home')], ['📝', T('Ra ngoài bù bài · không vào học', 'Making up work outside')]].map(([i, t]) => '<span><b>' + i + '</b> ' + t + '</span>').join('') + '</div>' : '';
   return h.replace(/<div class="card">(<div class="pupil)/, () => legend + '<div class="card roll-fit"><div class="pupil')
     .replace(/(<button class="primary ll-open"[^>]*>[\s\S]*?<\/button>)(<div class="count">[\s\S]*?<\/div>)/, (m0, a, b) => '<div class="roll-bar">' + back + a + b + '</div>');
 };
@@ -5400,6 +5404,7 @@ nsLap = async function (auto) {
   return nsLapSure(auto);
 };
 
+// Owner 10/11: a pupil making up work outside the room is still at the centre, so no parent message job; only "Cho về" has one.
 /* ---------- Owner 10/11: IELTS lessons in the sheet ----------
  * The app only knew the KIDS header ("Buổi học ngày …"), so on IELTS sheets it found no lesson: absences and the close
  * comments were never written there. IELTS headers are read as they are: row 1 the skill (Speaking / Writing), row 2
