@@ -4742,7 +4742,7 @@ function nsField(k, v) {
   const f = ns.form; if (!f) return;
   if (k.startsWith('id.')) { f.id = f.id || {}; f.id[k.slice(3)] = Q.clean(v); return false; }
   if (k.startsWith('r.')) {
-    const key = k.slice(2), textKeys = ['het', 'thue', 'bhRate', 'bhMode'], flags = ['usd', 'nhaUsd', 'nhaFree'];
+    const key = k.slice(2), textKeys = ['het', 'thue', 'bhRate', 'bhMode', 'ca'], flags = ['usd', 'nhaUsd', 'nhaFree'];
     if (key === 'bhMode') { f.rate.bhMode = v === 'co' ? '' : v; if (v !== 'co') f.rate.bh = ''; if (v === 'co' && !f.rate.bh) f.rate.bh = 4730000; return true; }
     f.rate[key] = flags.includes(key) ? (v ? 1 : 0) : textKeys.includes(key) ? v : (f.group === 'GVNN' && f.rate.usd && ['r', 'r101', 'ielts'].includes(key)) || (key === 'nha' && f.rate.nhaUsd) || ['npt', 'baseH'].includes(key) ? (v === '' ? '' : Number(String(v).replace(',', '.'))) : nsNum(v);
     return flags.includes(key) || ['gs', 'dl', 'tg', 'ch'].includes(key);
@@ -5680,3 +5680,33 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
     Promise.resolve(weekOf(day)).catch(() => {}).then(() => { if (view === 'lop') { const s = back.row && findSession(back.row, back.cday); if (s) current = s; else view = 'lich'; } render(); setTimeout(() => window.scrollTo(0, back.y || 0), 50); if (view === 'dieuhanh') guarded(loadPanel); say('Đã tự cập nhật bản mới của app.'); });
   }, 300);
 })();
+
+/* ---------- Owner 10/11: "logic lấy Nhân sự là chuẩn" ----------
+ * Each staff record has "Giờ vào ca": Toàn thời gian (15:30 Thứ 2-6, weekends by the rota rule), Part-time (rota shift, else 17:00,
+ * plus extra duties), Theo lớp dạy (before the first class), Không chấm vào ca. The server sends only that word for the person
+ * signed in (me.ca). A record without the choice is read from its position; a person without a record keeps the old lists. */
+const CA_KINDS = [['', 'Tự xét theo vị trí'], ['full', 'Toàn thời gian · có mặt 15:30 Thứ 2–6'], ['part', 'Part-time · theo ca trong lịch trực (mặc định 17:00)'], ['lop', 'Theo lớp dạy · trước buổi đầu 10 phút'], ['none', 'Không chấm vào ca']];
+const nsFormHtmlBeforeCa = nsFormHtml;
+nsFormHtml = function () {
+  const h = nsFormHtmlBeforeCa(), f = ns.form;
+  if (!f || ns.sec !== 'chung') return h;
+  const v = (f.rate && f.rate.ca) || '';
+  const sel = '<div class="form-grid"><label>Giờ vào ca<select data-act="nsF" data-k="r.ca">' + CA_KINDS.map(([k, t]) => '<option value="' + k + '"' + (v === k ? ' selected' : '') + '>' + t + '</option>').join('') + '</select></label></div>';
+  const at = h.indexOf('<div class="form-grid"><label>Ghi chú');
+  return at >= 0 ? h.slice(0, at) + sel + h.slice(at) : h.replace('<div class="ns-save">', sel + '<div class="ns-save">');
+};
+// The record decides the lists the check-in rules use for the person signed in.
+function caApply() {
+  if (!me || !me.ca) return;
+  const drop = list => { const i = list.findIndex(n => sameName(n, me.name)); if (i >= 0) list.splice(i, 1); };
+  drop(FULL_TIME_STAFF); drop(PART_TIME_TA);
+  if (me.ca === 'full') FULL_TIME_STAFF.push(me.name);
+  if (me.ca === 'part') PART_TIME_TA.push(me.name);
+}
+const myDueBeforeCa = myDue;
+myDue = function (week, d) {
+  caApply();
+  if (me && me.ca === 'none') return null;
+  if (me && me.ca === 'lop') return myDueBeforeContract(week, d);
+  return myDueBeforeCa(week, d);
+};
