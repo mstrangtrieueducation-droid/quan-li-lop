@@ -3978,13 +3978,20 @@ function ktLine(ctx, k) {
     (avg != null ? '<span class="chip kt-' + ktTone(avg) + '">' + T('TB ', 'Avg ') + avg + '% · ' + vals.length + T(' em', '') + '</span>' : '') +
     (canTeach(s) ? '<button class="primary kt-go" data-act="ktOpen"' + (edit ? '' : ' disabled title="' + T('Giữ "Giữ để sửa" để mở khoá trước', 'Unlock with "Hold to edit" first') + '"') + '>📝 ' + T('Nhập điểm KT', 'Enter test scores') + '</button>' : '') + '</div>';
 }
+// Owner 10/11: the name is the biggest thing in each box. A long Vietnamese name shows the given name (last word) big, with the
+// rest small above it, so the teacher never has to guess from a cut-off name.
+function ktNameHtml(p) {
+  const full = Q.clean(p.eng || p.name), w = full.split(/\s+/);
+  if (full.length <= 12 || w.length < 2) return '<b class="kt-name" title="' + esc(Q.clean(p.name)) + '">' + esc(full) + '</b>';
+  return '<b class="kt-name" title="' + esc(Q.clean(p.name)) + '"><small>' + esc(w.slice(0, -1).join(' ')) + '</small>' + esc(w[w.length - 1]) + '</b>';
+}
 function ktSheetHtml(ctx, k) {
   const rows = ctx.tracker.pupils.map((p, i) => ({ p, i, m: ctx.marks.get(p.name) })).filter(r => !(r.m && (r.m.status === NGHI || Q.ABSENT.includes(r.m.status))));
   return '<div class="ll-veil" data-act="ktClose"></div><div class="ll-sheet kt-sheet" role="dialog" aria-label="' + T('Nhập điểm kiểm tra', 'Test scores') + '">' +
     '<div class="row-top"><b class="ll-sheet-name">📝 ' + T('Điểm kiểm tra · Unit ', 'Test scores · Unit ') + esc(k.unit) + '</b><span class="spacer"></span><button class="primary" data-act="ktClose">' + T('Xong', 'Done') + '</button></div>' +
     (k.total ? '<div class="small muted">' + T('Gõ số câu đúng trên tổng ', 'Correct answers out of ') + k.total + T(' câu. Bỏ trống nếu chưa chấm.', '. Leave empty if not marked.') + '</div>'
       : '<label class="kt-total">' + T('Tổng số câu của bài này: ', 'Total questions: ') + '<input type="number" inputmode="numeric" min="1" max="500" data-act="ktTotal" aria-label="' + T('Tổng số câu', 'Total questions') + '"></label>') +
-    '<div class="kt-list">' + rows.map(r => { const v = ktScore(ctx, k, r.p); return '<label class="kt-row"><b>' + esc(r.p.eng || r.p.name) + '</b><input type="number" inputmode="numeric" min="0"' + (k.total ? ' max="' + k.total + '"' : '') + ' data-act="ktScore" data-i="' + r.i + '" value="' + (v == null ? '' : v) + '" aria-label="' + T('Số câu đúng của ', 'Correct answers of ') + esc(r.p.eng || r.p.name) + '"><span>/' + (k.total || '?') + '</span>' + ktPctTag(ktPctOf(k, v)) + '</label>'; }).join('') + '</div></div>';
+    '<div class="kt-list">' + rows.map(r => { const v = ktScore(ctx, k, r.p); return '<label class="kt-row">' + ktNameHtml(r.p) + '<input type="number" inputmode="numeric" min="0"' + (k.total ? ' max="' + k.total + '"' : '') + ' data-act="ktScore" data-i="' + r.i + '" value="' + (v == null ? '' : v) + '" aria-label="' + T('Số câu đúng của ', 'Correct answers of ') + esc(r.p.eng || r.p.name) + '"><span>/' + (k.total || '?') + '</span>' + ktPctTag(ktPctOf(k, v)) + '</label>'; }).join('') + '</div></div>';
 }
 const viewLenLopBeforeKt = viewLenLop;
 viewLenLop = function () {
