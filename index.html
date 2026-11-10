@@ -726,6 +726,9 @@
   .rv-strip .ll-head .ll-title b { font-size: 14px; }
   .rv-strip .ll-head .ll-title span { font-size: 11px; }
   .rv-strip .ll-head > button, .rv-strip .ll-head .rv-sumbtn, .rv-strip .ll-head .rv-lock { min-height: 28px; padding: 0 6px; font-size: 11px; border-radius: 8px; flex: 0 1 auto; }
+  /* Owner 10/11: "Còn lại có mặt" and "Xong, khoá lại" stayed big on small screens (an earlier rule outranked the one above);
+     names are the biggest thing, the side buttons stay small. */
+  .rv-strip .ll-head .rv-save, .rv-strip .ll-head [data-act="llAll"], .rv-strip .ll-head .rv-lock, .rv-strip .ll-head .rv-sumbtn { min-height: 28px; padding: 0 6px; font-size: 11px; border-radius: 8px; flex: 0 1 auto; border-width: 1px; }
   .rv-strip .ll-podium { display: none; }
   .rv-strip .notice { font-size: 11px; line-height: 1.25; padding: 3px 8px; margin: 0; border-radius: 8px; }
   .rv-strip .rv-legend { font-size: 10px; gap: 0 8px; margin: 0 0 2px; line-height: 1.3; }
@@ -1214,9 +1217,14 @@
   .kt-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line, #e2e8f0); border-radius: 12px; }
   .kt-row b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Owner 10/11: the general "label > * { width: 100% }" stretched "/58" over the whole box and hid the pupil's name. */
-  .kt-sheet .kt-row > span { width: auto; flex: none; }
+  .kt-sheet .kt-row > span { width: auto; flex: none; font-size: 13px; color: var(--muted); }
   .kt-sheet .kt-row > b { width: auto; font-size: 16px; font-weight: 700; }
-  .kt-sheet .kt-row > b.kt-pct { flex: none; font-size: 13px; }
+  .kt-sheet .kt-row > b.kt-pct { flex: none; font-size: 12px; padding: 2px 5px; }
+  /* Owner 10/11: the name is the biggest thing; score box and "/58" stay small. */
+  .kt-sheet .kt-row { gap: 6px; padding: 6px 8px; }
+  .kt-sheet .kt-row > b.kt-name { font-size: 20px; font-weight: 800; line-height: 1.1; white-space: normal; overflow-wrap: anywhere; }
+  .kt-sheet .kt-row > b.kt-name small { display: block; font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kt-sheet .kt-row input { width: 3.2em; padding: 4px; font-size: 18px; flex: none; }
   .kt-row input, .kt-total input { width: 4.5em; padding: 6px; font-size: 18px; font-weight: 800; text-align: center; border-radius: 8px; }
   .kt-total { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-weight: 700; }
   /* Roll call fits the screen (owner 09/11: "màn hình điểm danh cần vừa khung hình k phải kéo"): pupils flow into as many columns as
@@ -1357,10 +1365,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261110X"></script>
-<script src="logic.js?v=20261110X"></script>
-<script src="app.js?v=20261110X"></script>
-<script src="qrcode.js?v=20261110X"></script>
-<script src="extra.js?v=20261110X"></script>
+<script src="config.js?v=20261110Y"></script>
+<script src="logic.js?v=20261110Y"></script>
+<script src="app.js?v=20261110Y"></script>
+<script src="qrcode.js?v=20261110Y"></script>
+<script src="extra.js?v=20261110Y"></script>
 </body>
 </html>
