@@ -5829,12 +5829,12 @@ function contactDay(c) { const m = String(c.at || '').match(/(\d{1,2})\/(\d{1,2}
 
 
 /* ---------- Owner 10/11 "sao tối qua Kids 8 k có màn hình nhập điểm": KIDS paper tests get the same score box as FIGHTER ----------
- * A KIDS lesson that takes or returns a written test ("UNIT 1 - WRITTEN TEST", "UNIT 1 TEST RETURN", "BÀI KIỂM TRA VIẾT", "TRẢ BÀI
- * KIỂM TRA VIẾT", "TEST - UNIT 4,5,6") opens the class's newest "KIỂM TRA GIẤY ĐỊNH KÌ" column whose test date is within the last
+ * A KIDS lesson that returns a written test ("UNIT 1 TEST RETURN", "WRITTEN TEST 7 RETURN", "TRẢ BÀI KIỂM TRA VIẾT SỐ 9") opens the class's newest "KIỂM TRA GIẤY ĐỊNH KÌ" column whose test date is within the last
  * three weeks. Scores go into that column (the one with the title; the cell next to it is left alone). When the header has no
  * "Tổng: N câu hỏi" yet, the box asks once and adds that line under the test date, where the reports already read it. */
 const KIDS_PAPER_DAYS = 21;
-const kidsTestLesson = s => { const d = Q.key(s.detail || ''); return /WRITTEN TEST|TEST RETURN|KIEM TRA VIET/.test(d) || (/\bTEST\b/.test(d) && !/TEST\s*\d+\s*-\s*\d+/.test(d)); };
+// Owner 10/11: "khung nhập điểm ở buổi TEST RETURN" — scores are typed when the marked tests are handed back, not on the test day.
+const kidsTestLesson = s => /\bRETURN\b|TRA BAI KIEM TRA/.test(Q.key(s.detail || ''));
 function kidsPaperCols(t) {
   const head = t.head || [], width = Math.max(0, ...head.map(r => (r || []).length)), out = [], two = n => ('0' + n).slice(-2);
   for (let c = 0; c < width; c++) {
