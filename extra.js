@@ -488,7 +488,7 @@ document.addEventListener('click', e => {
   if (act === 'caCentre') caCentre();
   if (act === 'caCentreTyped') caCentreTyped();
   if (act === 'caDecide') caDecide(b);
-  if (act === 'payOpen') { pay.person = b.dataset.p; loadLuong(true); }
+  if (act === 'payOpen') { pay.person = b.dataset.p; pay.mine = null; render(); payOpenOne(); }
   if (act === 'payBack') { pay.person = ''; pay.mine = null; render(); }
   if (act === 'payOk') payAct('Đúng');
   if (act === 'payWrong') payAct('Báo sai');
@@ -3578,7 +3578,7 @@ viewLuong = function () {
     return '<div class="hr-row pay-row"><span class="av-chip"><i style="background:' + avColor(Q.key(r.name)) + '">' + esc(initials(r.name)) + '</i><span><b>' + esc(titleCase(r.name)) + '</b></span></span><span class="chip">' + esc(r.tab) + '</span>' +
       '<span class="pay-st"><span class="tag ' + st[0] + '">' + st[1] + '</span>' + (isPaid(r) ? '<span class="tag ok">' + T('Đã trả', 'Paid') + '</span>' : '') + '</span><b class="pay-net">' + esc(r.net || '') + '</b>' +
       (r.person ? '<span class="pay-btns"><button class="quiet" data-act="payOpen" data-p="' + esc(r.person) + '">' + T('Chi tiết ▸', 'Details ▸') + '</button>' + (isPaid(r) ? '<button class="quiet" data-act="payPaid" data-v="Bỏ đã trả" data-p="' + esc(r.person) + '" title="' + T('Bỏ đánh dấu đã trả', 'Unmark paid') + '">↺</button>' : '<button class="good" data-act="payPaid" data-v="Đã trả" data-p="' + esc(r.person) + '">' + ico('check') + T('Trả', 'Pay') + '</button>') + '</span>'
-        : '<span class="small muted">' + T('chưa có link', 'no app user') + '</span>') + '</div>';
+        : '<span class="pay-btns"><button class="quiet" data-act="payOpen" data-p="' + esc(r.name) + '" title="' + T('Chưa có link app', 'No app link') + '">' + T('Chi tiết ▸', 'Details ▸') + '</button><span class="small muted">' + T('chưa có link', 'no app user') + '</span></span>') + '</div>';
   }).join('') + '</div>';
   return h;
 };
@@ -5773,4 +5773,20 @@ bellItems = function () {
     }
   } catch (e) {}
   return out;
+};
+
+/* ---------- Owner 10/11 "nút chi tiết bị đơ": opening one payslip reads only that slip and shows at once that it is opening ---------- */
+async function payOpenOne() {
+  const who = pay.person;
+  try { const m = await call('luong', { month: pay.month || undefined, person: who }); if (pay.person === who) pay.mine = m; }
+  catch (e) { if (pay.person === who) pay.person = ''; say(e.message, 'bad'); }
+  render();
+}
+const viewLuongBeforeOpen = viewLuong;
+viewLuong = function () {
+  if (isOwner() && pay.person && !pay.mine && !pay.err) {
+    const out = viewLuongBeforeOpen(), cut = out.search(/<div class="(count|kpi4)">/);
+    return (cut > 0 ? out.slice(0, cut) : '') + '<div><button class="quiet" data-act="payBack">‹ ' + T('Cả bảng', 'Everyone') + '</button></div><div class="card empty">⏳ ' + T('Đang mở phiếu lương của ', 'Opening the payslip of ') + esc(pay.person) + '…</div>';
+  }
+  return viewLuongBeforeOpen();
 };
