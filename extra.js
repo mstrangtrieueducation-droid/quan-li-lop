@@ -3041,6 +3041,7 @@ const QA = {
   wait: ['Duyệt ca', 'Check-ins', '<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4L12 14l-3-3"/>'],
   tlate: ['Task trễ', 'Late tasks', '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M5 3L2 6M22 6l-3-3"/>'],
   ttoday: ['Task', 'Tasks', '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>'],
+  tret: ['Trả bài KT', 'Return tests', '<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4M12 2v13"/>'],
   ret: ['Trả BTVN', 'Returns', '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>'],
   pay: ['Lương', 'Pay', '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>'],
   rp: ['Report', 'Reports', '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/>'],
@@ -3291,6 +3292,11 @@ function qaRows(kind) {
         push(z.row, z.cls, Q.clean(z.what).split(/\s+/).slice(0, 4).join(' '), isMe(z.teacher) ? (kind === 'tlate' ? T('Chấm trễ', 'Grade late') : T('Chấm hôm nay', 'Grade today')) : (kind === 'tlate' ? T('Trả trễ', 'Return late') : T('Trả hôm nay', 'Return today')), '<button class="good" data-act="task" data-row="' + z.row + '">' + ico('check') + '</button>', kind === 'tlate');
       });
     }
+    // Owner 10/11: graded Important Tasks the TA still has to return, each with its own "Đã trả" tap.
+    if (kind === 'tret' && week) week.data.tasks.filter(z => z.done && z.ta && !taskReturned(z) && (isMe(taOf(z)) || isManager()) && !isMe(z.teacher)).forEach(z => {
+      const late = !!(z.returnDue && z.returnDue < t);
+      push('r' + z.row, z.cls, Q.clean(z.what).split('_').slice(-2).join(' · '), (late ? T('Trả trễ', 'Return late') : T('Cần trả', 'To return')) + (z.returnDue ? ' · ' + viDate(z.returnDue).slice(0, 5) : '') + (isMe(taOf(z)) ? '' : ' · ' + titleCase(taOf(z))), '<button class="good" data-act="taskRet" data-row="' + z.row + '" data-v="Đã trả">' + ico('check') + '</button>', late);
+    });
     if (kind === 'ret' && week) { const last = Q.key(me.name).split(' ').pop(); (week.data.returns || []).filter(z => z.day === t && !z.done && Q.key(z.who) === last).forEach(z => push(z.row + '-' + z.col, z.cls, '', T('Chưa trả', 'Not returned'), '<button class="good" data-act="ret" data-row="' + z.row + '" data-col="' + z.col + '">' + ico('check') + '</button>')); }
     if ((kind === 'rp' || kind === 'rpall') && reports.rows) (kind === 'rp' ? reportItems(me.name).filter(z => ['over', 'today', 'soon'].includes(z.state)) : reportItems('').filter(z => z.state === 'over' && !isMe(z.cm))).forEach(z => push(z.k, z.s.cls, T('Tiết ', 'L') + z.s.lesson, z.state === 'over' ? T('Quá hạn', 'Overdue') : z.state === 'today' ? T('Hạn hôm nay', 'Due today') : T('Sắp đến hạn', 'Soon'), kind === 'rp' && canReport(z) ? '<button class="good" data-act="rpDone" data-k="' + esc(z.k) + '">' + ico('check') + '</button>' : '', z.state === 'over'));
     if (kind === 'sach') bookNeeds().filter(n => isMe(n.cm) && !bookSteps(n).ordered).forEach(n => push(bookName(n), n.cls, n.book || T('Sách mới', 'New book'), t > n.due ? T('Quá hạn đặt', 'Order late') : T('Đặt trước ', 'By ') + viDate(n.due).slice(0, 5), '<button class="good" data-act="bookTick" data-n="' + esc(bookName(n)) + '" data-d="' + n.first + '" data-v="Đã đặt in">' + ico('check') + '</button>', t > n.due));
@@ -5733,6 +5739,8 @@ myDue = function (week, d) {
 const RETURN_TAG = ' · trả';
 const taskReturned = t => { if (!logs.marks) return null; const rows = logs.marks.rows.filter(r => r.cls === TASK_CLS && r.name === (taskName(t) + RETURN_TAG).slice(0, 160)); const l = rows[rows.length - 1]; return l && l.status === 'Đã trả' ? l : null; };
 const taOf = t => staffNow(t.ta, t.cls);
+// Graded, not yet returned, and the person signed in is the one returning it.
+const returnPending = t => !!(t && t.done && t.ta && !isMe(t.teacher) && isMe(taOf(t)) && !taskReturned(t));
 const taskStateBeforeReturn = Q.taskState;
 Q.taskState = function (t, d) {
   if (t.done && t.ta && !taskReturned(t) && (isMe(taOf(t)) || isManager()) && !isMe(t.teacher)) {
@@ -5749,7 +5757,9 @@ taskRow = function (t, week, canTick) {
   const back = taskReturned(t), can = isManager() || isMe(taOf(t));
   const line = back ? '<div class="small trail ret-done">📤 ' + T('Đã trả', 'Returned') + ' · ' + esc(back.by || '?') + ' ' + esc(String(back.at || '').slice(11, 16) + ' ' + String(back.at || '').slice(0, 5)) + (can ? ' <button class="quiet" data-act="taskRet" data-row="' + t.row + '" data-v="Bỏ trả">' + T('Bỏ', 'Undo') + '</button>' : '') + '</div>'
     : '<div class="small ret-wait">📤 ' + T('Chờ ', 'Waiting for ') + '<b>' + esc(titleCase(taOf(t))) + '</b>' + T(' trả bài', ' to return') + (t.returnDue ? T(' trước ', ' by ') + esc(viDate(t.returnDue)) : '') + (can ? ' <button class="good" data-act="taskRet" data-row="' + t.row + '" data-v="Đã trả">📤 ' + T('Đã trả', 'Returned') + '</button>' : '') + '</div>';
-  return h.replace(/<\/div><\/div><\/div>$/, line + '</div></div></div>');
+  const out = h.replace(/<\/div><\/div><\/div>$/, line + '</div></div></div>');
+  // Still to return: a normal (not faded) card with a green edge, so the TA sees it is their turn.
+  return !back && (isMe(taOf(t)) || isManager()) && !isMe(t.teacher) ? out.replace('<div class="card row task-done">', '<div class="card row ret-todo">') : out;
 };
 document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-act="taskRet"]');

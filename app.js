@@ -776,7 +776,9 @@ function dutyBlock(week) {
 function myTaskBlock(week) {
   const mine = week.data.tasks.map(t => Object.assign({}, t, { ta: staffNow(t.ta, t.cls) })).filter(t => isMe(t.teacher) || isMe(t.ta));
   if (!mine.length) return '';
-  const dueOf = t => isMe(t.teacher) ? t.gradeDue : t.returnDue, todo = mine.filter(t => !t.done), done = mine.filter(t => t.done);
+  // A graded task the TA still has to return stays on the TA's to-do list (owner 10/11), not under "Đã xong".
+  const toReturn = t => typeof returnPending === 'function' && returnPending(t);
+  const dueOf = t => isMe(t.teacher) ? t.gradeDue : t.returnDue, todo = mine.filter(t => !t.done || toReturn(t)), done = mine.filter(t => t.done && !toReturn(t));
   const groups = new Map();
   todo.sort((a, b) => (dueOf(a) || '9').localeCompare(dueOf(b) || '9')).forEach(t => {
     const d = dueOf(t) || '', label = !d ? T('Chưa có hạn', 'No date') : d < today() ? T('Quá hạn', 'Overdue') : d === today() ? T('Hôm nay', 'Today') : d === Q.addDays(today(), 1) ? T('Ngày mai', 'Tomorrow') : dayLabel(d);
