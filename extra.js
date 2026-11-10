@@ -5710,3 +5710,67 @@ myDue = function (week, d) {
   if (me && me.ca === 'lop') return myDueBeforeContract(week, d);
   return myDueBeforeCa(week, d);
 };
+
+/* ---------- Owner 10/11: "Angelo bấm Important Task done thì ai phụ trách phải biết là Angelo chấm xong rồi, để còn biết đường trả" ----------
+ * When the teacher's grading is done (ticked in the app or in the Schedule), the task moves to its second step for the person in
+ * the Return column: it stays open on their list as "Cần trả" with the return date, the bell counts it, and they get a note that
+ * stays until closed ("ANGELO đã chấm xong KIDS 38 · … — bạn trả trước 16/11"). "📤 Đã trả" ticks the return (DIEM_DANH, class
+ * IMPORTANT TASK, name "<class> · <task> · trả"); managers see who returned and when, and can undo like the person who ticked. */
+const RETURN_TAG = ' · trả';
+const taskReturned = t => { if (!logs.marks) return null; const rows = logs.marks.rows.filter(r => r.cls === TASK_CLS && r.name === (taskName(t) + RETURN_TAG).slice(0, 160)); const l = rows[rows.length - 1]; return l && l.status === 'Đã trả' ? l : null; };
+const taOf = t => staffNow(t.ta, t.cls);
+const taskStateBeforeReturn = Q.taskState;
+Q.taskState = function (t, d) {
+  if (t.done && t.ta && !taskReturned(t) && (isMe(taOf(t)) || isManager()) && !isMe(t.teacher)) {
+    if (t.returnDue && t.returnDue < d) return { state: 'quahan', text: 'Quá hạn trả' };
+    if (t.returnDue === d) return { state: 'homnay', text: 'Hạn trả hôm nay' };
+    return { state: 'sap', text: 'Đã chấm xong · cần trả' };
+  }
+  return taskStateBeforeReturn(t, d);
+};
+const taskRowBeforeReturn = taskRow;
+taskRow = function (t, week, canTick) {
+  const h = taskRowBeforeReturn(t, week, canTick);
+  if (!t.done || !t.ta) return h;
+  const back = taskReturned(t), can = isManager() || isMe(taOf(t));
+  const line = back ? '<div class="small trail ret-done">📤 ' + T('Đã trả', 'Returned') + ' · ' + esc(back.by || '?') + ' ' + esc(String(back.at || '').slice(11, 16) + ' ' + String(back.at || '').slice(0, 5)) + (can ? ' <button class="quiet" data-act="taskRet" data-row="' + t.row + '" data-v="Bỏ trả">' + T('Bỏ', 'Undo') + '</button>' : '') + '</div>'
+    : '<div class="small ret-wait">📤 ' + T('Chờ ', 'Waiting for ') + '<b>' + esc(titleCase(taOf(t))) + '</b>' + T(' trả bài', ' to return') + (t.returnDue ? T(' trước ', ' by ') + esc(viDate(t.returnDue)) : '') + (can ? ' <button class="good" data-act="taskRet" data-row="' + t.row + '" data-v="Đã trả">📤 ' + T('Đã trả', 'Returned') + '</button>' : '') + '</div>';
+  return h.replace(/<\/div><\/div><\/div>$/, line + '</div></div></div>');
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="taskRet"]');
+  if (!b) return;
+  e.stopPropagation();
+  const week = weeks[Q.weekTab(tabs, day)] || weeks[Q.weekTab(tabs, today())], t = week && week.data.tasks.find(x => String(x.row) === b.dataset.row);
+  if (!t) return;
+  appendMark({ day: today(), cls: TASK_CLS, lesson: '', start: 0 }, { row: '', name: (taskName(t) + RETURN_TAG).slice(0, 160), eng: '' }, b.dataset.v);
+  render();
+}, true);
+// The note that stays until closed, once per task on this device; the bell counts what is still to return.
+function taskReturnNotes() {
+  if (!me || isOwner()) return;
+  const week = weeks[Q.weekTab(tabs, today())];
+  if (!week || !logs.marks) return;
+  let seen = []; try { seen = JSON.parse(saved.get('taskRetSeen') || '[]'); } catch (e) {}
+  const fresh = week.data.tasks.filter(t => t.done && t.ta && isMe(taOf(t)) && !isMe(t.teacher) && !taskReturned(t) && !seen.includes(week.tab + '|' + taskName(t)));
+  if (!fresh.length) return;
+  fresh.forEach(t => {
+    notices.push({ text: '✅ ' + titleCase(t.teacher) + T(' đã chấm xong ', ' finished grading ') + Q.clean(t.cls) + ' · ' + Q.clean(t.what) + T(' — bạn trả bài', ' — please return it') + (t.returnDue ? T(' trước ', ' by ') + viDate(t.returnDue) : '') + '.', kind: 'ok' });
+    seen.push(week.tab + '|' + taskName(t));
+  });
+  keep('taskRetSeen', JSON.stringify(seen.slice(-200)));
+  render();
+}
+setInterval(() => { try { taskReturnNotes(); } catch (e) {} }, 30000);
+const bellItemsBeforeReturn = bellItems;
+bellItems = function () {
+  const out = bellItemsBeforeReturn();
+  try {
+    const week = weeks[Q.weekTab(tabs, today())];
+    if (week && me) {
+      const todo = week.data.tasks.filter(t => t.done && t.ta && !taskReturned(t) && (isMe(taOf(t)) || isManager()) && !isMe(t.teacher));
+      if (todo.length) out.push({ k: 'tret', icon: '📤', text: todo.length + T(' bài đã chấm xong, cần trả', ' graded, to return'), n: todo.length, hot: todo.some(t => t.returnDue && t.returnDue <= today()), go: { view: 'lich', sec: 'task' } });
+    }
+  } catch (e) {}
+  return out;
+};
