@@ -4052,6 +4052,8 @@ summaryView = function (ctx) {
 const KT_TICK = 'Làm bài KT không nghiêm túc';
 Object.assign(BEHAVIOUR_EN, { [KT_TICK]: 'Not serious in the test' });
 COMMENT_LINES[KT_TICK] = 'con làm bài kiểm tra chưa nghiêm túc, cần tập trung và tự giác hơn.';
+// Owner 10/11: it showed a bare dot on the class screen's icon strip; every reminder has its own icon.
+TICK_ICON[KT_TICK] = '📋';
 if (!BEHAVIOURS.includes(KT_TICK)) BEHAVIOURS.push(KT_TICK);
 const isTestLesson = s => { if (!s || !isSecondary(s)) return false; if (!ktG.any) { loadKtGuide(); return false; } return !!ktG.any[ktBookKey(s.book) + '|' + Q.clean(s.lesson)]; };
 const tickSetOfBeforeKt = tickSetOf;
