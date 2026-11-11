@@ -2298,7 +2298,7 @@ setInterval(async () => {
  * On "Xác nhận đúng, chốt buổi", each present pupil's "Nhận xét" cell of the lesson gets one line per reminder, in Vietnamese for
  * parents; a pupil with none gets a short praise line. Lines the teacher typed in the sheet are kept under ours; our own lines
  * (they start with ⚠️ ⛔ 👍 ⏰ ✓) are replaced, so closing again after a reopen never doubles them. The server colours warnings red. */
-const AUTO_LINE = /^(⚠️|⛔|👍|⏰|✓|🏆|🌟|🚪|🏠|📝)/u;
+const AUTO_LINE = /^(⚠️|⛔|👍|⏰|✓|🏆|🌟|🚪|🏠|📝|📕)/u;
 const COMMENT_LINES = {
   'Mất tập trung': 'con còn mất tập trung, cần chú ý nghe giảng hơn.',
   'Mất trật tự': 'con còn mất trật tự, cần giữ trật tự trong lớp.',
@@ -2340,6 +2340,9 @@ function writeLessonComments(ctx) {
     if (!m || !(Q.PRESENT.includes(m.status) || (short && offRoom.includes(m.status)))) return;
     const b = behave.get(p.name), st = block.stars >= 0 ? starsOf(ctx, p) : 0, rank = st ? scores.indexOf(st) + 1 : 0;
     const auto = lessonComment(tagCounts(b ? b.tags : []), m, { stars: st, rank: rank && rank <= 3 ? rank : 0, seed: p.name + '|' + session.day, short: /^(IELTS|FIGHTER)/.test(Q.key(session.cls)) });
+    // Owner 11/11: the parent page shows this comment ("Lời cô dặn") but only the letter of the paper grade, so a B or F carries its
+    // reason here too (the server writes an English reason in Vietnamese).
+    if (block.grade >= 0) { const gp = gradeParts(tracker.cell(p.row, block.grade)), why = gp.why || gp.rest.join('; '); if (/^(B|F)$/.test(gp.g || '') && Q.clean(why)) auto.push('📕 Sách giấy ' + gp.g + ': ' + Q.clean(why)); }
     const now = String(tracker.cell(p.row, block.comment) || ''), mine = now.split('\n').filter(l => l.trim() && !AUTO_LINE.test(l.trim()));
     let value = auto.concat(mine).join('\n');
     if (value.length > 200) value = auto.join('\n').slice(0, 200);
