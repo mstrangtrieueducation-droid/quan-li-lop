@@ -6206,3 +6206,22 @@ refreshOwedNow = function (s) {
   refreshOwedNowBeforeDash(s);
   if (c && owedFreshAt[key] !== was) refreshDashNow(s);
 };
+
+/* ---------- Owner 11/11 ("lúc chốt buổi auto nạp lại để chuẩn… con đi học, ở nhà bố mẹ nộp bài") ----------
+ * Confirming the close re-reads the parent pages at once, and while the review-and-close sheet is on screen it is re-read every
+ * minute, so work a parent hands in during the lesson leaves the list before the photo is taken. */
+function closeReread() {
+  const c = current && classOf(current);
+  if (!c) return;
+  owedFreshAt[c.tracker + '|' + current.day] = 0;
+  refreshOwedNow(current);
+}
+const llActionBeforeCloseReread = llAction;
+llAction = function (act, i, v) {
+  const r = llActionBeforeCloseReread(act, i, v);
+  if (act === 'llChot' && current) closeReread();
+  return r;
+};
+setInterval(() => {
+  try { if (view === 'lenlop' && current && llSummary && llSummary.mode && document.visibilityState === 'visible') closeReread(); } catch (e) {}
+}, 60000);
