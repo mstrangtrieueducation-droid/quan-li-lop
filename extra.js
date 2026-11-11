@@ -1735,7 +1735,7 @@ function summaryView(ctx) {
       (noStars ? '' : '<td class="sum-stars">' + (r.off ? '' : '⭐ ' + r.stars) + '</td>') +
       (noGrade ? '' : '<td class="sum-gcell">' + (g && g !== '/' ? '<span class="sum-g g' + g[0] + '">' + esc(g) + '</span>' + (gp.why && g !== 'A+' ? '<div class="sum-why">' + esc(gp.why) + '</div>' : '') : '') + '</td>') +
       '<td class="sum-remind">' + (warned ? '<span class="sum-warn">⚠️ Cảnh cáo' + (warned > 1 ? ' ×' + warned : '') + '</span>' + (remind ? '<br>' : '') : '') + remind + (!warned && !remind && !r.off ? '<span class="sum-ok">Tốt ✓</span>' : '') + '</td>' +
-      '<td class="sum-debt">' + (debt.length ? '<b>Thiếu ' + debt.length + ' video:</b> ' + esc(kidsKinds(owed[r.i] || [])) : '<span class="sum-ok">Không thiếu ✓</span>') + '</td></tr>';
+      '<td class="sum-debt">' + (debt.length ? '<b>Thiếu ' + debt.length + ' bài:</b> ' + esc(kidsKinds(owed[r.i] || [])) : dashRedoOf(ctx, r.i).length ? '' : '<span class="sum-ok">Không thiếu ✓</span>') + (dashRedoOf(ctx, r.i).length ? (debt.length ? '<br>' : '') + '<b>🔁 Cần nộp lại ' + dashRedoOf(ctx, r.i).length + ' bài:</b> ' + esc(dashRedoOf(ctx, r.i).map(x => Q.clean(x.label)).join('; ')) : '') + '</td></tr>';
   }).join('');
   const head = '<tr><th></th><th>Học sinh</th><th>Điểm danh</th>' + (noStars ? '' : '<th>Sao</th>') + (noGrade ? '' : '<th class="sum-c">Bài tập sách giấy</th>') + '<th>Nhắc nhở</th><th>Video còn thiếu</th></tr>';
   return chotBar(s) + '<div class="sum-bar"><button class="quiet" data-act="llSumClose">‹ ' + T('Quay lại màn hình lớp', 'Back to the class screen') + '</button><span class="spacer"></span>' +
@@ -6171,11 +6171,38 @@ owedOf = function (ctx) {
   const base = owedOfBeforeDash(ctx), dash = dashOwedFor(ctx);
   if (!dash) return base;
   const s = ctx.session, started = s.day < today() || (s.day === today() && minutesNow() >= s.start);
-  return ctx.tracker.pupils.map((p, i) => dash[i] ? dash[i].filter(x => x.due < s.day || (started && x.due === s.day)).map(dashToOwed) : (base[i] || []));
+  return ctx.tracker.pupils.map((p, i) => dash[i] ? dash[i].filter(x => !x.resubmit && (x.due < s.day || (started && x.due === s.day))).map(dashToOwed) : (base[i] || []));
 };
 const totalOwedBeforeDash = totalOwed;
 totalOwed = function (ctx) {
   const base = totalOwedBeforeDash(ctx), dash = dashOwedFor(ctx);
   if (!dash) return base;
-  return ctx.tracker.pupils.map((p, i) => dash[i] ? dash[i].filter(x => x.due < ctx.session.day).map(dashToOwed) : (base[i] || []));
+  return ctx.tracker.pupils.map((p, i) => dash[i] ? dash[i].filter(x => !x.resubmit && x.due < ctx.session.day).map(dashToOwed) : (base[i] || []));
+};
+
+
+/* ---------- Owner 11/11 ("dash ntn thì web lớp hiển thị như thế… lúc chốt lớp dữ liệu phải đúng như dash mới nhất") ----------
+ * As on the parent page, work to redo ("🔁 Cần nộp lại": a teacher/grader notice not yet answered by a new receipt) is its own line,
+ * not counted with overdue work. Opening the review-and-close sheet (or "↻ Đọc lại sheet") asks the server for a fresh read of
+ * the parent pages instead of its 10-minute copy. */
+function dashRedoOf(ctx, i) { const d = dashOwedFor(ctx); return d && d[i] ? d[i].filter(x => x.resubmit) : []; }
+const redoTag = list => '<span class="rv-flag debt" title="' + esc(list.map(x => Q.clean(x.label)).join('\n')) + '">🔁 ' + T('Cần nộp lại ', 'To redo ') + list.length + T(' bài', '') + ': ' + esc(list.slice(0, 2).map(x => x.practice ? Q.clean(x.label) : 'Tiết ' + x.lesson).join(', ') + (list.length > 2 ? ' +' + (list.length - 2) : '')) + '</span>';
+const pupilFlagsBeforeRedo = pupilFlags;
+pupilFlags = function (ctx, r) {
+  const h = pupilFlagsBeforeRedo(ctx, r), redo = dashRedoOf(ctx, r.i);
+  if (!redo.length) return h;
+  return h ? h.replace(/<\/span>$/, redoTag(redo) + '</span>') : '<span class="rv-flags">' + redoTag(redo) + '</span>';
+};
+function refreshDashNow(s) {
+  const c = s && classOf(s);
+  if (!c || isSecondary(s) || !/^KIDS\s*\d+/i.test(Q.clean(s.cls))) return;
+  dashOwed[c.key] = Object.assign({}, dashOwed[c.key], { loading: true });
+  call('dashno', { cls: Q.clean(s.cls).replace(/\.\d+$/, ''), fresh: true }).then(d => { dashOwed[c.key] = { at: Date.now(), data: d }; })
+    .catch(() => { dashOwed[c.key] = Object.assign({}, dashOwed[c.key], { loading: false }); }).finally(() => { try { owedMemo.key = ''; } catch (e) {} render(); });
+}
+const refreshOwedNowBeforeDash = refreshOwedNow;
+refreshOwedNow = function (s) {
+  const c = s && classOf(s), key = c ? c.tracker + '|' + s.day : '', was = owedFreshAt[key] || 0;
+  refreshOwedNowBeforeDash(s);
+  if (c && owedFreshAt[key] !== was) refreshDashNow(s);
 };
