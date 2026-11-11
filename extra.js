@@ -6062,3 +6062,53 @@ qaRows = function (kind) {
   }));
   return out;
 };
+
+/* ---------- Owner 11/11: tuition to-dos for managers ("học phí đến hạn thu hay đến hạn nhắc… popup gọn gàng"; "tab học phí có chữ gì đó
+ * để quản lí click vào") ----------
+ * The tuition app, running in this page's Học phí frame, sends its Tổng quan counts (classes due to collect, students to remind again,
+ * sends not ticked, roster moves, tutor reminders). The frame is also loaded quietly once this device has the tuition link, and
+ * reloaded hourly while hidden. Managers see a red count on the Học phí tab and one line per kind in "Việc cần làm"; a line leaves
+ * when the work is done in the tuition app (its own ticks). */
+let hpViec = null;
+try { hpViec = JSON.parse(localStorage.getItem('ql-hp-viec') || 'null'); } catch (e) { hpViec = null; }
+addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data || e.data.type !== 'hp-viec') return;
+  hpViec = { at: e.data.at, viec: e.data.viec || {} };
+  try { localStorage.setItem('ql-hp-viec', JSON.stringify(hpViec)); } catch (err) {}
+  render();
+});
+let hpBgAt = 0;
+function hpBackground() {
+  if (!me || !isManager() || isBoard() || !hpDone() || view === 'hocphi') return;
+  let f = document.getElementById('hpFrame');
+  if (!f) { f = document.createElement('iframe'); f.id = 'hpFrame'; f.title = 'Học phí'; f.src = HOC_PHI_URL; f.setAttribute('allow', 'clipboard-write'); f.hidden = true; document.body.appendChild(f); hpBgAt = Date.now(); return; }
+  if (f.hidden && Date.now() - hpBgAt > 60 * 60 * 1000) { hpBgAt = Date.now(); try { f.contentWindow.location.reload(); } catch (e) { f.src = f.src; } }
+}
+const hpLines = () => {
+  if (!hpViec || !isManager() || isBoard()) return [];
+  const v = hpViec.viec || {}, out = [];
+  if ((v.den || []).length) out.push({ hot: true, text: T('Đến hạn thu: ', 'Due to collect: ') + v.den.join(', ') });
+  if (v.nhac) out.push({ hot: true, text: v.nhac + T(' em gửi quá hạn chưa thấy nộp, cần nhắc lại', ' students to remind again') + ((v.nhacLop || []).length ? ' (' + v.nhacLop.join(', ') + ')' : '') });
+  if (v.chuaGui) out.push({ hot: false, text: v.chuaGui + T(' em chưa tick đã gửi Zalo', ' sends not ticked') });
+  if (v.bienDong) out.push({ hot: false, text: v.bienDong + T(' biến động học sinh cần xử lí', ' roster moves to handle') });
+  if (v.tutor) out.push({ hot: false, text: v.tutor + T(' em tutor quá hạn chưa nộp', ' tutor students to remind') });
+  return out;
+};
+popSection({ k: 'hp', icon: '💰', title: () => T('Học phí', 'Tuition'),
+  items: () => hpLines().map(l => ({ hot: l.hot, html: '<div class="ph-line"><span class="ph-who' + (l.hot ? ' ph-none' : '') + '">' + esc(l.text) + '</span><span class="ph-btns"><button class="good" data-act="hpGo">' + T('Mở Học phí', 'Open') + '</button></span></div>' })) });
+document.addEventListener('click', e => {
+  if (!(e.target.closest && e.target.closest('[data-act="hpGo"]'))) return;
+  e.stopPropagation();
+  offSnoozeUntil = Date.now() + 5 * 60 * 1000;
+  view = 'hocphi'; render();
+}, true);
+// The red count on the Học phí tab.
+const renderBeforeHp = render;
+render = function () {
+  renderBeforeHp();
+  try {
+    hpBackground();
+    const n = hpLines().length, b = document.querySelector('#nav [data-v="hocphi"]');
+    if (b && n && !b.querySelector('.hp-dot')) b.insertAdjacentHTML('beforeend', ' <span class="hp-dot">' + n + '</span>');
+  } catch (e) {}
+};
