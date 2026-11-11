@@ -181,6 +181,10 @@
   /* Lên lớp: fills whatever window it is given, down to a third of a board, with targets a finger can hit */
   body.lenlop header { display: none; }
   body.lenlop main { max-width: none; padding: 8px; gap: 8px; min-height: 100vh; grid-template-rows: auto auto 1fr; align-content: start; }
+  /* Owner 11/11 (board photo): the test line above the pupils took the stretching row, leaving the pupils squeezed with no icons.
+     Every part keeps its own height; the pupil list is sized by fitClassScreen from the window height. */
+  body.lenlop main { grid-template-rows: none; grid-auto-rows: auto; }
+  body.lenlop main > .kt-line { margin: 0; }
   .ll-open { justify-self: start; min-height: 52px; font-size: 17px; font-weight: 700; }
   .ll-head { display: flex; align-items: center; gap: 8px; }
   .ll-head > button { min-height: 52px; min-width: 52px; font-size: 16px; }
@@ -1383,10 +1387,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261111G"></script>
-<script src="logic.js?v=20261111G"></script>
-<script src="app.js?v=20261111G"></script>
-<script src="qrcode.js?v=20261111G"></script>
-<script src="extra.js?v=20261111G"></script>
+<script src="config.js?v=20261111H"></script>
+<script src="logic.js?v=20261111H"></script>
+<script src="app.js?v=20261111H"></script>
+<script src="qrcode.js?v=20261111H"></script>
+<script src="extra.js?v=20261111H"></script>
 </body>
 </html>
