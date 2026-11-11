@@ -61,7 +61,10 @@ function caHours(rows, person, prefix) {
 }
 // Owner 07/11: only part-time TAs check out (paid by the hour); everyone else only checks in.
 const PART_TIME_TA = ['PHUONG THANH', 'THU HIEN', 'HA PHUONG', 'BAO KHANH'];
-const isPartTime = name => PART_TIME_TA.some(n => sameName(n, name)) || Object.values(weeks).some(w => (w.pay || []).some(e => e.kind === 'Part-time' && sameName(e.person, name)));
+// Owner 11/11 ("Sơn sao vẫn có nút ra ca"): the staff record (me.ca) wins for the person signed in; a name in the Schedule's
+// part-time pay block (extra hours) does not make a full-time staff member part-time.
+const fullTimeName = name => { try { return FULL_TIME_STAFF.some(n => sameName(n, name)); } catch (e) { return false; } };
+const isPartTime = name => (typeof me !== 'undefined' && me && me.ca && sameName(me.name, name)) ? me.ca === 'part' : !fullTimeName(name) && PART_TIME_TA.some(n => sameName(n, name)) || Object.values(weeks).some(w => (w.pay || []).some(e => e.kind === 'Part-time' && sameName(e.person, name)));
 const caTag = st => '<span class="tag ' + (st === 'Tự duyệt' || st === 'Đã duyệt' ? 'ok' : st === 'Không duyệt' ? 'bad' : 'warn') + '">' + esc(st) + '</span>';
 function checkinBlock(week) {
   if (day !== today() || !me) return '';
