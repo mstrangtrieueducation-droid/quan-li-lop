@@ -2695,7 +2695,7 @@ fitClassScreen = function () {
   // One column unless two (or three) make the names clearly bigger.
   let s = best(1), cols = 1;
   // A tall window keeps one column (owner 11/11: name big on top, icons under it).
-  for (let c = 2; c <= (list.classList.contains('rv-stack') ? 1 : 3) && s < 0.8; c++) { const sc = best(c); if (sc > s * 1.12) { s = sc; cols = c; } }
+  for (let c = 2; c <= (list.classList.contains('rv-tall') ? 1 : 3) && s < 0.8; c++) { const sc = best(c); if (sc > s * 1.12) { s = sc; cols = c; } }
   list.style.gridTemplateColumns = cols > 1 ? 'repeat(' + cols + ', minmax(0, 1fr))' : '';
   list.style.width = s < 0.999 ? (100 / s) + '%' : '';
   // Height left over (the width was the limit): lines grow taller so the pupils fill the box (owner: pupils take ~5/6 of it).
@@ -6129,8 +6129,9 @@ paintStrip = function () {
   if (!stripOn()) return;
   const list = document.querySelector('.rv-list'), row = list && list.querySelector('.rv-row:not(.open) .rv-quick');
   if (!list || !row || document.querySelector('.ll-sheet')) return;
-  // A tall window (portrait board) puts the icons on a line under the name, so both can be big.
-  list.classList.toggle('rv-stack', innerHeight > innerWidth * 1.2);
+  // A tall window (portrait board): one pupil per line, name on the left and the icons in the free space on its right (owner 11/11).
+  list.classList.remove('rv-stack');
+  list.classList.toggle('rv-tall', innerHeight > innerWidth * 1.2);
   const key = [innerWidth, innerHeight, list.children.length, row.children.length].join('|'), eff = () => { const q = list.querySelector('.rv-row:not(.open) .rv-q'); return q ? q.getBoundingClientRect().width : 0; };
   // Try a few button sizes; keep the one that ends up biggest on screen after the class is fitted to the window.
   if (rvqBest.key !== key) {
