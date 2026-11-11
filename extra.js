@@ -6225,3 +6225,76 @@ llAction = function (act, i, v) {
 setInterval(() => {
   try { if (view === 'lenlop' && current && llSummary && llSummary.mode && document.visibilityState === 'visible') closeReread(); } catch (e) {}
 }, 60000);
+
+/* ---------- Owner 11/11 ("tất cả đi cả ielts fighter… quy tắc y hệt dash"): IELTS / FIGHTER owed work from the parent pages ----------
+ * Their pages count the work themselves, so a staff device opens each pupil's page out of sight (same site, hidden frame) and asks
+ * the page's own list: FIGHTER fighterPendingEntriesV15_, IELTS ielts<N>PendingHomeworkEntriesV<n>_. "overdue" entries are the
+ * work owed. The answer goes to the server for 20 minutes so the class screen account (which never gets the links) shows the same.
+ * Re-read every 10 minutes, at once when the close sheet opens, and on "↻ Đọc lại sheet". A pupil whose page did not answer keeps
+ * the sheet-based list. */
+const pageRun = {};
+function runParentPage(url) {
+  return new Promise(resolve => {
+    const f = document.createElement('iframe');
+    f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
+    f.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:700px;border:0;visibility:hidden;pointer-events:none';
+    let n = 0;
+    const done = v => { clearInterval(timer); try { f.remove(); } catch (e) {} resolve(v); };
+    const timer = setInterval(() => {
+      n++;
+      try {
+        const w = f.contentWindow;
+        let list = null;
+        if (w && typeof w.fighterPendingEntriesV15_ === 'function' && w.fighterPendingStudentV15_) list = w.fighterPendingEntriesV15_(w.fighterPendingStudentV15_);
+        else if (w) {
+          const k = Object.keys(w).find(x => /^ielts\d+PendingHomeworkEntriesV\d+_$/.test(x));
+          if (k) { const v = w[k](); if (Array.isArray(v) && (v.length || n > 24)) list = v; }
+        }
+        if (Array.isArray(list)) return done(list.map(x => ({ status: String(x.status || ''), label: Q.clean(x.label || x.title || '') })));
+      } catch (e) { /* the page is still loading */ }
+      if (n > 70) done(null);
+    }, 500);
+    f.src = url;
+    document.body.appendChild(f);
+  });
+}
+async function startPageRun(s, c) {
+  const cls = Q.clean(s.cls).replace(/\.\d+$/, '');
+  pageRun[c.key] = Object.assign({}, pageRun[c.key], { running: true });
+  try {
+    let rows = null;
+    if (isBoard()) rows = ((await call('dashget', { cls })) || {}).rows || null;
+    else {
+      const links = ((await call('dashlinks', { cls })) || {}).links || [], queue = links.slice();
+      rows = [];
+      const worker = async () => { while (queue.length) { const l = queue.shift(), r = await runParentPage(l.url); if (r) rows.push({ row: l.row, owed: r.filter(e => e.status === 'overdue').map(e => e.label), all: r.length }); } };
+      await Promise.all([worker(), worker()]);
+      if (rows.length) call('dashput', { cls, rows }).catch(() => {});
+    }
+    pageRun[c.key] = { at: Date.now(), rows, running: false };
+  } catch (e) { pageRun[c.key] = { at: Date.now(), rows: (pageRun[c.key] || {}).rows || null, running: false }; }
+  render();
+}
+function pageRunFor(s, force) {
+  const c = s && classOf(s);
+  if (!c || !isSecondary(s)) return null;
+  const st = pageRun[c.key];
+  if ((force || !st || Date.now() - st.at > 10 * 60 * 1000) && !(st && st.running)) startPageRun(s, c);
+  return st && st.rows && st.rows.length ? st : null;
+}
+const secOwedForBeforePage = secOwedFor;
+secOwedFor = function (s) {
+  const base = secOwedForBeforePage(s), run = pageRunFor(s);
+  if (!run) return base;
+  const yesterday = Q.addDays(today(), -1), byRow = new Map(run.rows.map(r => [r.row, r]));
+  const pupils = (base && base.data && base.data.pupils || []).filter(p => !byRow.has(p.row));
+  const tr = trackers[(classOf(s) || {}).key], who = row => (tr && tr.pupils.find(p => p.row === row)) || {};
+  run.rows.forEach(r => { if (r.owed.length) pupils.push({ row: r.row, name: who(r.row).name || '', eng: who(r.row).eng || '', owed: r.owed.map(label => ({ label, due: yesterday, self: /tự luyện|reading intensive|listening|shadowing/i.test(label) })) }); });
+  return { at: run.at, data: { pupils } };
+};
+const refreshOwedNowBeforePage = refreshOwedNow;
+refreshOwedNow = function (s) {
+  const c = s && classOf(s), key = c ? c.tracker + '|' + s.day : '', was = owedFreshAt[key] || 0;
+  refreshOwedNowBeforePage(s);
+  if (c && isSecondary(s) && owedFreshAt[key] !== was) pageRunFor(s, true);
+};
