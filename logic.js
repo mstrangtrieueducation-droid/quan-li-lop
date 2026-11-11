@@ -286,7 +286,9 @@
     const due = b => (dueOf && dueOf(b)) || videoDue(blocks, b);
     const from = addDays(session.day, -RECENT_DAYS), found = pupils.map(() => []);
     const assigned = cols => pupils.length < 3 || pupils.some(p => cols.some(c => videoState(cell(p.row, c)) === 'done'));
-    blocks.filter(b => b.date && b.date < session.day && b.date >= from && b.videos.length && due(b) < session.day).forEach(b => {
+    // Owner 11/11 ("đếm tới thời điểm thầy cô mở lớp"): once the lesson has started, work due that day counts too.
+    const past = d => d < session.day || (!!session.started && d === session.day);
+    blocks.filter(b => b.date && b.date < session.day && b.date >= from && b.videos.length && past(due(b))).forEach(b => {
       const cols = b.videos.map(v => v.col);
       if (!assigned(cols)) return;
       pupils.forEach((p, i) => {
@@ -298,7 +300,7 @@
         });
       });
     });
-    (practices || []).filter(x => x.due < session.day && x.due >= from).forEach(x => {
+    (practices || []).filter(x => past(x.due) && x.due >= from).forEach(x => {
       if (!assigned([x.col])) return;
       pupils.forEach((p, i) => {
         if (p.since && x.due < p.since) return;

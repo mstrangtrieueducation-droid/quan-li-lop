@@ -1632,8 +1632,8 @@ const GRADE_EN = { 'Chưa làm bài': 'Not done', 'Làm thiếu': 'Incomplete', 
 const biText = t => { const en = BEHAVIOUR_EN[t] || GRADE_EN[t] || ''; return esc(t) + (en && en !== t ? '<small class="rv-en">' + esc(en) + '</small>' : ''); };
 const owedMemo = { key: '', list: [] };
 function owedOf(ctx) {
-  const t = ctx.tracker, key = Q.sessionKey(ctx.session) + '|' + t.at;
-  if (owedMemo.key !== key) { owedMemo.key = key; try { owedMemo.list = Q.owedVideos(t.pupils, t.blocks, t.practices, t.cell, ctx.session); } catch (e) { owedMemo.list = []; } }
+  const t = ctx.tracker, key = Q.sessionKey(ctx.session) + '|' + t.at + '|' + (ctx.session.day === today() && minutesNow() >= ctx.session.start);
+  if (owedMemo.key !== key) { owedMemo.key = key; try { owedMemo.list = Q.owedVideos(t.pupils, t.blocks, t.practices, t.cell, Object.assign({}, ctx.session, { started: ctx.session.day < today() || (ctx.session.day === today() && minutesNow() >= ctx.session.start) })); } catch (e) { owedMemo.list = []; } }
   return owedMemo.list;
 }
 function pupilFlags(ctx, r) {
