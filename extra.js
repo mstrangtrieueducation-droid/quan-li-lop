@@ -5880,3 +5880,89 @@ document.addEventListener('change', e => {
   queue({ kind: 'cell', file: cls.tracker, classKey: cls.key, range: quote(t.tab) + '!' + Q.colName(k.col) + (r + 1), row: r + 1, col: k.col, expected: before, value, label: T('Tổng số câu KT', 'Test total') });
   render();
 }, true);
+
+
+/* ---------- Owner 11/11: "cảnh báo nổi khi có lớp nghỉ học — báo lên nhóm Zalo lớp ít nhất 1 ngày trước ngày nghỉ; nổi đến khi có ai
+ * tick là đã làm; TA chủ nhiệm phải báo, quản lí hay tôi; mọi thứ đều có dấu ai đã tick để truy vết" ----------
+ * Every class lesson marked off in the Schedule (CLASS STATUS "Nghỉ học", or a centre day off) in the next 7 days puts up a pop-up
+ * for the class's homeroom (PHÂN CÔNG, else the CM/TA column), managers and the owner, until someone taps "Đã báo nhóm lớp".
+ * The deadline is the day before the lesson. A tick is a roll-call log row (class "BÁO NGHỈ LỚP", name "<class> · nghỉ <day>",
+ * person and time kept); "Bỏ" writes a newer row, so the whole history stays. "Để 30 phút" only hides the pop-up for a while. */
+const OFF_CLS = 'BÁO NGHỈ LỚP', OFF_DONE = 'Đã báo nhóm lớp', OFF_AHEAD = 7, OFF_SNOOZE_MS = 30 * 60 * 1000;
+let offSnoozeUntil = 0, offNextTried = 0;
+const offName = s => (Q.clean(s.cls).replace(/\.\d+$/, '') + ' · nghỉ ' + s.day).slice(0, 160);
+const offDone = s => { if (!logs.marks) return null; const rows = logs.marks.rows.filter(r => r.cls === OFF_CLS && r.name === offName(s)); const l = rows[rows.length - 1]; return l && l.status === OFF_DONE ? l : null; };
+const offWho = l => esc(titleCase(l.by || '?')) + ' ' + esc(String(l.at || '').slice(11, 16) + ' ' + String(l.at || '').slice(0, 5));
+function offItems(withDone) {
+  if (!me || !logs.marks) return [];
+  const t = today(), end = Q.addDays(t, OFF_AHEAD), seen = new Set(), out = [];
+  // The window can reach into next week's tab.
+  if (Date.now() - offNextTried > 10 * 60 * 1000) { offNextTried = Date.now(); weekOf(Q.addDays(t, OFF_AHEAD)).then(() => render()).catch(() => {}); }
+  Object.values(weeks).forEach(w => (w.data.sessions || []).forEach(s => {
+    if (!s.off || s.day < t || s.day > end || !classOf(s)) return;
+    const k = offName(s);
+    if (seen.has(k)) return;
+    seen.add(k);
+    const cn = homeroom[Q.key(Q.clean(s.cls).replace(/\.\d+$/, ''))] || homeroom[Q.key(s.cls)] || s.ta || '';
+    if (!(isManager() || isMe(cn) || isMe(s.ta))) return;
+    const done = offDone(s);
+    if (done && !withDone) return;
+    out.push({ s, cn, done, due: Q.addDays(s.day, -1) });
+  }));
+  return out.sort((a, b) => a.s.day.localeCompare(b.s.day) || a.s.start - b.s.start);
+}
+const offWhen = x => { const t = today(); return t > x.due ? { hot: true, text: T('Trễ hạn báo (phải báo trước 1 ngày)', 'Late: due a day before') } : t === x.due ? { hot: true, text: T('Hạn báo hôm nay', 'Tell the group today') } : { hot: false, text: T('Báo trước ', 'Tell by ') + viDate(x.due).slice(0, 5) }; };
+const offBtn = (x, v, cls, label) => '<button class="' + cls + '" data-act="offTick" data-k="' + esc(offName(x.s)) + '" data-day="' + x.s.day + '" data-v="' + v + '">' + label + '</button>';
+function paintOffPop() {
+  let box = document.getElementById('offPop');
+  const items = view === 'lenlop' || Date.now() < offSnoozeUntil || document.getElementById('phPop') ? [] : offItems(false);
+  if (!items.length) { if (box) box.remove(); return; }
+  if (!box) { box = document.createElement('div'); box.id = 'offPop'; document.body.appendChild(box); }
+  const body = items.map(x => { const w = offWhen(x); return '<div class="ph-cls"><b>' + esc(Q.clean(x.s.cls).replace(/\.\d+$/, '')) + '</b> <span class="muted small">' + T('nghỉ ', 'off ') + esc(dayLabel(x.s.day)) + ' · ' + Q.clock(x.s.start) + ' · ' + T('CN ', 'Homeroom ') + esc(titleCase(x.cn || '—')) + '</span>' +
+    '<div class="ph-line"><span class="ph-who ' + (w.hot ? 'ph-none' : '') + '">' + esc(w.text) + '</span><span class="ph-btns">' + offBtn(x, OFF_DONE, 'good', '✅ ' + T('Đã báo nhóm lớp', 'Told the group')) + '</span></div></div>'; }).join('');
+  box.innerHTML = '<div class="pair-veil"></div><div class="pair-sheet ph-pop" role="alertdialog" aria-label="' + T('Lớp nghỉ cần báo nhóm', 'Classes off') + '">' +
+    '<b class="ph-t">📢 ' + T('Lớp nghỉ · cần báo nhóm Zalo lớp', 'Class off · tell the class group') + ' · ' + items.length + '</b>' +
+    '<p class="small">' + T('Quy định: báo lên nhóm Zalo của lớp ít nhất 1 ngày trước ngày nghỉ. Báo xong bấm "Đã báo nhóm lớp" — app lưu tên người bấm và giờ bấm.', 'Tell the class group at least one day ahead, then tap the button; your name and the time are kept.') + '</p>' +
+    body + '<div class="chot-row"><button class="quiet" data-act="offLater">' + T('Để 30 phút', 'In 30 minutes') + '</button></div></div>';
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="offTick"],[data-act="offLater"]');
+  if (!b) return;
+  e.stopPropagation();
+  if (b.dataset.act === 'offLater') { offSnoozeUntil = Date.now() + OFF_SNOOZE_MS; paintOffPop(); return; }
+  appendMark({ day: today(), cls: OFF_CLS, lesson: '', start: 0 }, { row: '', name: b.dataset.k, eng: '' }, b.dataset.v);
+  say(b.dataset.v === OFF_DONE ? T('Đã ghi: bạn đã báo lớp nghỉ lên nhóm.', 'Saved.') : T('Đã bỏ dấu đã báo.', 'Undone.'));
+  render();
+}, true);
+const renderBeforeOff = render;
+render = function () { renderBeforeOff(); try { paintOffPop(); } catch (e) {} };
+setInterval(() => { try { paintOffPop(); } catch (e) {} }, 60000);
+// Bell and the quick lists on Lịch: what is still to tell, and who told which class when (the trail).
+QA.offcls = ['Báo lớp nghỉ', 'Class off', '<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'];
+const bellItemsBeforeOff = bellItems;
+bellItems = function () {
+  const out = bellItemsBeforeOff();
+  try { const list = offItems(false); if (list.length) out.push({ k: 'offcls', icon: '📢', text: list.length + T(' lớp nghỉ chưa báo nhóm Zalo', ' classes off not announced'), n: list.length, hot: list.some(x => offWhen(x).hot), go: { view: 'lich', sec: 'homnay' } }); } catch (e) {}
+  return out;
+};
+const qaRowsBeforeOff = qaRows;
+qaRows = function (kind) {
+  if (kind !== 'offcls') return qaRowsBeforeOff(kind);
+  return offItems(true).map(x => {
+    const w = offWhen(x), mine = x.done && (isManager() || isMe(x.done.by));
+    return { key: 'offcls|' + offName(x.s), cls: Q.clean(x.s.cls).replace(/\.\d+$/, ''), who: T('Nghỉ ', 'Off ') + viDate(x.s.day).slice(0, 5),
+      reason: x.done ? '✓ ' + T('Đã báo · ', 'Told · ') + titleCase(x.done.by || '?') + ' ' + String(x.done.at || '').slice(11, 16) + ' ' + String(x.done.at || '').slice(0, 5) : w.text,
+      btn: x.done ? (mine ? offBtn(x, 'Bỏ báo', 'quiet', T('Bỏ', 'Undo')) : '') : offBtn(x, OFF_DONE, 'good', ico('check')), hot: !x.done && w.hot };
+  });
+};
+// The lesson card of a class that is off shows who told the group and when (or that nobody has yet).
+const sessionCardBeforeOff = sessionCard;
+sessionCard = function (s) {
+  const h = sessionCardBeforeOff(s);
+  try {
+    if (!s || !s.off || !classOf(s) || s.day < today()) return h;
+    const d = offDone(s), line = d ? '<div class="small ok-text">📢 ' + T('Đã báo nhóm lớp · ', 'Group told · ') + offWho(d) + '</div>' : '<div class="small bad-text">📢 ' + T('Chưa báo nhóm Zalo lớp nghỉ', 'Class group not told yet') + '</div>';
+    const at = h.lastIndexOf('</div>');
+    return at > 0 ? h.slice(0, at) + line + h.slice(at) : h + line;
+  } catch (e) { return h; }
+};
