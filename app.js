@@ -264,7 +264,10 @@ async function writeCells(file, items) {
     if (value !== x.expected) { conflict(x, value); return; }
     data.push({ range: x.range, values: [[x.value]] });
   });
-  if (data.length) await batchWrite(file, data);
+  if (!data.length) return;
+  const res = await batchWrite(file, data);
+  // Owner 11/11: the server writes an English reason in Vietnamese; this page keeps the same text so the next edit is not a "conflict".
+  ((res && res.vi) || []).forEach(v => { const x = all.find(y => y.range === v.range), t = x && trackers[x.classKey]; if (t) t.set(x.row, x.col, v.value); });
 }
 function conflict(x, value) {
   const hit = trackers[x.classKey];
