@@ -5913,18 +5913,29 @@ function offItems(withDone) {
 }
 const offWhen = x => { const t = today(); return t > x.due ? { hot: true, text: T('Trễ hạn báo (phải báo trước 1 ngày)', 'Late: due a day before') } : t === x.due ? { hot: true, text: T('Hạn báo hôm nay', 'Tell the group today') } : { hot: false, text: T('Báo trước ', 'Tell by ') + viDate(x.due).slice(0, 5) }; };
 const offBtn = (x, v, cls, label) => '<button class="' + cls + '" data-act="offTick" data-k="' + esc(offName(x.s)) + '" data-day="' + x.s.day + '" data-v="' + v + '">' + label + '</button>';
+// Owner 11/11 ("tôi lo nhiều thứ nổi quá… nhưng vẫn cần cảnh báo"): one pop-up for every kind of reminder, one short line per kind;
+// a line opens to its items. It stays until each item is ticked; "Để 30 phút" hides all of it for half an hour.
+const POP_SECTIONS = [], popOpen = new Set();
+function popSection(sec) { POP_SECTIONS.push(sec); }
+popSection({ k: 'off', icon: '📢', title: () => T('Lớp nghỉ · báo nhóm Zalo lớp (trước 1 ngày)', 'Class off · tell the class group a day ahead'),
+  items: () => offItems(false).map(x => { const w = offWhen(x); return { hot: w.hot, html: '<div class="ph-cls"><b>' + esc(Q.clean(x.s.cls).replace(/\.\d+$/, '')) + '</b> <span class="muted small">' + T('nghỉ ', 'off ') + esc(dayLabel(x.s.day)) + ' · ' + Q.clock(x.s.start) + ' · ' + T('CN ', 'Homeroom ') + esc(titleCase(x.cn || '—')) + '</span>' +
+    '<div class="ph-line"><span class="ph-who ' + (w.hot ? 'ph-none' : '') + '">' + esc(w.text) + '</span><span class="ph-btns">' + offBtn(x, OFF_DONE, 'good', '✅ ' + T('Đã báo nhóm lớp', 'Told the group')) + '</span></div></div>' }; }) });
 function paintOffPop() {
   let box = document.getElementById('offPop');
-  const items = view === 'lenlop' || Date.now() < offSnoozeUntil || document.getElementById('phPop') ? [] : offItems(false);
-  if (!items.length) { if (box) box.remove(); return; }
+  const quiet = view === 'lenlop' || Date.now() < offSnoozeUntil || document.getElementById('phPop');
+  const secs = quiet ? [] : POP_SECTIONS.map(sec => { let items = []; try { items = sec.items(); } catch (e) {} return { sec, items }; }).filter(x => x.items.length);
+  if (!secs.length) { if (box) box.remove(); return; }
   if (!box) { box = document.createElement('div'); box.id = 'offPop'; document.body.appendChild(box); }
-  const body = items.map(x => { const w = offWhen(x); return '<div class="ph-cls"><b>' + esc(Q.clean(x.s.cls).replace(/\.\d+$/, '')) + '</b> <span class="muted small">' + T('nghỉ ', 'off ') + esc(dayLabel(x.s.day)) + ' · ' + Q.clock(x.s.start) + ' · ' + T('CN ', 'Homeroom ') + esc(titleCase(x.cn || '—')) + '</span>' +
-    '<div class="ph-line"><span class="ph-who ' + (w.hot ? 'ph-none' : '') + '">' + esc(w.text) + '</span><span class="ph-btns">' + offBtn(x, OFF_DONE, 'good', '✅ ' + T('Đã báo nhóm lớp', 'Told the group')) + '</span></div></div>'; }).join('');
-  box.innerHTML = '<div class="pair-veil"></div><div class="pair-sheet ph-pop" role="alertdialog" aria-label="' + T('Lớp nghỉ cần báo nhóm', 'Classes off') + '">' +
-    '<b class="ph-t">📢 ' + T('Lớp nghỉ · cần báo nhóm Zalo lớp', 'Class off · tell the class group') + ' · ' + items.length + '</b>' +
-    '<p class="small">' + T('Quy định: báo lên nhóm Zalo của lớp ít nhất 1 ngày trước ngày nghỉ. Báo xong bấm "Đã báo nhóm lớp" — app lưu tên người bấm và giờ bấm.', 'Tell the class group at least one day ahead, then tap the button; your name and the time are kept.') + '</p>' +
+  const n = secs.reduce((k, x) => k + x.items.length, 0), one = secs.length === 1;
+  const body = secs.map(x => { const hot = x.items.filter(i => i.hot).length;
+    return '<details class="pop-sec" data-k="' + x.sec.k + '"' + (one || popOpen.has(x.sec.k) ? ' open' : '') + '><summary><span>' + x.sec.icon + ' ' + esc(x.sec.title()) + '</span><b class="pop-n' + (hot ? ' hot' : '') + '">' + x.items.length + '</b>' +
+      (hot ? '<span class="pop-hot">' + hot + T(' đến hạn', ' due') + '</span>' : '') + '</summary>' + x.items.map(i => i.html).join('') + '</details>'; }).join('');
+  box.innerHTML = '<div class="pair-veil"></div><div class="pair-sheet ph-pop pop-todo" role="alertdialog" aria-label="' + T('Việc cần làm', 'To do') + '">' +
+    '<b class="ph-t">🔔 ' + T('Việc cần làm', 'To do') + ' · ' + n + '</b>' +
+    '<p class="small">' + T('Hiện cho tới khi có người tick. Ai tick, lúc nào đều được lưu lại.', 'Stays until someone ticks it; who and when are kept.') + '</p>' +
     body + '<div class="chot-row"><button class="quiet" data-act="offLater">' + T('Để 30 phút', 'In 30 minutes') + '</button></div></div>';
 }
+document.addEventListener('toggle', e => { const d = e.target; if (d && d.classList && d.classList.contains('pop-sec')) { if (d.open) popOpen.add(d.dataset.k); else popOpen.delete(d.dataset.k); } }, true);
 document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-act="offTick"],[data-act="offLater"]');
   if (!b) return;
@@ -5965,4 +5976,89 @@ sessionCard = function (s) {
     const at = h.lastIndexOf('</div>');
     return at > 0 ? h.slice(0, at) + line + h.slice(at) : h + line;
   } catch (e) { return h; }
+};
+
+
+/* ---------- Owner 11/11: new pupils ("có hs mới thì đón xong nọ kia"; steps and owners as proposed 08/11, "riêng từng việc") ----------
+ * The pupils come from the tuition app's roster scan (server op 'hsmoi': a pupil newly added to a THEO DÕI TOÀN DIỆN, no transfers,
+ * none the owner skipped). Each pupil has ten ticks, each with its owner and day:
+ *   homeroom TA: pick up + trial books (the day), then "knows how to hand in work" at the 1st, 2nd and 3rd lesson after;
+ *   teacher of the trial lesson: feedback (fits the class?) the same day;
+ *   managers: message parents the same day, parents confirm (+1 day), fee, learning-web link, guide to parents (+2 days).
+ * A due tick goes into the shared "Việc cần làm" pop-up for its owner (managers also see anything overdue) until someone ticks it.
+ * Ticks are roll-call log rows (class "HS MỚI", name "<class> · <pupil> · <step>", person and time kept); "Bỏ" adds a newer row.
+ * Pupils added before 11/11 are listed (bell and quick list) but do not pop up. */
+const HS_CLS = 'HS MỚI', HS_DONE = 'Đã xong', HS_POP_FROM = '2026-11-11';
+const HS_STEPS = [['don', 'Đón HS, phát sách học thử', 'cn', 0], ['gv', 'GV nhận xét buổi học thử (có hợp lớp không)', 'gv', 0], ['nhan', 'Nhắn PH kết quả học thử', 'ql', 0],
+  ['xn', 'PH xác nhận cho con học', 'ql', 1], ['phi', 'Thu phí nhập học', 'ql', 2], ['link', 'Tạo link web học của con', 'ql', 2], ['hd', 'Gửi PH hướng dẫn nộp bài', 'ql', 2],
+  ['b1', 'Buổi 1: con biết cách nộp bài', 'cn', 'L1'], ['b2', 'Buổi 2: con nộp bài đúng', 'cn', 'L2'], ['b3', 'Buổi 3: con nộp bài đúng', 'cn', 'L3']];
+const HS_WHO = { cn: 'TA chủ nhiệm', gv: 'GV buổi học thử', ql: 'Quản lí' };
+const hsData = { list: null, at: 0, loading: false };
+function hsLoad(force) {
+  if (!me || hsData.loading || (!force && Date.now() - hsData.at < 5 * 60 * 1000)) return;
+  hsData.loading = true;
+  call('hsmoi', {}).then(d => { hsData.list = (d && d.list) || []; hsData.at = Date.now(); }).catch(() => { hsData.at = Date.now(); }).finally(() => { hsData.loading = false; render(); });
+}
+const hsName = (ev, st) => (ev.cls + ' · ' + ev.name + ' · ' + st).slice(0, 160);
+const hsTick = (ev, st) => { if (!logs.marks) return null; const n = hsName(ev, st), rows = logs.marks.rows.filter(r => r.cls === HS_CLS && r.name === n); const l = rows[rows.length - 1]; return l && l.status === HS_DONE ? l : null; };
+// The class lessons from the day the pupil joined (the trial lesson first), from the Schedule weeks loaded on this page.
+function hsLessons(ev) {
+  const seen = new Set();
+  return Object.values(weeks).flatMap(w => w.data.sessions || []).filter(s => !s.off && s.day >= ev.day && Q.key(Q.clean(s.cls).replace(/\.\d+$/, '')) === Q.key(ev.cls))
+    .filter(s => { const k = s.day + '|' + s.start; if (seen.has(k)) return false; seen.add(k); return true; }).sort((a, b) => a.day.localeCompare(b.day) || a.start - b.start);
+}
+function hsSteps(ev) {
+  const lessons = hsLessons(ev), trial = lessons.find(s => s.day === ev.day) || lessons[0], after = lessons.filter(s => s.day > ev.day);
+  const cn = homeroom[Q.key(ev.cls)] || (trial && trial.ta) || '', gv = (trial && trial.teacher) || '';
+  return HS_STEPS.map(([k, label, role, at]) => {
+    const n = typeof at === 'string' ? Number(at.slice(1)) : 0;
+    const due = n ? (after[n - 1] ? after[n - 1].day : Q.addDays(ev.day, 7 * n)) : Q.addDays(ev.day, at);
+    const owner = role === 'cn' ? cn : role === 'gv' ? gv : '';
+    return { k, label, role, due, owner, done: hsTick(ev, k), mine: role === 'ql' ? isManager() : isMe(owner) };
+  });
+}
+const hsBtn = (ev, st, v, cls, label) => '<button class="' + cls + '" data-act="hsTick" data-k="' + esc(hsName(ev, st)) + '" data-v="' + v + '">' + label + '</button>';
+const hsPupil = ev => '<b>' + esc(ev.eng || ev.name) + '</b> <small>' + esc(ev.name) + '</small> · ' + esc(ev.cls);
+popSection({ k: 'hs', icon: '🆕', title: () => T('Học sinh mới · từng việc', 'New pupils · each step'),
+  items: () => {
+    const t = today();
+    hsLoad();
+    return (hsData.list || []).filter(ev => ev.day >= HS_POP_FROM).map(ev => {
+      const due = hsSteps(ev).filter(x => !x.done && x.due <= t && (x.mine || (isManager() && x.due < t)));
+      if (!due.length) return null;
+      return { hot: due.some(x => x.due < t), html: '<div class="ph-cls">' + hsPupil(ev) + '<span class="muted small"> · ' + T('vào lớp ', 'joined ') + viDate(ev.day).slice(0, 5) + '</span>' +
+        due.map(x => '<div class="ph-line"><span class="ph-who' + (x.due < t ? ' ph-none' : '') + '">' + esc(x.label) + ' <small>· ' + esc(x.owner ? titleCase(x.owner) : HS_WHO[x.role]) + (x.due < t ? ' · ' + T('trễ từ ', 'late since ') + viDate(x.due).slice(0, 5) : '') + '</small></span><span class="ph-btns">' + hsBtn(ev, x.k, HS_DONE, 'good', '✅ ' + T('Xong', 'Done')) + '</span></div>').join('') + '</div>' };
+    }).filter(Boolean);
+  } });
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="hsTick"]');
+  if (!b) return;
+  e.stopPropagation();
+  appendMark({ day: today(), cls: HS_CLS, lesson: '', start: 0 }, { row: '', name: b.dataset.k, eng: '' }, b.dataset.v);
+  say(b.dataset.v === HS_DONE ? T('Đã ghi xong việc này, có tên bạn và giờ bấm.', 'Saved with your name and the time.') : T('Đã bỏ dấu.', 'Undone.'));
+  render();
+}, true);
+// Bell, and the quick list on Lịch with every step of every new pupil: who ticked it and when (the trail), or who still has it.
+QA.hsmoi = ['Học sinh mới', 'New pupils', '<circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M19 8v6M16 11h6"/>'];
+const bellItemsBeforeHs = bellItems;
+bellItems = function () {
+  const out = bellItemsBeforeHs();
+  try {
+    hsLoad();
+    const t = today(), left = (hsData.list || []).reduce((n, ev) => n + hsSteps(ev).filter(x => !x.done && x.due <= t && (x.mine || isManager())).length, 0);
+    if (left) out.push({ k: 'hsmoi', icon: '🆕', text: left + T(' việc học sinh mới đến hạn', ' new-pupil steps due'), n: left, hot: true, go: { view: 'lich', sec: 'homnay' } });
+  } catch (e) {}
+  return out;
+};
+const qaRowsBeforeHs = qaRows;
+qaRows = function (kind) {
+  if (kind !== 'hsmoi') return qaRowsBeforeHs(kind);
+  const t = today(), out = [];
+  (hsData.list || []).forEach(ev => hsSteps(ev).forEach(x => {
+    const mine = x.done && (isManager() || isMe(x.done.by));
+    out.push({ key: 'hsmoi|' + hsName(ev, x.k), cls: ev.cls, who: (ev.eng || ev.name) + ' · ' + x.label,
+      reason: x.done ? '✓ ' + titleCase(x.done.by || '?') + ' ' + String(x.done.at || '').slice(11, 16) + ' ' + String(x.done.at || '').slice(0, 5) : (x.owner ? titleCase(x.owner) : HS_WHO[x.role]) + ' · ' + (x.due < t ? T('trễ từ ', 'late since ') : T('hạn ', 'due ')) + viDate(x.due).slice(0, 5),
+      btn: x.done ? (mine ? hsBtn(ev, x.k, 'Bỏ', 'quiet', T('Bỏ', 'Undo')) : '') : (x.mine || isManager() ? hsBtn(ev, x.k, HS_DONE, 'good', ico('check')) : ''), hot: !x.done && x.due < t });
+  }));
+  return out;
 };
