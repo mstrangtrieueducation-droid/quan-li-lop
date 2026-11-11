@@ -1858,7 +1858,7 @@ pupilFlags = function (ctx, r) {
   } else {
     const owed = totalOwed(ctx)[r.i] || [], dm = d => d.slice(8, 10) + '/' + d.slice(5, 7);
     const what = x => (x.practice ? (x.label || 'Tự luyện').replace(/^Tự luyện video/i, 'Tự luyện') : (x.lesson ? 'Tiết ' + Number(x.lesson) : dm(x.day)) + (x.label ? ' ' + x.label.toLowerCase() : '')) + (x.wrong ? ' (quay sai)' : '');
-    if (owed.length) out.push('<span class="rv-flag debt" title="' + esc(owed.map(x => what(x) + ' · ' + dm(x.day)).join('\n')) + '">🎥 Thiếu ' + owed.length + ' video: ' + esc(kidsKinds(owed)) + ' <i class="rv-en-i">Missing video</i></span>');
+    if (owed.length) out.push('<span class="rv-flag debt" title="' + esc(owed.map(x => what(x) + ' · ' + dm(x.day)).join('\n')) + '">🎥 Thiếu ' + owed.length + ' bài: ' + esc(kidsKinds(owed)) + ' <i class="rv-en-i">Missing video</i></span>');
   }
   return out.length ? '<span class="rv-flags">' + out.join('') + '</span>' : '';
 };
@@ -2776,7 +2776,7 @@ kidsMakeup = function (ctx, p, i, canEdit) {
   let all = owedOnPage.get(ctx.tracker);
   if (!all) { all = totalOwed(ctx); owedOnPage.set(ctx.tracker, all); }
   const list = (all[i] || []).map(x => (x.practice ? (x.label || 'Tự luyện').replace(/^Tự luyện video/i, 'Tự luyện') : (x.lesson ? 'Tiết ' + Number(x.lesson) : viDate(x.day).slice(0, 5)) + (x.label ? ' ' + x.label.toLowerCase() : '')) + (x.wrong ? ' (quay sai)' : ''));
-  return list.length ? base + '<div class="owed" title="' + esc(list.join('\n')) + '">🎥 ' + T('Thiếu ', 'Missing ') + list.length + ' video: ' + esc(kidsKinds(all[i] || [])) + '</div>' : base;
+  return list.length ? base + '<div class="owed" title="' + esc(list.join('\n')) + '">🎥 ' + T('Thiếu ', 'Missing ') + list.length + ' bài: ' + esc(kidsKinds(all[i] || [])) + '</div>' : base;
 };
 
 /* ---------- KIDS owed work in short, like IELTS (owner 08/11: "theo logic kids đã chốt, chỉ là hiển thị cũng vậy") ----------
@@ -6142,4 +6142,40 @@ paintStrip = function () {
   }
   if (rvqBest.size) list.style.setProperty('--rvq', rvqBest.size + 'px'); else list.style.removeProperty('--rvq');
   fitClassScreen();
+};
+
+/* ---------- Owner 11/11 ("dùng bộ đếm chung với dash… dash chính xác"): KIDS owed work comes from the parent pages ----------
+ * The server reads each pupil's parent-page data and returns what that page counts as overdue (op 'dashno', kept 10 minutes).
+ * The class screen, the lesson card line and the summary use it; a pupil without a parent link (or before the answer arrives)
+ * keeps the sheet-based count. Work due on the lesson day counts once the lesson has started (owner: "đếm tới lúc mở lớp"). */
+const dashOwed = {};
+function dashOwedFor(ctx) {
+  const s = ctx && ctx.session;
+  if (!s || !ctx.tracker || isSecondary(s) || !/^KIDS\s*\d+/i.test(Q.clean(s.cls))) return null;
+  const c = classOf(s);
+  if (!c) return null;
+  const hit = dashOwed[c.key];
+  if ((!hit || Date.now() - hit.at > 5 * 60 * 1000) && !(hit && hit.loading)) {
+    dashOwed[c.key] = Object.assign({ at: 0 }, hit, { loading: true });
+    call('dashno', { cls: Q.clean(s.cls).replace(/\.\d+$/, '') }).then(d => { dashOwed[c.key] = { at: Date.now(), data: d }; })
+      .catch(() => { dashOwed[c.key] = { at: Date.now(), data: hit && hit.data || null }; }).finally(() => { try { owedMemo.key = ''; } catch (e) {} render(); });
+  }
+  const d = hit && hit.data;
+  if (!d || !d.pupils || !d.pupils.length) return null;
+  const byRow = new Map(d.pupils.filter(p => p.ok).map(p => [p.row, p.items]));
+  return ctx.tracker.pupils.map(p => byRow.has(p.row) ? byRow.get(p.row) : null);
+}
+const dashToOwed = x => ({ col: -1, day: x.due, lesson: x.lesson || '', label: x.label, wrong: false, practice: !!x.practice });
+const owedOfBeforeDash = owedOf;
+owedOf = function (ctx) {
+  const base = owedOfBeforeDash(ctx), dash = dashOwedFor(ctx);
+  if (!dash) return base;
+  const s = ctx.session, started = s.day < today() || (s.day === today() && minutesNow() >= s.start);
+  return ctx.tracker.pupils.map((p, i) => dash[i] ? dash[i].filter(x => x.due < s.day || (started && x.due === s.day)).map(dashToOwed) : (base[i] || []));
+};
+const totalOwedBeforeDash = totalOwed;
+totalOwed = function (ctx) {
+  const base = totalOwedBeforeDash(ctx), dash = dashOwedFor(ctx);
+  if (!dash) return base;
+  return ctx.tracker.pupils.map((p, i) => dash[i] ? dash[i].filter(x => x.due < ctx.session.day).map(dashToOwed) : (base[i] || []));
 };
