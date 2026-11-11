@@ -1167,7 +1167,8 @@ function render() {
   if (!me) return;
   const active = document.activeElement;
   if (active && $('main').contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName)) return;
-  const items = [['lich', T('Lịch', 'Schedule')]].concat(isManager() || myHomerooms().some(x => isMe(x.cm)) ? [['lopcn', T('<span class="nl">Lớp chủ nhiệm</span><span class="ns">Chủ nhiệm</span>', 'Homeroom')]] : []).concat(isOwner() ? [['luong', T('Lương', 'Pay')]] : [['cong', T('<span class="nl">Công của tôi</span><span class="ns">Công</span>', '<span class="nl">My hours</span><span class="ns">Hours</span>')], ['luong', T('Lương', 'Pay')]]).concat(isManager() ? [['dieuhanh', 'Điều hành'], ['hocphi', T('Học phí', 'Tuition')]] : []).concat(isOwner() ? [['hopdong', T('Hợp đồng', 'Contracts')], ['nguoi', 'Người dùng']] : []);
+  const items = [['lich', T('Lịch', 'Schedule')]].concat(isManager() || myHomerooms().some(x => isMe(x.cm)) ? [['lopcn', T('<span class="nl">Lớp chủ nhiệm</span><span class="ns">Chủ nhiệm</span>', 'Homeroom')]] : []).concat(isManager() ? [['dieuhanh', 'Điều hành'], ['hocphi', T('Học phí', 'Tuition')]] : []).concat(isOwner() ? [] : [['cong', T('<span class="nl">Công của tôi</span><span class="ns">Công</span>', '<span class="nl">My hours</span><span class="ns">Hours</span>')]]).concat(isOwner() ? [['hopdong', T('Hợp đồng', 'Contracts')], ['nguoi', 'Người dùng']] : []).concat([['luong', T('Lương', 'Pay')]]);
+  // Owner 11/11: the tabs used every day come first (managers: Điều hành, Học phí), so a small phone keeps them out of the ⋯ menu; Lương is opened now and then, so it is last.
   paintLang();
   paintTheme();
   $('nav').innerHTML = items.map(([k, t], i) => '<button class="' + (view === k ? 'on' : '') + (i >= 5 ? ' nav-x' : '') + '" data-act="view" data-v="' + k + '">' + t + '</button>').join('') +
