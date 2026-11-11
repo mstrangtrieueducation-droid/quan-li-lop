@@ -707,7 +707,13 @@
   .rv-strip .ll-head .rv-saved, .rv-strip .ll-head .rv-editing { display: none; }
   .rv-strip .rv-legend { font-size: 13px; gap: 2px 10px; }
   .rv-strip .rv-legend .rv-en { font-size: 11px; }
-  .rv-strip .rv-q { width: 33px; height: 33px; font-size: 17px; border-radius: 9px; }
+  .rv-strip .rv-q { width: var(--rvq, 33px); height: var(--rvq, 33px); font-size: calc(var(--rvq, 33px) * .52); border-radius: 9px; }
+  /* Owner 11/11 (board photo): locked icons were too faint to see; they stay clear and still say they are locked by their look. */
+  .rv-strip .rv-q:disabled { opacity: .8; filter: saturate(.7); }
+  .rv-strip .rv-list.rv-stack .rv-row:not(.open) { flex-wrap: wrap; align-content: center; }
+  .rv-strip .rv-list.rv-stack .rv-row:not(.open) .rv-name { flex: 1 1 100%; min-width: 0; }
+  .rv-strip .rv-list.rv-stack .rv-row:not(.open) .rv-name .ll-name { font-size: 34px; }
+  .rv-strip .rv-list.rv-stack .rv-row:not(.open) .rv-quick { flex: 1 1 auto; flex-wrap: wrap; max-width: 100%; }
   .rv-strip .rv-quick { gap: 3px; }
   .rv-strip .rv-row:not(.open) .rv-name .ll-name { font-size: 26px; font-weight: 800; white-space: nowrap; }
   .rv-strip .rv-row:not(.open) .rv-name { flex: 1 1 auto; min-width: max-content; padding: 2px 4px; }
@@ -1387,10 +1393,10 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261111H"></script>
-<script src="logic.js?v=20261111H"></script>
-<script src="app.js?v=20261111H"></script>
-<script src="qrcode.js?v=20261111H"></script>
-<script src="extra.js?v=20261111H"></script>
+<script src="config.js?v=20261111M"></script>
+<script src="logic.js?v=20261111M"></script>
+<script src="app.js?v=20261111M"></script>
+<script src="qrcode.js?v=20261111M"></script>
+<script src="extra.js?v=20261111M"></script>
 </body>
 </html>

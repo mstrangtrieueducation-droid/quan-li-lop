@@ -2642,7 +2642,8 @@ let llOpenRow = null;
 // IELTS and FIGHTER first (owner 08/11: "phần khung hẹp áp dụng cho ielts và fighter trước"); KIDS keep their usual rows.
 // All classes (IELTS/FIGHTER first on 08/11, KIDS the same evening: "kids cũng cần sửa theo các nút tương ứng").
 // Owner 09/11: also a laptop window split in half or a third gets the icon ("nút tắt") layout that fits the window.
-const stripOn = () => view === 'lenlop' && window.innerWidth < 900 && !!current;
+// Owner 11/11 (portrait board): a tall screen also gets the icon layout, whatever its width.
+const stripOn = () => view === 'lenlop' && (window.innerWidth < 900 || window.innerHeight > window.innerWidth * 1.2) && !!current;
 document.addEventListener('click', e => {
   const n = stripOn() && e.target.closest && e.target.closest('.rv-row .rv-name');
   if (!n) return;
@@ -2675,6 +2676,8 @@ fitClassScreen = function () {
   if (!list) return;
   const open = list.querySelector('.rv-row.open');
   if (open) open.classList.remove('open');
+  // Owner 11/11 (board photo): the row height grown by the previous fit was measured again, so the class shrank to 30%.
+  list.style.gridAutoRows = '';
   list.style.transform = ''; list.style.width = ''; list.style.marginBottom = ''; list.style.gridTemplateColumns = ''; list.style.transformOrigin = '0 0';
   const top = list.getBoundingClientRect().top + window.scrollY, avail = window.innerHeight - top - 10;
   // A line fits when its last button ends inside it (the small count badges sticking out of a button's corner do not count).
@@ -2691,7 +2694,8 @@ fitClassScreen = function () {
   const best = c => { if (fits(1, c)) return 1; if (!fits(0.3, c)) return 0.3; let lo = 0.3, hi = 1; for (let k = 0; k < 8; k++) { const mid = (lo + hi) / 2; if (fits(mid, c)) lo = mid; else hi = mid; } return lo; };
   // One column unless two (or three) make the names clearly bigger.
   let s = best(1), cols = 1;
-  for (let c = 2; c <= 3 && s < 0.8; c++) { const sc = best(c); if (sc > s * 1.12) { s = sc; cols = c; } }
+  // A tall window keeps one column (owner 11/11: name big on top, icons under it).
+  for (let c = 2; c <= (list.classList.contains('rv-stack') ? 1 : 3) && s < 0.8; c++) { const sc = best(c); if (sc > s * 1.12) { s = sc; cols = c; } }
   list.style.gridTemplateColumns = cols > 1 ? 'repeat(' + cols + ', minmax(0, 1fr))' : '';
   list.style.width = s < 0.999 ? (100 / s) + '%' : '';
   // Height left over (the width was the limit): lines grow taller so the pupils fill the box (owner: pupils take ~5/6 of it).
@@ -6114,4 +6118,27 @@ render = function () {
     const n = hpLines().length, b = document.querySelector('#nav [data-v="hocphi"]');
     if (b && n && !b.querySelector('.hp-dot')) b.insertAdjacentHTML('beforeend', ' <span class="hp-dot">' + n + '</span>');
   } catch (e) {}
+};
+
+/* ---------- Owner 11/11 (board photo, IELTS 47 on a portrait board: "bên cạnh trắng trơn… tích hợp biểu tượng để chọn luôn") ----------
+ * In the narrow layout the icon buttons grow to use the empty width beside the names (34–64 px), so they are easy to see and tap. */
+const paintStripBeforeSize = paintStrip;
+let rvqBest = { key: '', size: 0 };
+paintStrip = function () {
+  paintStripBeforeSize();
+  if (!stripOn()) return;
+  const list = document.querySelector('.rv-list'), row = list && list.querySelector('.rv-row:not(.open) .rv-quick');
+  if (!list || !row || document.querySelector('.ll-sheet')) return;
+  // A tall window (portrait board) puts the icons on a line under the name, so both can be big.
+  list.classList.toggle('rv-stack', innerHeight > innerWidth * 1.2);
+  const key = [innerWidth, innerHeight, list.children.length, row.children.length].join('|'), eff = () => { const q = list.querySelector('.rv-row:not(.open) .rv-q'); return q ? q.getBoundingClientRect().width : 0; };
+  // Try a few button sizes; keep the one that ends up biggest on screen after the class is fitted to the window.
+  if (rvqBest.key !== key) {
+    list.style.removeProperty('--rvq'); fitClassScreen();
+    let best = { size: 0, shown: eff() };
+    [64, 56, 48, 42].forEach(size => { list.style.setProperty('--rvq', size + 'px'); fitClassScreen(); const shown = eff(); if (shown > best.shown + 1) best = { size, shown }; });
+    rvqBest = { key, size: best.size };
+  }
+  if (rvqBest.size) list.style.setProperty('--rvq', rvqBest.size + 'px'); else list.style.removeProperty('--rvq');
+  fitClassScreen();
 };
