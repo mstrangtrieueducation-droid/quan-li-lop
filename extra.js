@@ -1251,7 +1251,7 @@ function reportChip(x) {
 function reportRow(x, showCm) {
   const s = x.s, link = reportLink(s), open = x.state !== 'ok' && x.state !== 'late';
   return '<div class="rp-row ' + x.state + '"><div class="rp-what"><b>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</b><span class="small muted">' + esc(dayLabel(s.day)) + ' ' + Q.clock(s.start) + (showCm ? ' · CN ' + esc(x.cm) : '') + (x.done && x.done.by ? ' · ' + esc(x.done.by) : '') + '</span></div>' + reportChip(x) +
-    '<span class="spacer"></span>' + (link && open ? '<a class="btn quiet" href="' + esc(link) + '" target="_blank" rel="noopener">' + T('Mở BÁO CÁO', 'Open report tab') + '</a>' : '') +
+    '<span class="spacer"></span>' + rpChotBtn(s) + (link && open ? '<a class="btn quiet" href="' + esc(link) + '" target="_blank" rel="noopener">' + T('Mở BÁO CÁO', 'Open report tab') + '</a>' : '') +
     (canReport(x) ? (open ? '<button class="good" data-act="rpDone" data-k="' + esc(x.k) + '">' + T('Đã report ✓', 'Mark reported') + '</button>' : '<button class="quiet small" data-act="rpUndo" data-k="' + esc(x.k) + '">' + T('Bỏ', 'Undo') + '</button>') : '') + '</div>';
 }
 function reportSection() {
@@ -1285,6 +1285,68 @@ function reportTick(k, undo) {
   if (!undo) say(T('Đã ghi report ', 'Reported ') + x.s.cls + T(' tiết ', ' lesson ') + x.s.lesson + '.');
 }
 const isCm = () => !!me && Object.values(homeroom).some(n => isMe(n));
+
+/* ---------- Report ↔ bảng chốt (owner 12/11: "học xong chốt buổi thì khi chủ nhiệm report lớp... nối được cái ảnh chốt sang đấy
+ * để chủ nhiệm có vào luôn lúc chốt, lúc báo cáo, lúc report") ----------
+ * Every lesson waiting for a report gets a "📸 Bảng chốt" button that opens that lesson's summary sheet straight away. On the sheet
+ * the homeroom teacher finds the report tools (open the BÁO CÁO tab, "Đã report ✓") and a way back to the report list. */
+const rpBack = { key: '', view: '' };
+// "💾 Lưu ảnh": the white sheet becomes a PNG named after the class, lesson and day. On a phone it opens the share menu (Zalo…);
+// elsewhere it downloads. The picture library is loaded only the first time someone taps the button.
+let h2cLoad = null;
+const loadH2c = () => window.html2canvas ? Promise.resolve() : h2cLoad || (h2cLoad = new Promise((ok, bad) => { const sc = document.createElement('script'); sc.src = 'html2canvas.min.js?v=1.4.1'; sc.onload = ok; sc.onerror = () => { h2cLoad = null; bad(new Error('load')); }; document.head.appendChild(sc); }));
+let sumSaving = false;
+async function sumSave(btn) {
+  const el = document.querySelector('.sum-sheet'), s = current;
+  if (!el || !s || sumSaving) return;
+  sumSaving = true; const label = btn.innerHTML; btn.disabled = true; btn.innerHTML = '⏳ ' + T('Đang tạo ảnh…', 'Making image…');
+  try {
+    await loadH2c();
+    const canvas = await window.html2canvas(el, { scale: Math.min(3, Math.max(2, window.devicePixelRatio || 1)), backgroundColor: '#ffffff', useCORS: true, logging: false,
+      // Square corners, no shadow, and plain digits: the picture library spaces "11/11" and "17:30" oddly with the app's number style.
+      onclone: d => { const st = d.createElement('style'); st.textContent = '.sum-sheet{box-shadow:none!important;border-radius:0!important;margin:0!important}.sum-sheet,.sum-sheet *{font-variant-numeric:normal!important;font-feature-settings:normal!important;font-variant-ligatures:none!important}'; d.head.appendChild(st); } });
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    if (!blob) throw new Error('blob');
+    const name = (Q.clean(s.cls) + ' Tiet ' + s.lesson + ' ' + s.day).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^\w.-]+/g, '_') + '.png';
+    const file = new File([blob], name, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] }) && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      try { await navigator.share({ files: [file], title: s.cls + ' · Tiết ' + s.lesson }); say(T('Đã mở chia sẻ ảnh bảng chốt.', 'Share opened.')); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    say(T('Đã lưu ảnh bảng chốt: ', 'Saved: ') + name);
+  } catch (e) { say(T('Không tạo được ảnh, vui lòng chụp màn hình phần khung trắng.', 'Could not make the image; please take a screenshot.'), 'bad'); }
+  finally { sumSaving = false; btn.disabled = false; btn.innerHTML = label; }
+}
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-act="sumSave"]'); if (b) { e.stopImmediatePropagation(); sumSave(b); } }, true);
+const rpChotBtn = s => lessonEnded(s) && classOf(s) ? '<button class="quiet" data-act="rpChot" data-row="' + s.row + '" data-day="' + esc(s.day) + '">📸 ' + T('Bảng chốt', 'Summary') + '</button>' : '';
+function rpChotBar(s) {
+  if (rpBack.key !== Q.sessionKey(s)) return '';
+  const x = reportItems('').find(y => y.k === rpBack.key), link = reportLink(s), open = x && x.state !== 'ok' && x.state !== 'late';
+  return '<div class="sum-bar rp-chot"><button class="quiet" data-act="rpChotBack">‹ ' + T('Về danh sách report', 'Back to reports') + '</button>' + (x ? reportChip(x) : '') + '<span class="spacer"></span>' +
+    (link ? '<a class="btn quiet" href="' + esc(link) + '" target="_blank" rel="noopener">' + T('Mở BÁO CÁO', 'Open report tab') + '</a>' : '') +
+    (x && canReport(x) && open ? '<button class="good" data-act="rpDone" data-k="' + esc(x.k) + '">' + T('Đã report ✓', 'Mark reported') + '</button>' : '') + '</div>';
+}
+function rpChotOpen(s) {
+  rpBack.key = Q.sessionKey(s); rpBack.view = view;
+  current = s; llMode = ''; llMenu = null; llWarn = null; llSummary = { key: rpBack.key, mode: true }; view = 'lenlop';
+  document.body.classList.add('lenlop'); render(); window.scrollTo(0, 0);
+  guarded(() => Promise.all([loadMarks(true), loadTracker(classOf(s), true), loadBehave(true).catch(() => {})]));
+}
+function rpChotBack() {
+  const to = rpBack.view && rpBack.view !== 'lenlop' ? rpBack.view : 'lopcn';
+  rpBack.key = ''; rpBack.view = ''; current = null; llMenu = null; llWarn = null; llMode = ''; llGradeBox = null;
+  view = to; document.body.classList.remove('lenlop'); flush(); render(); window.scrollTo(0, 0);
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act]');
+  if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'rpChot') { e.stopImmediatePropagation(); const s = findSession(b.dataset.row, b.dataset.day); if (s && classOf(s)) rpChotOpen(s); else say(T('Không tìm thấy buổi học này trong lịch.', 'Lesson not found.'), 'bad'); return; }
+  if (act === 'rpChotBack') { e.stopImmediatePropagation(); rpChotBack(); return; }
+  // Leaving a lesson opened from the report list goes back to that list, not to the class page.
+  if (act === 'llExit' && rpBack.key && current && Q.sessionKey(current) === rpBack.key) { e.stopImmediatePropagation(); rpChotBack(); }
+}, true);
 // Homeroom page: lesson reports first, then the web homework still owed.
 const viewHomeroomsBeforeRp = viewHomerooms;
 viewHomerooms = function () {
@@ -1315,7 +1377,7 @@ function todoCard() {
   if (!items.length && !reps.length) return '<div class="card row todo empty-todo"><b>✅ ' + T('Việc cần làm hôm nay', 'To do today') + '</b><span class="small muted">' + T('Chưa có việc nào cần bạn.', 'Nothing needs you right now.') + '</span></div>';
   return '<div class="card row todo"><div class="row-top"><b>✅ ' + T('Việc cần làm hôm nay', 'To do today') + '</b><span class="small muted">' + (items.length + reps.length) + T(' việc', ' items') + '</span></div>' +
     reps.map(x => '<div class="todo-item' + (x.state === 'over' ? ' hot' : '') + '"><span class="ico">📝</span><span class="txt">' + T('Report ', 'Report ') + esc(x.s.cls) + T(' tiết ', ' lesson ') + esc(x.s.lesson) + ' <span class="muted">(' + esc(viDate(x.s.day).slice(0, 5)) + ')</span></span>' + reportChip(x) +
-      (reportLink(x.s) ? '<a class="btn quiet" href="' + esc(reportLink(x.s)) + '" target="_blank" rel="noopener">' + T('Mở BÁO CÁO', 'Open') + '</a>' : '') + '<button class="good" data-act="rpDone" data-k="' + esc(x.k) + '">' + T('Đã report ✓', 'Done') + '</button></div>').join('') +
+      rpChotBtn(x.s) + (reportLink(x.s) ? '<a class="btn quiet" href="' + esc(reportLink(x.s)) + '" target="_blank" rel="noopener">' + T('Mở BÁO CÁO', 'Open') + '</a>' : '') + '<button class="good" data-act="rpDone" data-k="' + esc(x.k) + '">' + T('Đã report ✓', 'Done') + '</button></div>').join('') +
     items.map(x => '<div class="todo-item' + (x.hot ? ' hot' : '') + '"><span class="ico">' + x.icon + '</span><span class="txt">' + esc(x.text) + '</span>' + (x.hot ? '<span class="tag bad">' + T('Làm ngay', 'Now') + '</span>' : '') + '<button class="quiet" data-act="bellGo" data-i="' + x.i + '">' + T('Mở ›', 'Open ›') + '</button></div>').join('') + '</div>';
 }
 const checkinBlockBeforeTodo = checkinBlock;
@@ -1738,8 +1800,8 @@ function summaryView(ctx) {
       '<td class="sum-debt">' + (debt.length ? '<b>Thiếu ' + debt.length + ' bài:</b> ' + esc(kidsKinds(owed[r.i] || [])) : dashRedoOf(ctx, r.i).length ? '' : '<span class="sum-ok">Không thiếu ✓</span>') + (dashRedoOf(ctx, r.i).length ? (debt.length ? '<br>' : '') + '<b>🔁 Cần nộp lại ' + dashRedoOf(ctx, r.i).length + ' bài:</b> ' + esc(dashRedoOf(ctx, r.i).map(x => Q.clean(x.label)).join('; ')) : '') + '</td></tr>';
   }).join('');
   const head = '<tr><th></th><th>Học sinh</th><th>Điểm danh</th>' + (noStars ? '' : '<th>Sao</th>') + (noGrade ? '' : '<th class="sum-c">Bài tập sách giấy</th>') + '<th>Nhắc nhở</th><th>Video còn thiếu</th></tr>';
-  return chotBar(s) + '<div class="sum-bar"><button class="quiet" data-act="llSumClose">‹ ' + T('Quay lại màn hình lớp', 'Back to the class screen') + '</button><span class="spacer"></span>' +
-    '<button class="quiet" data-act="llSumRefresh">↻ ' + T('Đọc lại sheet', 'Re-read the sheet') + '</button><span class="small muted">' + T('Chụp phần khung trắng bên dưới để gửi phụ huynh.', 'Take a photo of the white sheet below for parents.') + '</span></div>' +
+  return chotBar(s) + rpChotBar(s) + '<div class="sum-bar"><button class="quiet" data-act="llSumClose">‹ ' + T('Quay lại màn hình lớp', 'Back to the class screen') + '</button><span class="spacer"></span>' +
+    '<button class="quiet" data-act="llSumRefresh">↻ ' + T('Đọc lại sheet', 'Re-read the sheet') + '</button><button class="primary" data-act="sumSave">💾 ' + T('Lưu ảnh', 'Save image') + '</button><span class="small muted">' + T('Bấm "Lưu ảnh" (hoặc chụp phần khung trắng bên dưới) để gửi phụ huynh.', 'Tap "Save image" (or photograph the white sheet) for parents.') + '</span></div>' +
     '<div class="sum-sheet"><div class="sum-top"><img src="logo.png" alt="" width="44" height="44"><div><div class="sum-title">' + esc(s.cls) + ' · Tiết ' + esc(s.lesson) + '</div>' +
     '<div class="sum-sub">' + esc(Q.dayText(s.day, 'vi')) + ' · ' + sessionTime(s) + '</div>' +
     (s.book || s.detail ? '<div class="sum-sub">' + esc([s.book, Q.clean(s.detail).split('\n')[0]].filter(Boolean).join(' · ')) + '</div>' : '') + '</div>' +
