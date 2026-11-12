@@ -6372,7 +6372,8 @@ refreshOwedNow = function (s) {
  * after the close too; managers at any time. Drafts stay on the device until they are saved. */
 const NX_MARK = '💬', NX_MAX = 1800;
 const nx = { open: false, key: '', rows: null, loading: false, saving: false, error: '' };
-const nxCol = ctx => ctx && ctx.block && ctx.tracker && /^IELTS/.test(Q.key(ctx.session.cls)) && ctx.block.nx >= 0 ? ctx.block.nx : -1;
+// Speaking only (owner 12/11: "Writing tôi không nhận xét trên lớp nhé nên không cần có nút").
+const nxCol = ctx => ctx && ctx.block && ctx.tracker && /^IELTS/.test(Q.key(ctx.session.cls)) && ctx.block.skill === 'NOI' && ctx.block.nx >= 0 ? ctx.block.nx : -1;
 const nxCan = s => !!me && (isManager() || s.day === today());
 const nxDrafts = () => saved.get('nxDraft') || {};
 const nxDk = (s, p) => Q.sessionKey(s) + '|' + p.name;
