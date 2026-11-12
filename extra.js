@@ -6291,7 +6291,7 @@ async function dashNoBrowser(cls) {
   await Promise.all([1, 2, 3, 4, 5, 6].map(worker));
   if (!out.some(p => p.ok)) throw new Error('không đọc được trang dash nào');
   const answer = { at: new Date().toLocaleString('vi-VN'), today: day, pupils: out, by: 'browser' };
-  call('dashnoput', { cls, pupils: out }).catch(() => {});
+  call('dashnoput', { cls, pupils: out, today: day }).catch(() => {});
   return answer;
 }
 // Staff devices read the pages themselves; the class screen (and any device that cannot) asks the server, which answers from
@@ -6304,6 +6304,12 @@ async function dashNoGet(cls, fresh) {
     const k = Q.key(cls), hit = dashMine[k], age = hit ? Date.now() - hit.at : Infinity;
     if (hit && age < (fresh ? 120000 : 600000)) return hit.data;
     if (hit && hit.busy) return hit.data;
+    // Owner 13/11 ("đọc thẳng từ dash… không hết quota"): another device may have read this class's pages a moment ago and left the
+    // result at the gateway; take that instead of reading every pupil's page again.
+    try {
+      const g = await call('dashno', { cls, fresh: !!fresh, peek: true }, 1);
+      if (g && Array.isArray(g.pupils) && g.pupils.length) { dashMine[k] = { at: Date.now(), data: g }; return g; }
+    } catch (e) { /* read the pages below */ }
     try {
       dashMine[k] = Object.assign({}, hit, { busy: true });
       const data = await dashNoBrowser(cls);
