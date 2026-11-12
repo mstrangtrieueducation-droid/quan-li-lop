@@ -6504,18 +6504,18 @@ summaryView = function (ctx) { const h = summaryViewBeforeNx(ctx), b = nxButton(
  * stars, paper tests; IELTS: Listening/Reading scores, estimated Speaking band). The homeroom teacher and managers can add a
  * pupil, retire one (the row goes to tab HS ĐÃ NGHỈ) or move one to another class; the server rewrites the numbers and the page
  * reloads the list. The parent link is still issued in the class file: one button opens its LINK HỌC SINH tab. */
-const hs = { key: '', loading: false, err: '', info: null, q: '', filter: '', form: null, busy: false, left: null, leftOpen: false };
-const hsCls = () => classList.find(c => c.key === hs.key);
-const hsIsIelts = c => /^IELTS/.test(c.key);
-const hsCanEdit = c => isManager() || [...myHomerooms().values()].some(x => x.cls.key === c.key && isMe(x.cm));
-const hsSheetUrl = (c, gid) => 'https://docs.google.com/spreadsheets/d/' + c.tracker + '/edit' + (gid != null ? '#gid=' + gid : '');
-const hsDmy = iso => { const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3] + '/' + m[2] + '/' + m[1] : iso; };
-function hsNum(v) { const m = String(v || '').match(/Điểm\s*(\d+(?:[.,]\d+)?)\s*\/\s*(\d+)/g); if (!m) return ''; const last = m[m.length - 1].match(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+)/); return last[1] + '/' + last[2]; }
-function hsBand(v) { const m = String(v || '').match(/Band ước tính\s*([\d.,]+)|Estimated Band:\s*([\d.,]+)|Điểm số ước tính:\s*\n*\s*([\d.,]+)/); return m ? (m[1] || m[2] || m[3]) : ''; }
-async function hsLoad(force) {
-  const c = hsCls();
-  if (!c || hs.loading) return;
-  hs.loading = true; hs.err = '';
+const ho = { key: '', loading: false, err: '', info: null, q: '', filter: '', form: null, busy: false, left: null, leftOpen: false };
+const hoCls = () => classList.find(c => c.key === ho.key);
+const hoIsIelts = c => /^IELTS/.test(c.key);
+const hoCanEdit = c => isManager() || [...myHomerooms().values()].some(x => x.cls.key === c.key && isMe(x.cm));
+const hoSheetUrl = (c, gid) => 'https://docs.google.com/spreadsheets/d/' + c.tracker + '/edit' + (gid != null ? '#gid=' + gid : '');
+const hoDmy = iso => { const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3] + '/' + m[2] + '/' + m[1] : iso; };
+function hoNum(v) { const m = String(v || '').match(/Điểm\s*(\d+(?:[.,]\d+)?)\s*\/\s*(\d+)/g); if (!m) return ''; const last = m[m.length - 1].match(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+)/); return last[1] + '/' + last[2]; }
+function hoBand(v) { const m = String(v || '').match(/Band ước tính\s*([\d.,]+)|Estimated Band:\s*([\d.,]+)|Điểm số ước tính:\s*\n*\s*([\d.,]+)/); return m ? (m[1] || m[2] || m[3]) : ''; }
+async function hoLoad(force) {
+  const c = hoCls();
+  if (!c || ho.loading) return;
+  ho.loading = true; ho.err = '';
   try {
     const t = await loadTracker(c, force);
     const tab = quote(t.tab), head = t.head, width = Math.max(0, ...head.map(r => (r || []).length)), at = (r, k) => String((head[r] || [])[k] || '');
@@ -6544,13 +6544,13 @@ async function hsLoad(force) {
       return Object.assign({}, p, { eng: Q.clean(r[lay.eng]) || p.eng, birth: lay.birth >= 0 ? Q.clean(r[lay.birth]) : '', phone: lay.phone >= 0 ? Q.clean(r[lay.phone]) : '', dash: lay.dash >= 0 ? Q.clean(r[lay.dash]) : '', raw: Q.clean(r[1]) });
     });
     const owed = Q.owedVideos(t.pupils, t.blocks, t.practices, t.cell, { day: Q.addDays(today(), 1) });
-    hs.info = { at: Date.now(), tab: t.tab, lay, cols, grades, stars, cell, pupils, owed, tracker: t };
-    hs.left = null;
-  } catch (e) { hs.err = e.message; }
-  finally { hs.loading = false; render(); }
+    ho.info = { at: Date.now(), tab: t.tab, lay, cols, grades, stars, cell, pupils, owed, tracker: t };
+    ho.left = null;
+  } catch (e) { ho.err = e.message; }
+  finally { ho.loading = false; render(); }
   try { await loadMarks(); render(); } catch (e) {}
 }
-function hsAttend(c, p) {
+function hoAttend(c, p) {
   const out = { present: 0, late: 0, absent: 0 }, seen = new Set();
   ((logs.marks && logs.marks.rows) || []).forEach(m => {
     if (Q.key(m.cls).replace(/\.\d+$/, '') !== c.key || Q.key(m.name) !== Q.key(p.name)) return;
@@ -6559,8 +6559,8 @@ function hsAttend(c, p) {
   });
   return out;
 }
-function hsRow(c, p, i) {
-  const I = hs.info, a = hsAttend(c, p), owe = (I.owed[i] || []).length, ielts = hsIsIelts(c);
+function hoRow(c, p, i) {
+  const I = ho.info, a = hoAttend(c, p), owe = (I.owed[i] || []).length, ielts = hoIsIelts(c);
   let marks = '';
   if (!ielts) {
     const g = I.grades.map(b => I.cell(p.row, b.grade)).map(v => (String(v).split('\n')[0].match(/^\s*(A\+|A|B|F)(?![A-Za-z])/i) || [])[1]).filter(Boolean);
@@ -6571,32 +6571,32 @@ function hsRow(c, p, i) {
     I.cols.filter(x => x.kind === 'test').forEach(x => { const v = Q.clean(I.cell(p.row, x.col)); if (!v) return; const g = byTest.get(x.area) || { parts: [], sum: 0, max: 0, ok: true }; g.parts.push(v); const n = Number(String(v).replace(',', '.')); if (isNaN(n) || !x.max) g.ok = false; else { g.sum += n; g.max += Number(x.max); } byTest.set(x.area, g); });
     byTest.forEach((g, area) => { marks += '<div class="small">📝 ' + esc(area.replace(/^KIỂM TRA\s*/i, 'KT ')) + ': ' + esc(g.parts.join(' · ')) + (g.ok && g.parts.length > 1 ? ' = <b>' + (Math.round(g.sum * 10) / 10) + '/' + g.max + '</b>' : '') + '</div>'; });
   } else {
-    const L = I.cols.filter(x => x.kind === 'L').map(x => hsNum(I.cell(p.row, x.col))).filter(Boolean), R = I.cols.filter(x => x.kind === 'R').map(x => hsNum(I.cell(p.row, x.col))).filter(Boolean);
-    const S = I.cols.filter(x => x.kind === 'S').map(x => hsBand(I.cell(p.row, x.col))).filter(Boolean);
+    const L = I.cols.filter(x => x.kind === 'L').map(x => hoNum(I.cell(p.row, x.col))).filter(Boolean), R = I.cols.filter(x => x.kind === 'R').map(x => hoNum(I.cell(p.row, x.col))).filter(Boolean);
+    const S = I.cols.filter(x => x.kind === 'S').map(x => hoBand(I.cell(p.row, x.col))).filter(Boolean);
     if (L.length) marks += '<span class="tag">🎧 ' + esc(L.slice(-3).join(' · ')) + '</span>';
     if (R.length) marks += '<span class="tag">📖 ' + esc(R.slice(-3).join(' · ')) + '</span>';
     if (S.length) marks += '<span class="tag">🗣️ Band ' + esc(S.slice(-3).join(' · ')) + '</span>';
   }
   const tel = p.phone ? '<a class="small" href="tel:' + esc(p.phone.replace(/\s+/g, '')) + '">📞 ' + esc(p.phone) + '</a>' : '';
-  const edit = hsCanEdit(c);
+  const edit = hoCanEdit(c);
   return '<div class="card hs-row' + (owe ? ' owe' : '') + '" data-row="' + p.row + '"><div class="row-top"><span class="hs-n">' + (i + 1) + '</span><div><b>' + esc(p.name) + '</b>' + (p.eng ? ' <span class="muted">' + esc(p.eng) + '</span>' : '') +
-    '<div class="small muted">' + [p.group, p.birth ? T('Sinh ', 'Born ') + esc(p.birth) : '', p.since ? T('Vào học ', 'Joined ') + esc(hsDmy(p.since)) : ''].filter(Boolean).join(' · ') + '</div></div><span class="spacer"></span>' +
-    (edit ? '<button class="quiet hs-more" data-act="hsMenu" data-row="' + p.row + '" aria-label="' + T('Thao tác', 'Actions') + '">⋯</button>' : '') + '</div>' +
+    '<div class="small muted">' + [p.group, p.birth ? T('Sinh ', 'Born ') + esc(p.birth) : '', p.since ? T('Vào học ', 'Joined ') + esc(hoDmy(p.since)) : ''].filter(Boolean).join(' · ') + '</div></div><span class="spacer"></span>' +
+    (edit ? '<button class="quiet hs-more" data-act="hoMenu" data-row="' + p.row + '" aria-label="' + T('Thao tác', 'Actions') + '">⋯</button>' : '') + '</div>' +
     '<div class="hs-tags"><span class="tag ' + (a.absent >= 3 ? 'bad' : 'ok') + '">' + T('Có mặt ', 'Present ') + a.present + (a.late ? ' · ' + T('muộn ', 'late ') + a.late : '') + ' · ' + T('vắng ', 'absent ') + a.absent + '</span>' +
     (owe ? '<span class="tag bad">' + T('Nợ ' + owe + ' bài', owe + ' owed') + '</span>' : '<span class="tag ok">' + T('Đủ bài', 'No work owed') + '</span>') + marks + '</div>' +
-    '<div class="hs-acts">' + tel + (p.dash ? '<button class="quiet" data-act="hsCopy" data-u="' + esc(p.dash) + '">🔗 ' + T('Sao chép link dash', 'Copy dash link') + '</button><button class="quiet" data-act="hsShare" data-u="' + esc(p.dash) + '" data-n="' + esc(p.name) + '">📤 ' + T('Gửi', 'Share') + '</button>' : '<span class="tag warn">' + T('Chưa có link dash', 'No dash link yet') + '</span>') + '</div>' +
-    (hs.menuRow === p.row && edit ? '<div class="choices hs-menu"><button class="quiet" data-act="hsForm" data-f="nghi" data-row="' + p.row + '">🚪 ' + T('Cho nghỉ', 'Retire') + '</button><button class="quiet" data-act="hsForm" data-f="chuyen" data-row="' + p.row + '">🔁 ' + T('Chuyển lớp', 'Move class') + '</button></div>' : '') + '</div>';
+    '<div class="hs-acts">' + tel + (p.dash ? '<button class="quiet" data-act="hoCopy" data-u="' + esc(p.dash) + '">🔗 ' + T('Sao chép link dash', 'Copy dash link') + '</button><button class="quiet" data-act="hoShare" data-u="' + esc(p.dash) + '" data-n="' + esc(p.name) + '">📤 ' + T('Gửi', 'Share') + '</button>' : '<span class="tag warn">' + T('Chưa có link dash', 'No dash link yet') + '</span>') + '</div>' +
+    (ho.menuRow === p.row && edit ? '<div class="choices hs-menu"><button class="quiet" data-act="hoForm" data-f="nghi" data-row="' + p.row + '">🚪 ' + T('Cho nghỉ', 'Retire') + '</button><button class="quiet" data-act="hoForm" data-f="chuyen" data-row="' + p.row + '">🔁 ' + T('Chuyển lớp', 'Move class') + '</button></div>' : '') + '</div>';
 }
-function hsFormView(c) {
-  const f = hs.form; if (!f) return '';
-  const p = f.row ? hs.info.pupils.find(x => x.row === f.row) : null, groups = [...new Set(hs.info.pupils.map(x => x.group).filter(Boolean))];
+function hoFormView(c) {
+  const f = ho.form; if (!f) return '';
+  const p = f.row ? ho.info.pupils.find(x => x.row === f.row) : null, groups = [...new Set(ho.info.pupils.map(x => x.group).filter(Boolean))];
   const title = f.kind === 'them' ? T('Thêm học sinh vào ', 'Add a pupil to ') + c.name : f.kind === 'nghi' ? T('Cho nghỉ: ', 'Retire: ') + (p && p.name) : T('Chuyển lớp: ', 'Move: ') + (p && p.name);
-  let h = '<div class="ll-veil" data-act="hsFormClose"></div><div class="ll-sheet hs-sheet" role="dialog"><div class="row-top"><b>' + esc(title) + '</b><span class="spacer"></span><button class="quiet" data-act="hsFormClose">' + T('Đóng', 'Close') + '</button></div>';
+  let h = '<div class="ll-veil" data-act="hoFormClose"></div><div class="ll-sheet hs-sheet" role="dialog"><div class="row-top"><b>' + esc(title) + '</b><span class="spacer"></span><button class="quiet" data-act="hoFormClose">' + T('Đóng', 'Close') + '</button></div>';
   if (f.kind === 'them') {
     h += '<label>' + T('Họ tên (tiếng Việt)', 'Full name') + '<input data-f="name" value="' + esc(f.name || '') + '" autocapitalize="characters"></label>' +
-      (hs.info.lay.eng >= 0 ? '<label>' + T('Tên tiếng Anh', 'English name') + '<input data-f="eng" value="' + esc(f.eng || '') + '"></label>' : '') +
-      (hs.info.lay.birth >= 0 ? '<label>' + T('Năm sinh', 'Birth year') + '<input data-f="birth" inputmode="numeric" value="' + esc(f.birth || '') + '"></label>' : '') +
-      (hs.info.lay.phone >= 0 ? '<label>' + T('SĐT phụ huynh', 'Parent phone') + '<input data-f="phone" inputmode="tel" value="' + esc(f.phone || '') + '"></label>' : '') +
+      (ho.info.lay.eng >= 0 ? '<label>' + T('Tên tiếng Anh', 'English name') + '<input data-f="eng" value="' + esc(f.eng || '') + '"></label>' : '') +
+      (ho.info.lay.birth >= 0 ? '<label>' + T('Năm sinh', 'Birth year') + '<input data-f="birth" inputmode="numeric" value="' + esc(f.birth || '') + '"></label>' : '') +
+      (ho.info.lay.phone >= 0 ? '<label>' + T('SĐT phụ huynh', 'Parent phone') + '<input data-f="phone" inputmode="tel" value="' + esc(f.phone || '') + '"></label>' : '') +
       '<label>' + T('Ngày vào học', 'First day') + '<input type="date" data-f="since" value="' + esc(f.since || today()) + '"></label>' +
       (groups.length ? '<label>' + T('Nhóm', 'Group') + '<select data-f="group">' + groups.map(g => '<option' + (f.group === g ? ' selected' : '') + '>' + esc(g) + '</option>').join('') + '</select></label>' : '');
   } else {
@@ -6605,80 +6605,82 @@ function hsFormView(c) {
       '<label>' + T('Lý do / ghi chú', 'Reason / note') + '<input data-f="reason" value="' + esc(f.reason || '') + '"></label>' +
       '<p class="small muted">' + T('Dòng của học sinh được chuyển sang tab "HS ĐÃ NGHỈ" trong file lớp (giữ nguyên điểm, link) rồi xóa khỏi danh sách; STT được đánh lại.', 'The row moves to tab "HS ĐÃ NGHỈ" in the class file (marks and link kept) and the list is renumbered.') + '</p>';
   }
-  h += '<div class="choices"><button class="primary" data-act="hsDo"' + (hs.busy ? ' disabled' : '') + '>' + (hs.busy ? '⏳ ' + T('Đang ghi sheet…', 'Writing…') : f.kind === 'them' ? '➕ ' + T('Thêm vào lớp', 'Add') : f.kind === 'nghi' ? '🚪 ' + T('Cho nghỉ', 'Retire') : '🔁 ' + T('Chuyển lớp', 'Move')) + '</button></div></div>';
+  h += '<div class="choices"><button class="primary" data-act="hoDo"' + (ho.busy ? ' disabled' : '') + '>' + (ho.busy ? '⏳ ' + T('Đang ghi sheet…', 'Writing…') : f.kind === 'them' ? '➕ ' + T('Thêm vào lớp', 'Add') : f.kind === 'nghi' ? '🚪 ' + T('Cho nghỉ', 'Retire') : '🔁 ' + T('Chuyển lớp', 'Move')) + '</button></div></div>';
   return h;
 }
 function viewHoSo() {
-  const c = hsCls();
-  if (!c) { hs.key = ''; return viewHomerooms(); }
-  const I = hs.info, edit = hsCanEdit(c);
-  let h = '<div class="row-top"><button class="quiet" data-act="hsBack">‹ ' + T('Lớp chủ nhiệm', 'Homerooms') + '</button><span class="spacer"></span><button class="quiet" data-act="hsReload">↻</button></div>' +
+  const c = hoCls();
+  if (!c) { ho.key = ''; return viewHomerooms(); }
+  const I = ho.info, edit = hoCanEdit(c);
+  let h = '<div class="row-top"><button class="quiet" data-act="hoBack">‹ ' + T('Lớp chủ nhiệm', 'Homerooms') + '</button><span class="spacer"></span><button class="quiet" data-act="hoReload">↻</button></div>' +
     '<h2>📋 ' + esc(c.name) + '</h2>';
-  if (hs.err) h += '<div class="notice bad">' + esc(hs.err) + '</div>';
+  if (ho.err) h += '<div class="notice bad">' + esc(ho.err) + '</div>';
   if (!I) return h + '<div class="card empty">' + T('Đang đọc sheet lớp…', 'Reading the class sheet…') + '</div>';
   const n = I.pupils.length, owing = I.owed.filter(o => o.length).length, noDash = I.pupils.filter(p => !p.dash).length;
-  h += '<div class="filters"><input type="search" data-act="hsQ" value="' + esc(hs.q) + '" placeholder="' + T('Tìm tên…', 'Find…') + '"><div class="seg">' + [['', T('Tất cả ', 'All ') + n], ['owe', T('Nợ bài ', 'Owing ') + owing], ['absent', T('Vắng nhiều', 'Often absent')], ['nodash', T('Chưa có link ', 'No link ') + noDash]].map(([k, t]) => '<button class="' + (hs.filter === k ? 'on' : '') + '" data-act="hsFilter" data-k="' + k + '">' + t + '</button>').join('') + '</div></div>';
-  h += '<div class="choices">' + (edit ? '<button class="primary" data-act="hsForm" data-f="them">➕ ' + T('Thêm học sinh', 'Add pupil') + '</button>' : '') +
-    '<a class="btn quiet" href="' + esc(hsSheetUrl(c, I.linkGid)) + '" target="_blank" rel="noopener">🔗 ' + T('Tạo link / cập nhật dash', 'Issue links / refresh dash') + '</a>' +
-    '<button class="quiet" data-act="hsLeft">' + T('Đã nghỉ', 'Former pupils') + (hs.left ? ' (' + hs.left.length + ')' : '') + '</button></div>';
-  if (noDash && edit) h += '<p class="small muted">' + T('Học sinh mới chưa có link dash: bấm "Tạo link / cập nhật dash", mở tab LINK HỌC SINH và tích ô TẠO LINK HỌC SINH MỚI (khoảng 5 giây).', 'New pupils have no dash link yet: tap "Issue links", open tab LINK HỌC SINH and tick the box.') + '</p>';
-  if (hs.leftOpen) h += '<div class="card"><b>' + T('Đã nghỉ / chuyển đi', 'Former pupils') + '</b>' + (hs.left ? (hs.left.length ? hs.left.map(x => '<div class="small">' + esc(x.day) + ' · <b>' + esc(x.name) + '</b>' + (x.eng ? ' (' + esc(x.eng) + ')' : '') + (x.reason ? ' · ' + esc(x.reason) : '') + ' · ' + esc(x.by) + '</div>').join('') : '<div class="small muted">' + T('Chưa có.', 'None.') + '</div>') : '<div class="small muted">' + T('Đang đọc…', 'Reading…') + '</div>') + '</div>';
-  const q = Q.key(hs.q);
+  h += '<div class="filters"><input type="search" data-act="hoQ" value="' + esc(ho.q) + '" placeholder="' + T('Tìm tên…', 'Find…') + '"><div class="seg">' + [['', T('Tất cả ', 'All ') + n], ['owe', T('Nợ bài ', 'Owing ') + owing], ['absent', T('Vắng nhiều', 'Often absent')], ['nodash', T('Chưa có link ', 'No link ') + noDash]].map(([k, t]) => '<button class="' + (ho.filter === k ? 'on' : '') + '" data-act="hoFilter" data-k="' + k + '">' + t + '</button>').join('') + '</div></div>';
+  h += '<div class="choices">' + (edit ? '<button class="primary" data-act="hoForm" data-f="them">➕ ' + T('Thêm học sinh', 'Add pupil') + '</button>' : '') +
+    '<a class="btn quiet" href="' + esc(hoSheetUrl(c, I.linkGid)) + '" target="_blank" rel="noopener">🔗 ' + T('Tạo link / cập nhật dash', 'Issue links / refresh dash') + '</a>' +
+    '<button class="quiet" data-act="hoLeft">' + T('Đã nghỉ', 'Former pupils') + (ho.left ? ' (' + ho.left.length + ')' : '') + '</button></div>';
+  if (noDash && edit) h += '<p class="small muted">' + T('Học sinh thêm từ app có link dash tự động. Em nào thêm thẳng vào sheet mà chưa có link: bấm "Tạo link / cập nhật dash" rồi tích ô trong tab LINK HỌC SINH.', 'Pupils added in the app get a link automatically; for rows typed into the sheet, tap "Issue links".') + '</p>';
+  if (ho.leftOpen) h += '<div class="card"><b>' + T('Đã nghỉ / chuyển đi', 'Former pupils') + '</b>' + (ho.left ? (ho.left.length ? ho.left.map(x => '<div class="small">' + esc(x.day) + ' · <b>' + esc(x.name) + '</b>' + (x.eng ? ' (' + esc(x.eng) + ')' : '') + (x.reason ? ' · ' + esc(x.reason) : '') + ' · ' + esc(x.by) + '</div>').join('') : '<div class="small muted">' + T('Chưa có.', 'None.') + '</div>') : '<div class="small muted">' + T('Đang đọc…', 'Reading…') + '</div>') + '</div>';
+  const q = Q.key(ho.q);
   const list = I.pupils.map((p, i) => ({ p, i })).filter(({ p, i }) => (!q || Q.key(p.name + ' ' + p.eng).includes(q)) &&
-    (hs.filter === 'owe' ? I.owed[i].length : hs.filter === 'absent' ? hsAttend(c, p).absent >= 3 : hs.filter === 'nodash' ? !p.dash : true));
-  h += list.length ? list.map(({ p, i }) => hsRow(c, p, i)).join('') : '<div class="card empty">' + T('Không có học sinh nào khớp.', 'No pupil matches.') + '</div>';
-  return h + hsFormView(c);
+    (ho.filter === 'owe' ? I.owed[i].length : ho.filter === 'absent' ? hoAttend(c, p).absent >= 3 : ho.filter === 'nodash' ? !p.dash : true));
+  h += list.length ? list.map(({ p, i }) => hoRow(c, p, i)).join('') : '<div class="card empty">' + T('Không có học sinh nào khớp.', 'No pupil matches.') + '</div>';
+  return h + hoFormView(c);
 }
-async function hsDo() {
-  const c = hsCls(), f = hs.form, I = hs.info;
-  if (!c || !f || hs.busy) return;
+async function hoDo() {
+  const c = hoCls(), f = ho.form, I = ho.info;
+  if (!c || !f || ho.busy) return;
   const p = f.row ? I.pupils.find(x => x.row === f.row) : null;
   if (f.kind === 'them' && !Q.clean(f.name)) { say(T('Chị/anh nhập họ tên học sinh.', 'Enter the pupil name.'), 'bad'); return; }
   if (f.kind === 'chuyen' && !f.to) { say(T('Chọn lớp chuyển đến.', 'Choose the new class.'), 'bad'); return; }
-  hs.busy = true; render();
+  ho.busy = true; render();
   try {
     await flush();
     if (f.kind === 'them') {
       const r = await call('hsthem', { file: c.tracker, tab: I.tab, cls: c.name, name: Q.clean(f.name), eng: Q.clean(f.eng), birth: Q.clean(f.birth), phone: Q.clean(f.phone), since: f.since || today(), group: f.group || '' }, 1);
       I.linkGid = r.linkGid;
-      say(T('Đã thêm ' + Q.clean(f.name).toUpperCase() + ' vào ' + c.name + '. Bấm "Tạo link / cập nhật dash" để tạo link cho phụ huynh.', 'Added. Tap "Issue links" for the parent link.'));
+      say(r.link ? T('Đã thêm ' + Q.clean(f.name).toUpperCase() + ' vào ' + c.name + ', link dash phụ huynh đã tạo sẵn. Việc đón học sinh mới đã vào chuông 🔔.', 'Added, parent link created; new-pupil steps are in the bell.')
+        : T('Đã thêm ' + Q.clean(f.name).toUpperCase() + ' vào ' + c.name + '. Chưa tạo được link dash tự động (' + (r.linkSkipped || '') + '): bấm "Tạo link / cập nhật dash".', 'Added; parent link not created automatically, tap "Issue links".'), r.link ? '' : 'bad');
+      if (typeof hsData !== 'undefined') hsData.at = 0;
     } else {
       const r = await call('hsnghi', { file: c.tracker, tab: I.tab, cls: c.name, row: p.row, name: p.name, reason: (f.kind === 'chuyen' ? T('Chuyển sang ', 'Moved to ') + (classList.find(x => x.key === f.to) || {}).name + (f.reason ? ' · ' : '') : '') + Q.clean(f.reason) }, 1);
       I.linkGid = r.linkGid;
       if (f.kind === 'chuyen') {
         const to = classList.find(x => x.key === f.to), tt = await loadTracker(to, true);
-        await call('hsthem', { file: to.tracker, tab: tt.tab, cls: to.name, name: p.name, eng: p.eng, birth: p.birth, phone: p.phone, since: f.since || today(), group: '' }, 1);
+        const r2 = await call('hsthem', { file: to.tracker, tab: tt.tab, cls: to.name, name: p.name, eng: p.eng, birth: p.birth, phone: p.phone, since: f.since || today(), group: '' }, 1);
         delete trackers[to.key];
-        say(T(p.name + ' đã chuyển sang ' + to.name + '. Mở lớp mới và bấm "Tạo link / cập nhật dash" để tạo link mới.', 'Moved. Open the new class and issue the parent link.'));
-      } else say(T('Đã cho ' + p.name + ' nghỉ; dòng được lưu ở tab HS ĐÃ NGHỈ.', 'Retired; the row is kept in HS ĐÃ NGHỈ.'));
+        say(T(p.name + ' đã chuyển sang ' + to.name + (r2.link ? ', link dash mới đã tạo (link cũ tự hết hiệu lực).' : '. Mở lớp mới và bấm "Tạo link / cập nhật dash".'), 'Moved.'));
+      } else say(T('Đã cho ' + p.name + ' nghỉ: link dash hết hiệu lực, xóa khỏi danh sách nợ bài/mức phạt; dòng lưu ở tab HS ĐÃ NGHỈ.', 'Retired; dash link revoked, removed from owed/penalty lists.'));
     }
-    hs.form = null; hs.menuRow = 0; delete trackers[c.key];
-    await hsLoad(true);
-  } catch (e) { say(T('Chưa làm được: ', 'Failed: ') + e.message, 'bad'); if (/thay đổi/.test(e.message)) { delete trackers[c.key]; hsLoad(true); } }
-  finally { hs.busy = false; render(); }
+    ho.form = null; ho.menuRow = 0; delete trackers[c.key]; if (typeof buBai !== 'undefined') buBai.at = 0; if (typeof ladder !== 'undefined') ladder.at = 0;
+    await hoLoad(true);
+  } catch (e) { say(T('Chưa làm được: ', 'Failed: ') + e.message, 'bad'); if (/thay đổi/.test(e.message)) { delete trackers[c.key]; hoLoad(true); } }
+  finally { ho.busy = false; render(); }
 }
-document.addEventListener('input', e => { const b = e.target; if (b && b.dataset && b.dataset.f && hs.form) hs.form[b.dataset.f] = b.value; if (b && b.dataset && b.dataset.act === 'hsQ') { hs.q = b.value; render(); } });
-document.addEventListener('change', e => { const b = e.target; if (b && b.dataset && b.dataset.f && hs.form) { hs.form[b.dataset.f] = b.value; render(); } });
+document.addEventListener('input', e => { const b = e.target; if (b && b.dataset && b.dataset.f && ho.form) ho.form[b.dataset.f] = b.value; if (b && b.dataset && b.dataset.act === 'hoQ') { ho.q = b.value; render(); } });
+document.addEventListener('change', e => { const b = e.target; if (b && b.dataset && b.dataset.f && ho.form) { ho.form[b.dataset.f] = b.value; render(); } });
 document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-act]');
-  if (!b || !/^hs/.test(b.dataset.act)) return;
+  if (!b || !/^ho[A-Z]/.test(b.dataset.act)) return;
   const act = b.dataset.act; e.stopImmediatePropagation();
-  if (act === 'hsOpen') { const c = classList.find(x => x.key === b.dataset.k); if (!c) return; hs.key = c.key; hs.info = null; hs.q = ''; hs.filter = ''; hs.form = null; hs.menuRow = 0; hs.leftOpen = false; view = 'lopcn'; render(); window.scrollTo(0, 0); guarded(() => hsLoad(false)); }
-  else if (act === 'hsBack') { hs.key = ''; render(); }
-  else if (act === 'hsReload') { delete trackers[hs.key]; guarded(() => hsLoad(true)); }
-  else if (act === 'hsFilter') { hs.filter = b.dataset.k; render(); }
-  else if (act === 'hsMenu') { hs.menuRow = hs.menuRow === Number(b.dataset.row) ? 0 : Number(b.dataset.row); render(); }
-  else if (act === 'hsForm') { hs.form = { kind: b.dataset.f, row: Number(b.dataset.row) || 0, since: today() }; hs.menuRow = 0; render(); }
-  else if (act === 'hsFormClose') { hs.form = null; render(); }
-  else if (act === 'hsDo') hsDo();
-  else if (act === 'hsLeft') { hs.leftOpen = !hs.leftOpen; render(); if (hs.leftOpen && !hs.left) { const c = hsCls(); call('hsdanghi', { file: c.tracker }).then(r => { hs.left = r.rows || []; render(); }).catch(() => { hs.left = []; render(); }); } }
-  else if (act === 'hsCopy') { navigator.clipboard.writeText(b.dataset.u).then(() => say(T('Đã sao chép link.', 'Link copied.'))).catch(() => prompt(T('Sao chép link:', 'Copy:'), b.dataset.u)); }
-  else if (act === 'hsShare') { const text = T('Link theo dõi học tập của ', 'Progress link for ') + b.dataset.n + ': ' + b.dataset.u; if (navigator.share) navigator.share({ text }).catch(() => {}); else navigator.clipboard.writeText(text).then(() => say(T('Đã sao chép, dán vào Zalo.', 'Copied; paste into Zalo.'))); }
+  if (act === 'hoOpen') { const c = classList.find(x => x.key === b.dataset.k); if (!c) return; ho.key = c.key; ho.info = null; ho.q = ''; ho.filter = ''; ho.form = null; ho.menuRow = 0; ho.leftOpen = false; view = 'lopcn'; render(); window.scrollTo(0, 0); guarded(() => hoLoad(false)); }
+  else if (act === 'hoBack') { ho.key = ''; render(); }
+  else if (act === 'hoReload') { delete trackers[ho.key]; guarded(() => hoLoad(true)); }
+  else if (act === 'hoFilter') { ho.filter = b.dataset.k; render(); }
+  else if (act === 'hoMenu') { ho.menuRow = ho.menuRow === Number(b.dataset.row) ? 0 : Number(b.dataset.row); render(); }
+  else if (act === 'hoForm') { ho.form = { kind: b.dataset.f, row: Number(b.dataset.row) || 0, since: today() }; ho.menuRow = 0; render(); }
+  else if (act === 'hoFormClose') { ho.form = null; render(); }
+  else if (act === 'hoDo') hoDo();
+  else if (act === 'hoLeft') { ho.leftOpen = !ho.leftOpen; render(); if (ho.leftOpen && !ho.left) { const c = hoCls(); call('hsdanghi', { file: c.tracker }).then(r => { ho.left = r.rows || []; render(); }).catch(() => { ho.left = []; render(); }); } }
+  else if (act === 'hoCopy') { navigator.clipboard.writeText(b.dataset.u).then(() => say(T('Đã sao chép link.', 'Link copied.'))).catch(() => prompt(T('Sao chép link:', 'Copy:'), b.dataset.u)); }
+  else if (act === 'hoShare') { const text = T('Link theo dõi học tập của ', 'Progress link for ') + b.dataset.n + ': ' + b.dataset.u; if (navigator.share) navigator.share({ text }).catch(() => {}); else navigator.clipboard.writeText(text).then(() => say(T('Đã sao chép, dán vào Zalo.', 'Copied; paste into Zalo.'))); }
 }, true);
 const viewHomeroomsBeforeHs = viewHomerooms;
 viewHomerooms = function () {
-  if (hs.key) return viewHoSo();
-  return viewHomeroomsBeforeHs().replace(/<div class="row-top"><b>([^<]+)<\/b>/g, (m, name) => classList.some(x => x.key === Q.key(name)) ? m + '<button class="quiet hs-go" data-act="hsOpen" data-k="' + esc(Q.key(name)) + '">📋 ' + T('Hồ sơ', 'Profile') + '</button>' : m);
+  if (ho.key) return viewHoSo();
+  return viewHomeroomsBeforeHs().replace(/<div class="row-top"><b>([^<]+)<\/b>/g, (m, name) => classList.some(x => x.key === Q.key(name)) ? m + '<button class="quiet hs-go" data-act="hoOpen" data-k="' + esc(Q.key(name)) + '">📋 ' + T('Hồ sơ', 'Profile') + '</button>' : m);
 };
 // Tracker writes name the pupil of each row, so a row that moved (a pupil retired above it) is never overwritten.
 const writeCellsBeforeHs = writeCells;
