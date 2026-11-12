@@ -7061,3 +7061,30 @@ taskRow = function (t, week, canTick) {
   const h = taskRowBeforeOwner(t, week, canTick);
   return canTickTask(t) ? h : h.replace(/<button class="(on)?" data-act="task"[^>]*>✓<\/button>/, (m, on) => '<button class="' + (on || '') + ' locked" disabled title="' + esc(T('Chỉ GV chấm bài tích ô này', 'Only the grading teacher ticks this')) + '">✓</button>');
 };
+
+/* Owner 12/11 ("việc ai người ấy ấn... nếu không phải việc người ấy thì không được ấn"): every tick belongs to one person.
+ * - Graded ✓: the grading teacher (above). - "Đã trả" of a graded task: that task's TA. - Weekly "Trả BTVN" list: the TA named on
+ *   that line. Managers may tick any of them. Others see the box greyed out and a tap says whose it is. */
+const retLast = x => Q.key(x.who) === Q.key(me && me.name || '').split(' ').pop();
+const canTickReturn = x => !!me && (isManager() || retLast(x));
+const tickReturnBeforeOwner = tickReturn;
+tickReturn = async function (week, item) {
+  if (item && !canTickReturn(item)) { say(T('Đây là việc trả bài của TA ' + item.who + ', chỉ người đó (hoặc quản lí) tích được.', 'This return belongs to TA ' + item.who + '.'), 'bad'); return; }
+  return tickReturnBeforeOwner(week, item);
+};
+const returnsBlockBeforeOwner = returnsBlock;
+returnsBlock = function (week) {
+  const h = returnsBlockBeforeOwner(week);
+  if (!h || isManager()) return h;
+  const list = (week.data.returns || []);
+  return h.replace(/<button class="(on)?" data-act="ret" data-row="(\d+)" data-col="(\d+)"/g, (m, on, row, col) => {
+    const x = list.find(r => String(r.row) === row && String(r.col) === col);
+    return x && !canTickReturn(x) ? '<button class="' + (on || '') + ' locked" disabled data-row="' + row + '" data-col="' + col + '"' : m;
+  });
+};
+window.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="taskRet"]');
+  if (!b) return;
+  const week = weeks[Q.weekTab(tabs, day)] || weeks[Q.weekTab(tabs, today())], t = week && week.data.tasks.find(x => String(x.row) === b.dataset.row);
+  if (t && !(isManager() || isMe(taOf(t)))) { e.stopImmediatePropagation(); say(T('Đây là việc trả bài của TA ' + taOf(t) + ', chỉ người đó (hoặc quản lí) bấm được.', 'This return belongs to TA ' + taOf(t) + '.'), 'bad'); }
+}, true);
