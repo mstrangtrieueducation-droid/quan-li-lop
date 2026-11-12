@@ -6756,7 +6756,7 @@ document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-act]');
   if (!b || !/^ho[A-Z]/.test(b.dataset.act) || /^ho(Mode|Cell|Grid)/.test(b.dataset.act)) return;
   const act = b.dataset.act; e.stopImmediatePropagation();
-  if (act === 'hoOpen') { const c = classList.find(x => x.key === b.dataset.k); if (!c) return; ho.key = c.key; ho.info = null; ho.q = ''; ho.filter = ''; ho.form = null; ho.menuRow = 0; ho.leftOpen = false; view = 'lopcn'; hg.cell = null; render(); window.scrollTo(0, 0); guarded(() => hoLoad(false)); if (ho.mode === 'grid') guarded(() => hgLoad(false)); }
+  if (act === 'hoOpen') { const c = classList.find(x => x.key === b.dataset.k); if (!c) return; hrDrawer = null; ho.key = c.key; ho.info = null; ho.q = ''; ho.filter = ''; ho.form = null; ho.menuRow = 0; ho.leftOpen = false; view = 'lopcn'; hg.cell = null; render(); window.scrollTo(0, 0); guarded(() => hoLoad(false)); if (ho.mode === 'grid') guarded(() => hgLoad(false)); }
   else if (act === 'hoBack') { ho.key = ''; render(); }
   else if (act === 'hoReload') { delete trackers[ho.key]; if (ho.mode === 'grid') guarded(() => hgLoad(true)); else guarded(() => hoLoad(true)); }
   else if (act === 'hoFilter') { ho.filter = b.dataset.k; render(); }
@@ -6924,7 +6924,11 @@ document.addEventListener('click', e => {
 const viewHomeroomsBeforeHs = viewHomerooms;
 viewHomerooms = function () {
   if (ho.key) return viewHoSo();
-  return viewHomeroomsBeforeHs().replace(/<div class="row-top"><b>([^<]+)<\/b>/g, (m, name) => classList.some(x => x.key === Q.key(name)) ? m + '<button class="quiet hs-go" data-act="hoOpen" data-k="' + esc(Q.key(name)) + '">📋 ' + T('Hồ sơ', 'Profile') + '</button>' : m);
+  const go = name => '<button class="quiet hs-go" data-act="hoOpen" data-k="' + esc(Q.key(name)) + '">📋 ' + T('Hồ sơ · Bảng như sheet', 'Profile · Sheet view') + '</button>';
+  // Owner 12/11 ("chỗ bảng như sheet ở đâu"): the class page opens from the class drawer (tap a class), next to "Mở lớp".
+  return viewHomeroomsBeforeHs()
+    .replace(/<div class="row-top"><b>([^<]+)<\/b>/g, (m, name) => classList.some(x => x.key === Q.key(name)) ? m + go(name) : m)
+    .replace(/(<aside class="drawer" role="dialog" aria-label="([^"]+)"><div class="dw-head">[\s\S]*?<span class="spacer"><\/span>)/, (m, all, name) => classList.some(x => x.key === Q.key(name)) ? all + go(name) : m);
 };
 // Tracker writes name the pupil of each row, so a row that moved (a pupil retired above it) is never overwritten.
 const writeCellsBeforeHs = writeCells;
