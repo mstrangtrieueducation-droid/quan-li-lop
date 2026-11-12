@@ -7101,3 +7101,18 @@ window.addEventListener('click', e => {
   const week = weeks[Q.weekTab(tabs, day)] || weeks[Q.weekTab(tabs, today())], t = week && week.data.tasks.find(x => String(x.row) === b.dataset.row);
   if (t && !(isManager() || isMe(taOf(t)))) { e.stopImmediatePropagation(); say(T('Đây là việc trả bài của TA ' + taOf(t) + ', chỉ người đó (hoặc quản lí) bấm được.', 'This return belongs to TA ' + taOf(t) + '.'), 'bad'); }
 }, true);
+
+/* Owner 12/11 ("bản mới không cần F5, nó tự lên"): a page waited for an empty outbox before taking a new version, so a device
+ * whose outbox was stuck (GV Hannah, 193 items) could never receive the very fix that unsticks it. The outbox is kept on the
+ * device and comes back after a reload, so the page now waits only while a save is on its way or something was queued in the
+ * last minute. */
+let queueLastAt = 0;
+const queueBeforeStamp = queue;
+queue = function (item, wait) { queueLastAt = Date.now(); return queueBeforeStamp(item, wait); };
+const appSafeBeforeOutbox = appSafe;
+appSafe = function () {
+  if (typeof flushing !== 'undefined' && flushing) return false;
+  if (outbox.length && Date.now() - queueLastAt < 60000) return false;
+  const keep = outbox; outbox = [];
+  try { return appSafeBeforeOutbox(); } finally { outbox = keep; }
+};
