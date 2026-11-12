@@ -81,7 +81,9 @@ async function call(op, args, attempts) {
     if (k) await new Promise(r => setTimeout(r, last && last.status === 429 ? 20000 : 3000 * k));
     try {
       const r = await fetch(target, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body });
-      const d = await r.json();
+      let d;
+      // A page that is not the server's answer (Cloudflare over its daily allowance, or down) means nothing was done there.
+      try { d = await r.json(); } catch (x) { const g = new Error('Cổng tạm không trả lời (' + r.status + ')'); g.gate = target !== CONFIG.gas; throw g; }
       if (d.ok) return d.data;
       last = new Error(d.error || 'Lỗi máy chủ');
       last.status = d.status;
@@ -89,8 +91,9 @@ async function call(op, args, attempts) {
       if (d.status < 500 && d.status !== 429) throw last;
     } catch (e) {
       last = e; if (e.status && e.status < 500 && e.status !== 429) throw e;
-      // Owner 12/11: the Cloudflare gateway out of reach: reads go straight to the old server; writes stay on the device until it is back.
-      if (!e.status && CONFIG.gas && !/^(ghi|set|add)$/.test(op)) target = CONFIG.gas;
+      // Owner 12/11: the Cloudflare gateway out of reach: everything goes straight to the old server (same checks there). Only when
+      // the network itself failed (the gateway may have saved it already) do writes wait on the device and go again later.
+      if (CONFIG.gas && target !== CONFIG.gas && (e.gate || (!e.status && !/^(ghi|set|add)$/.test(op)))) target = CONFIG.gas;
     }
   }
   throw last;

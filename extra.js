@@ -7143,36 +7143,44 @@ paintOffPop = function () { if (!popupAllowed()) { const b = document.getElement
 const ghiWatch = new Map();
 let ghiTimer = null, ghiTries = 0;
 function ghiLater(ms) { clearTimeout(ghiTimer); ghiTimer = setTimeout(ghiCheck, ms); }
+// How each cell went, from the gateway (later) or the old server (at once): screen follows the sheet, problems are named once.
+function ghiResults(pairs) {
+  const clash = [], refused = [];
+  pairs.forEach(([x, r]) => {
+    const t = trackers[x.classKey];
+    if (r.state === 'xong') { if (t && r.col >= 0 && r.col !== x.col) t.set(x.row, r.col, x.value === '' ? '' : String(x.value)); if (t && r.vi != null) t.set(x.row, r.col >= 0 ? r.col : x.col, r.vi); return; }
+    if (r.state === 'xung') { if (t) t.set(x.row, x.col, r.now || ''); clash.push(x.label || x.range); return; }
+    if (r.state === 'loi') refused.push((x.label || x.range) + (r.note ? ' (' + Q.clean(r.note).slice(0, 70) + ')' : ''));
+  });
+  if (clash.length) say(T(clash.length + ' ô không ghi vì trên sheet đã có nội dung khác (app không ghi đè): ', clash.length + ' cells skipped, the sheet already holds something else: ') + clash.slice(0, 6).join('; ') + (clash.length > 6 ? '…' : ''), 'bad');
+  if (refused.length) say(T('Sheet không nhận ' + refused.length + ' ô (đã giữ lại để quản lí xem): ', refused.length + ' cells refused by the sheet (kept for the manager): ') + refused.slice(0, 4).join('; ') + (refused.length > 4 ? '…' : ''), 'bad');
+  if (clash.length || refused.length) render();
+}
 async function ghiCheck() {
   ghiTimer = null;
   if (!ghiWatch.size) return;
   let res;
   try { res = await call('ghixem', { ids: [...ghiWatch.keys()].slice(0, 300) }, 1); }
   catch (e) { if (++ghiTries < 30) ghiLater(60000); return; }
-  const clash = [], refused = [];
-  ((res && res.items) || []).forEach(r => {
-    const x = ghiWatch.get(r.id); if (!x) return;
-    const t = trackers[x.classKey];
-    if (r.state === 'cho') return;
-    ghiWatch.delete(r.id);
-    if (r.state === 'xong') { if (t && r.vi != null) t.set(x.row, r.col >= 0 ? r.col : x.col, r.vi); if (t && r.col >= 0 && r.col !== x.col) t.set(x.row, r.col, x.value === '' ? '' : String(x.value)); return; }
-    if (r.state === 'xung') { if (t) t.set(x.row, x.col, r.now || ''); clash.push(x.label || x.range); return; }
-    refused.push((x.label || x.range) + (r.note ? ' (' + Q.clean(r.note).slice(0, 70) + ')' : ''));
-  });
-  if (clash.length) say(T(clash.length + ' ô không ghi vì trên sheet đã có nội dung khác (app không ghi đè): ', clash.length + ' cells skipped, the sheet already holds something else: ') + clash.slice(0, 6).join('; ') + (clash.length > 6 ? '…' : ''), 'bad');
-  if (refused.length) say(T('Sheet không nhận ' + refused.length + ' ô (đã giữ lại để quản lí xem): ', refused.length + ' cells refused by the sheet (kept for the manager): ') + refused.slice(0, 4).join('; ') + (refused.length > 4 ? '…' : ''), 'bad');
-  if (clash.length || refused.length) render();
+  const pairs = [];
+  ((res && res.items) || []).forEach(r => { const x = ghiWatch.get(r.id); if (!x || r.state === 'cho') return; ghiWatch.delete(r.id); pairs.push([x, r]); });
+  ghiResults(pairs);
   if (ghiWatch.size && ++ghiTries < 30) ghiLater(ghiTries < 3 ? 15000 : 60000); else ghiTries = 0;
 }
 writeCells = async function (file, items) {
-  items.forEach(x => { if (x.row && x.classKey && !x.name) { const t = trackers[x.classKey], p = t && t.pupils.find(q => q.row === x.row); if (p) x.name = p.name; } if (!x.cid) x.cid = newCid(); });
-  const gv = teacherFor(items[0] && items[0].classKey);
-  for (let i = 0; i < items.length; i += 200) {
-    const part = items.slice(i, i + 200);
+  // The newest value of a cell wins; the first one queued holds what the sheet must still have.
+  const last = new Map();
+  items.forEach(x => { const seen = last.get(x.range); last.set(x.range, seen ? Object.assign({}, x, { expected: seen.expected, blind: x.blind && seen.blind }) : x); });
+  const list = [...last.values()];
+  list.forEach(x => { if (x.row && x.classKey && !x.name) { const t = trackers[x.classKey], p = t && t.pupils.find(q => q.row === x.row); if (p) x.name = p.name; } if (!x.cid) x.cid = newCid(); });
+  const gv = teacherFor(list[0] && list[0].classKey);
+  for (let i = 0; i < list.length; i += 200) {
+    const part = list.slice(i, i + 200);
     const res = await call('ghi', { file, gv, items: part.map(x => ({ cid: x.cid, range: x.range, row: x.row, col: x.col, value: x.value, expected: x.expected, blind: !!x.blind, colSig: x.colSig || '', name: x.name || '' })) }, 2);
     ((res && res.ids) || []).forEach(({ cid, id }) => { const x = part.find(y => y.cid === cid); if (x) ghiWatch.set(id, x); });
+    if (res && res.done) ghiResults(res.done.map(r => [part.find(y => y.cid === r.cid), r]).filter(p => p[0]));
   }
   const at = Date.now();
-  items.filter(x => x.blind && x.classKey).forEach(x => sentCells.set(x.classKey + '|' + x.row + '|' + x.col, { row: x.row, col: x.col, value: x.value, at }));
-  ghiTries = 0; ghiLater(8000);
+  list.filter(x => x.blind && x.classKey).forEach(x => sentCells.set(x.classKey + '|' + x.row + '|' + x.col, { row: x.row, col: x.col, value: x.value, at }));
+  if (ghiWatch.size) { ghiTries = 0; ghiLater(8000); }
 };
