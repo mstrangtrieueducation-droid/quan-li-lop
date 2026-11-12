@@ -7046,3 +7046,18 @@ tickTask = async function (week, task) {
   });
   render();
 };
+
+/* Owner 12/11, same complaint: the log shows the TA of the class (THU HIEN, MY LINH) pressing the teacher's ✓ on the shared list,
+ * which unticked the teacher's "graded" mark (10/11 17:16, 20:13; 11/11 19:32). The ✓ belongs to the teacher who grades (and
+ * managers); a TA sees it but cannot change it, and marks the return with "Đã trả" as before. */
+const canTickTask = t => !!me && (isManager() || isMe(t.teacher));
+const tickTaskBeforeOwner = tickTask;
+tickTask = async function (week, task) {
+  if (task && !canTickTask(task)) { say(T('Ô ✓ là của GV chấm bài (' + task.teacher + '). TA bấm "Đã trả" khi đã trả bài.', 'Only the grading teacher (' + task.teacher + ') ticks this. TAs use "Returned".'), 'bad'); return; }
+  return tickTaskBeforeOwner(week, task);
+};
+const taskRowBeforeOwner = taskRow;
+taskRow = function (t, week, canTick) {
+  const h = taskRowBeforeOwner(t, week, canTick);
+  return canTickTask(t) ? h : h.replace(/<button class="(on)?" data-act="task"[^>]*>✓<\/button>/, (m, on) => '<button class="' + (on || '') + ' locked" disabled title="' + esc(T('Chỉ GV chấm bài tích ô này', 'Only the grading teacher ticks this')) + '">✓</button>');
+};
