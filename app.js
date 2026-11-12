@@ -276,7 +276,8 @@ async function writeCells(file, items) {
   });
   if (!data.length) return;
   // Owner 12/11: the server words a translated English line as the lesson's teacher (thầy/cô) speaking to "con" (KIDS) or "em" (IELTS, FIGHTER).
-  const res = await call('set', { file, data, gv: teacherFor(all[0] && all[0].classKey) }, 2);
+  const guard = all.filter(x => x.name && data.some(d => d.range === x.range)).map(x => ({ range: x.range, name: x.name }));
+  const res = await call('set', { file, data, gv: teacherFor(all[0] && all[0].classKey), guard }, 2);
   // Owner 11/11: the server writes an English reason in Vietnamese; this page keeps the same text so the next edit is not a "conflict".
   ((res && res.vi) || []).forEach(v => { const x = all.find(y => y.range === v.range), t = x && trackers[x.classKey]; if (t) t.set(x.row, x.col, v.value); });
 }
