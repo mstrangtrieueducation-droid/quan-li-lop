@@ -6210,6 +6210,82 @@ paintStrip = function () {
  * The server reads each pupil's parent-page data and returns what that page counts as overdue (op 'dashno', kept 10 minutes).
  * The class screen, the lesson card line and the summary use it; a pupil without a parent link (or before the answer arrives)
  * keeps the sheet-based count. Work due on the lesson day counts once the lesson has started (owner: "đếm tới lúc mở lớp"). */
+/* ---------- Owner 12/11 ("đọc bài tập về nhà bị sao thì sao... làm sao tối ưu nhất"): KIDS parent pages read by the staff device ----------
+ * The parent pages live on the same site as this app, so a teacher's or manager's device reads them directly: the class gives
+ * its parent links (op dashlinks, read from the sheet), the class page names its dashboard server, and each pupil's data file is
+ * named by the SHA-256 of the link key, exactly as the parent page does. The same rules as the server (dashNo_) pick what is
+ * overdue. The answer is then left on the server (op dashnoput), so the class screen and every other device get it without the
+ * server fetching anything: no Google UrlFetch allowance is used. If the device cannot read the pages, the server is asked. */
+const dashHost = {};
+const dashIsoOf = d => { const m = String(d || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : ''; };
+const dashMsOf = s => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\D+(\d{1,2}):(\d{2})(?::(\d{2}))?/); return m ? Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4] - 7, +m[5], +(m[6] || 0)) : 0; };
+function dashResubmitOf(comment, attempts) {
+  const c = String(comment || '');
+  if (!c.includes('CẦN NỘP LẠI')) return false;
+  const times = (attempts || []).map(a => Number(a.submittedAtMs) || dashMsOf(a.submittedAt)).filter(Boolean).sort((a, b) => a - b);
+  const m = c.match(/CẦN NỘP LẠI(?:\s*\([^)]*\))?\s*(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2})/);
+  if (m) { const stamp = dashMsOf(m[1]); return !times.some(t => t >= stamp + 60000); }
+  for (let i = 1; i < times.length; i++) if (times[i] >= Date.UTC(2026, 10, 5, 17) && times[i] - times[i - 1] >= 7200000) return false;
+  return true;
+}
+async function dashSha(s) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+function dashItemsOf(prof, day) {
+  const items = [], join = dashIsoOf(prof.joinDate);
+  (prof.selfPractice || []).forEach(x => {
+    const due = dashIsoOf(x.dueDate), label = 'Tự luyện ' + Q.clean(String(x.title || '').split('\n')[0]);
+    if (x.state && dashResubmitOf(x.teacherComment, x.submissionAttempts)) items.push({ practice: true, resubmit: true, label, due });
+    else if (!x.state && due && due <= day && (!join || due >= join)) items.push({ practice: true, label, due });
+  });
+  (prof.assignments || []).forEach(a => {
+    if (a.kind !== 'lesson') return;
+    const due = dashIsoOf(a.dueDate);
+    (a.tasks || []).forEach(t => {
+      if (String(t.requiresSubmission) === 'false') return;
+      const fb = t.feedback || {}, tl = Q.clean(t.title || 'Bài trên web').slice(0, 60);
+      if ((fb.state || a.state) && dashResubmitOf(fb.teacherComment, fb.submissionAttempts)) { items.push({ lesson: Number(a.sessionNumber) || '', resubmit: true, label: tl, due }); return; }
+      if (a.state || fb.state || !due || due > day || (join && due < join)) return;
+      items.push({ lesson: Number(a.sessionNumber) || '', label: tl, due });
+    });
+  });
+  return items;
+}
+async function dashNoBrowser(cls) {
+  const num = (cls.match(/^KIDS\s*(\d+)$/i) || [])[1];
+  if (!num) return { pupils: [], skip: 'không phải lớp KIDS' };
+  const links = (((await call('dashlinks', { cls })) || {}).links || []).map(x => { const m = x.url.match(/github\.io\/([a-z0-9]+)\/#p=([A-Za-z0-9_-]+)/i); return m && { row: x.row, page: m[1], token: m[2] }; }).filter(Boolean);
+  if (!links.length) return { pupils: [], skip: 'không có link học sinh' };
+  const page = links[0].page;
+  let host = dashHost[page] || (saved.get('dashHost') || {})[page];
+  if (!host) {
+    const html = await (await fetch('/' + page + '/', { cache: 'no-store' })).text();
+    host = (html.match(/https:\/\/[a-z0-9.-]+\.workers\.dev/) || [])[0];
+    if (!host) throw new Error('không thấy máy chủ dash của lớp');
+    dashHost[page] = host; keep('dashHost', Object.assign({}, saved.get('dashHost') || {}, { [page]: host }));
+  }
+  const day = today(), out = new Array(links.length), queueList = links.map((p, i) => i);
+  const worker = async () => {
+    while (queueList.length) {
+      const i = queueList.shift(), p = links[i], item = { row: p.row, ok: false, items: [] };
+      try {
+        const r = await fetch(host + '/data/' + num + '/' + await dashSha(p.token) + '.json', { cache: 'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        item.items = dashItemsOf(((await r.json()).actions.bootstrap.profile) || {}, day); item.ok = true;
+      } catch (e) { item.error = String(e.message || e).slice(0, 80); }
+      out[i] = item;
+    }
+  };
+  await Promise.all([1, 2, 3, 4, 5, 6].map(worker));
+  if (!out.some(p => p.ok)) throw new Error('không đọc được trang dash nào');
+  const answer = { at: new Date().toLocaleString('vi-VN'), today: day, pupils: out, by: 'browser' };
+  call('dashnoput', { cls, pupils: out }).catch(() => {});
+  return answer;
+}
+// Staff devices read the pages themselves; the class screen (and any device that cannot) asks the server, which answers from
+// what a staff device left there or, failing that, reads the pages itself.
+async function dashNoGet(cls, fresh) {
+  if (!isBoard()) { try { return await dashNoBrowser(cls); } catch (e) { console.warn('dash browser', e); } }
+  return call('dashno', fresh ? { cls, fresh: true } : { cls });
+}
 const dashOwed = {};
 function dashOwedFor(ctx) {
   const s = ctx && ctx.session;
@@ -6219,7 +6295,7 @@ function dashOwedFor(ctx) {
   const hit = dashOwed[c.key];
   if ((!hit || Date.now() - hit.at > 5 * 60 * 1000) && !(hit && hit.loading)) {
     dashOwed[c.key] = Object.assign({ at: 0 }, hit, { loading: true });
-    call('dashno', { cls: Q.clean(s.cls).replace(/\.\d+$/, '') }).then(d => { dashOwed[c.key] = { at: Date.now(), data: d }; })
+    dashNoGet(Q.clean(s.cls).replace(/\.\d+$/, '')).then(d => { dashOwed[c.key] = { at: Date.now(), data: d }; })
       .catch(() => { dashOwed[c.key] = { at: Date.now(), data: hit && hit.data || null }; }).finally(() => { try { owedMemo.key = ''; } catch (e) {} render(); });
   }
   const d = hit && hit.data;
@@ -6259,7 +6335,7 @@ function refreshDashNow(s) {
   const c = s && classOf(s);
   if (!c || isSecondary(s) || !/^KIDS\s*\d+/i.test(Q.clean(s.cls))) return;
   dashOwed[c.key] = Object.assign({}, dashOwed[c.key], { loading: true });
-  call('dashno', { cls: Q.clean(s.cls).replace(/\.\d+$/, ''), fresh: true }).then(d => { dashOwed[c.key] = { at: Date.now(), data: d }; })
+  dashNoGet(Q.clean(s.cls).replace(/\.\d+$/, ''), true).then(d => { dashOwed[c.key] = { at: Date.now(), data: d }; })
     .catch(() => { dashOwed[c.key] = Object.assign({}, dashOwed[c.key], { loading: false }); }).finally(() => { try { owedMemo.key = ''; } catch (e) {} render(); });
 }
 const refreshOwedNowBeforeDash = refreshOwedNow;
@@ -6844,3 +6920,82 @@ writeCells = async function (file, items) {
   return writeCellsBeforeHs(file, items);
 };
 
+
+/* ---------- Owner 12/11 (GV Hannah: "193 not saved yet", a wall of "someone else wrote … here, so it was not overwritten" that kept
+ * coming back) ----------
+ * Work queued while the server could not write (the Google allowance ran out) stayed on the device for hours; meanwhile the
+ * class sheet got a new lesson block, which pushes every older column to the right. A cell kept as "column V" then names another
+ * column. Three guards:
+ *  1. Each tracker cell now remembers which column it was meant for (the lesson block's title and the column's own header). Before
+ *     writing, the header of the sheet is read again; a cell whose column moved is moved with it, or dropped if not found.
+ *     Star counts queued before this guard existed (they are written without the "someone else wrote" check) are dropped, since
+ *     their column cannot be confirmed; other old cells keep that check, which already refuses a moved column.
+ *  2. "Someone else wrote here" is said once per save, as one line naming the pupils, never one notice per cell on every retry.
+ *  3. A save the server refuses (a row that changed, a bad cell) no longer blocks everything else forever: the batch is split until
+ *     the one bad cell is found, that cell is dropped with a note, and the rest is written. */
+const colSig = (head, col) => {
+  const rows = head || [], at = (r, c) => Q.key(String((rows[r] || [])[c] || ''));
+  let title = '';
+  for (let c = col; c >= 0 && !title; c--) { const t = at(0, c); if (t) title = t; }
+  return title.slice(0, 80) + '|' + [1, 2, 3].map(r => at(r, col)).join('/').slice(0, 120);
+};
+const queueBeforeSig = queue;
+queue = function (item, wait) {
+  if (item && item.kind === 'cell' && !item.at) {
+    item.at = Date.now();
+    const t = item.classKey && trackers[item.classKey];
+    if (t && t.head && item.col >= 0 && !item.colSig) item.colSig = colSig(t.head, item.col);
+  }
+  return queueBeforeSig(item, wait);
+};
+let conflictBag = null;
+const conflictBeforeBag = conflict;
+conflict = function (x, value) {
+  if (!conflictBag) return conflictBeforeBag(x, value);
+  const hit = trackers[x.classKey]; if (hit) hit.set(x.row, x.col, value);
+  conflictBag.push(x.label || x.range);
+};
+async function sigFix(file, items) {
+  const tracked = items.filter(x => x.classKey && x.col >= 0 && /^'.+'!/.test(x.range));
+  const drop = new Set();
+  // Blind writes (stars) queued before the guard: nothing proves their column, so they are not written.
+  tracked.forEach(x => { if (x.blind && !x.colSig) drop.add(x); });
+  const withSig = tracked.filter(x => x.colSig && !drop.has(x));
+  if (withSig.length) {
+    const tabs = [...new Set(withSig.map(x => x.range.match(/^('.+')!/)[1]))];
+    const got = await batchGet(file, tabs.map(t => t + '!1:4'));
+    tabs.forEach((tab, i) => {
+      const head = got[i] || [], width = Math.max(0, ...head.map(r => (r || []).length));
+      withSig.filter(x => x.range.startsWith(tab + '!')).forEach(x => {
+        if (colSig(head, x.col) === x.colSig) return;
+        let to = -1;
+        for (let c = 0; c < width; c++) if (colSig(head, c) === x.colSig) { to = c; break; }
+        if (to < 0) { drop.add(x); return; }
+        x.col = to; x.range = tab + '!' + Q.colName(to) + x.row;
+      });
+    });
+  }
+  return drop;
+}
+async function writeSplit(file, items, dropped) {
+  try { return await writeCellsBeforeSig(file, items); }
+  catch (e) {
+    if (!(e.status === 400 || e.status === 409) ) throw e;
+    if (items.length === 1) { dropped.push((items[0].label || items[0].range) + ' (' + Q.clean(e.message).slice(0, 80) + ')'); return; }
+    const half = Math.ceil(items.length / 2);
+    await writeSplit(file, items.slice(0, half), dropped);
+    await writeSplit(file, items.slice(half), dropped);
+  }
+}
+const writeCellsBeforeSig = writeCells;
+writeCells = async function (file, items) {
+  const drop = await sigFix(file, items).catch(() => new Set());
+  const go = items.filter(x => !drop.has(x)), dropped = [...drop].map(x => x.label || x.range);
+  conflictBag = [];
+  try { if (go.length) await writeSplit(file, go, dropped); }
+  finally {
+    const bag = conflictBag; conflictBag = null;
+    if (bag.length) say(T(bag.length + ' ô không ghi vì trên sheet đã có nội dung khác (app không ghi đè): ', bag.length + ' cells skipped, the sheet already holds something else: ') + bag.slice(0, 6).join('; ') + (bag.length > 6 ? '…' : ''), 'bad');
+    if (dropped.length) say(T('Bỏ ' + dropped.length + ' mục cũ không còn đúng cột trên sheet (để tránh ghi nhầm): ', dropped.length + ' old items dropped, their column moved: ') + dropped.slice(0, 6).join('; ') + (dropped.length > 6 ? '…' : ''), 'bad');
+  }
+};
