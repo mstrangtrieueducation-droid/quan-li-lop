@@ -6999,3 +6999,50 @@ writeCells = async function (file, items) {
     if (dropped.length) say(T('Bỏ ' + dropped.length + ' mục cũ không còn đúng cột trên sheet (để tránh ghi nhầm): ', dropped.length + ' old items dropped, their column moved: ') + dropped.slice(0, 6).join('; ') + (dropped.length > 6 ? '…' : ''), 'bad');
   }
 };
+
+/* ---------- Owner 12/11 (GV Angelo: "I confirmed this is done almost a week ago, every day it comes back") ----------
+ * A grading task whose dates run past Sunday is listed again in the next week's tab, with its own DONE box left unticked, so a
+ * task ticked last week came back as not done. A task now counts as done when it is ticked in any loaded week tab (same teacher,
+ * class, work and lesson day); the app then ticks the other tab too, after checking the row still holds that task, so the sheet
+ * agrees. Unticking clears it in every tab that holds it. Last week's tab is read once so last week's ticks are known. */
+const taskKey = t => [Q.key(t.teacher), Q.key(t.cls), Q.key(t.what), t.lessonDay || ''].join('|');
+const taskHealing = new Set();
+let taskPrevAsked = false;
+function healTasks() {
+  if (!me || isBoard()) return;
+  if (!taskPrevAsked) { taskPrevAsked = true; weekOf(Q.addDays(today(), -7)).then(() => healTasks()).catch(() => {}); }
+  const all = Object.values(weeks).filter(w => w && w.data && w.data.tasks), done = new Set();
+  all.forEach(w => w.data.tasks.forEach(t => { if (t.done) done.add(taskKey(t)); }));
+  const fix = {};
+  all.forEach(w => w.data.tasks.forEach(t => {
+    if (t.done || !done.has(taskKey(t))) return;
+    t.done = true;
+    const k = w.tab + '|' + t.row;
+    if (taskHealing.has(k)) return;
+    taskHealing.add(k); (fix[w.tab] = fix[w.tab] || []).push(t);
+  }));
+  Object.entries(fix).forEach(([tab, list]) => setTaskBoxes(tab, list, true).catch(() => list.forEach(t => taskHealing.delete(tab + '|' + t.row))));
+}
+async function setTaskBoxes(tab, list, value) {
+  const got = await batchGet(CONFIG.scheduleId, list.map(t => quote(tab) + '!A' + t.row + ':D' + t.row));
+  const data = list.filter((t, i) => { const r = ((got[i] || [])[0]) || []; return Q.clean(r[3]) === t.what && Q.key(r[2]) === Q.key(t.cls) && /^(TRUE|FALSE)$/i.test(Q.clean(r[0])) && /^TRUE$/i.test(Q.clean(r[0])) !== value; })
+    .map(t => ({ range: quote(tab) + '!A' + t.row, values: [[value ? 'TRUE' : 'FALSE']] }));
+  if (data.length) { await batchWrite(CONFIG.scheduleId, data); saved.delete('week:' + tab); }
+}
+const setWeekBeforeHeal = setWeek;
+setWeek = function (tab, rows) { const w = setWeekBeforeHeal(tab, rows); try { setTimeout(healTasks, 0); } catch (e) {} return w; };
+const tickTaskBeforeHeal = tickTask;
+tickTask = async function (week, task) {
+  if (!task) return;
+  const was = !!task.done;
+  await tickTaskBeforeHeal(week, task);
+  if (!!task.done === was) return;
+  const k = taskKey(task);
+  Object.values(weeks).filter(w => w && w !== week && w.data && w.data.tasks).forEach(w => {
+    const same = w.data.tasks.filter(t => taskKey(t) === k && !!t.done !== !!task.done);
+    if (!same.length) return;
+    same.forEach(t => { t.done = task.done; });
+    setTaskBoxes(w.tab, same, !!task.done).catch(() => {});
+  });
+  render();
+};
