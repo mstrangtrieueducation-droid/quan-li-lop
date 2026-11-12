@@ -6282,8 +6282,21 @@ async function dashNoBrowser(cls) {
 }
 // Staff devices read the pages themselves; the class screen (and any device that cannot) asks the server, which answers from
 // what a staff device left there or, failing that, reads the pages itself.
+// Owner 12/11 ("có sợ máy người ta chặn gì không"): one pupil's page data is about half a megabyte, so a device reads a class at most
+// every 10 minutes (every 2 minutes when asked fresh, e.g. while closing the lesson) and reuses its last answer in between.
+const dashMine = {};
 async function dashNoGet(cls, fresh) {
-  if (!isBoard()) { try { return await dashNoBrowser(cls); } catch (e) { console.warn('dash browser', e); } }
+  if (!isBoard()) {
+    const k = Q.key(cls), hit = dashMine[k], age = hit ? Date.now() - hit.at : Infinity;
+    if (hit && age < (fresh ? 120000 : 600000)) return hit.data;
+    if (hit && hit.busy) return hit.data;
+    try {
+      dashMine[k] = Object.assign({}, hit, { busy: true });
+      const data = await dashNoBrowser(cls);
+      dashMine[k] = { at: Date.now(), data };
+      return data;
+    } catch (e) { console.warn('dash browser', e); if (hit) dashMine[k] = hit; else delete dashMine[k]; }
+  }
   return call('dashno', fresh ? { cls, fresh: true } : { cls });
 }
 const dashOwed = {};
