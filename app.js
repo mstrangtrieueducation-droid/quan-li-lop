@@ -253,6 +253,16 @@ async function flush() {
   if (outbox.length && !flushFailed) flush();
 }
 // A cell changed by someone else since we read it is never overwritten; the person is told instead.
+function teacherFor(classKey) {
+  if (!classKey) return '';
+  try {
+    if (current) { const c = classOf(current); if (c && c.key === classKey) return Q.clean(current.teacher || ''); }
+    const t = today(), list = [];
+    Object.values(weeks).forEach(w => ((w.data && w.data.sessions) || []).forEach(s => { if (s.off || s.day > t) return; const c = classOf(s); if (c && c.key === classKey) list.push(s); }));
+    list.sort((a, b) => (b.day + String(b.start).padStart(5, '0')).localeCompare(a.day + String(a.start).padStart(5, '0')));
+    return list[0] ? Q.clean(list[0].teacher || '') : '';
+  } catch (e) { return ''; }
+}
 async function writeCells(file, items) {
   const last = new Map();
   items.forEach(x => { const seen = last.get(x.range); last.set(x.range, seen ? Object.assign({}, x, { expected: seen.expected }) : x); });
@@ -265,7 +275,8 @@ async function writeCells(file, items) {
     data.push({ range: x.range, values: [[x.value]] });
   });
   if (!data.length) return;
-  const res = await batchWrite(file, data);
+  // Owner 12/11: the server words a translated English line as the lesson's teacher (thầy/cô) speaking to "con" (KIDS) or "em" (IELTS, FIGHTER).
+  const res = await call('set', { file, data, gv: teacherFor(all[0] && all[0].classKey) }, 2);
   // Owner 11/11: the server writes an English reason in Vietnamese; this page keeps the same text so the next edit is not a "conflict".
   ((res && res.vi) || []).forEach(v => { const x = all.find(y => y.range === v.range), t = x && trackers[x.classKey]; if (t) t.set(x.row, x.col, v.value); });
 }
