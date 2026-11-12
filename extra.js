@@ -7161,6 +7161,7 @@ function ghiResults(pairs) {
   pairs.forEach(([x, r]) => {
     const t = trackers[x.classKey];
     if (r.state === 'xong') { if (t && r.col >= 0 && r.col !== x.col) t.set(x.row, r.col, x.value === '' ? '' : String(x.value)); if (t && r.vi != null) t.set(x.row, r.col >= 0 ? r.col : x.col, r.vi); return; }
+    if (r.state !== 'xong' && x.classKey) sentCells.delete(x.classKey + '|' + x.row + '|' + x.col);
     if (r.state === 'xung') { if (t) t.set(x.row, x.col, r.now || ''); clash.push(x.label || x.range); return; }
     if (r.state === 'loi') refused.push((x.label || x.range) + (r.note ? ' (' + Q.clean(r.note).slice(0, 70) + ')' : ''));
   });
@@ -7186,14 +7187,16 @@ writeCells = async function (file, items) {
   const list = [...last.values()];
   list.forEach(x => { if (x.row && x.classKey && !x.name) { const t = trackers[x.classKey], p = t && t.pupils.find(q => q.row === x.row); if (p) x.name = p.name; } if (!x.cid) x.cid = newCid(); });
   const gv = teacherFor(list[0] && list[0].classKey);
+  // Owner 13/11 (tests): every cell sent, not only stars, stays on this screen for 2 minutes, so a sheet copy read before the
+  // gateway has put it in never shows the old value for a moment. A cell the sheet refuses or already holds differently lets go.
+  const at = Date.now();
+  list.filter(x => x.classKey).forEach(x => sentCells.set(x.classKey + '|' + x.row + '|' + x.col, { row: x.row, col: x.col, value: x.value, at }));
   for (let i = 0; i < list.length; i += 200) {
     const part = list.slice(i, i + 200);
     const res = await call('ghi', { file, gv, items: part.map(x => ({ cid: x.cid, range: x.range, row: x.row, col: x.col, value: x.value, expected: x.expected, blind: !!x.blind, colSig: x.colSig || '', name: x.name || '' })) }, 2);
     ((res && res.ids) || []).forEach(({ cid, id }) => { const x = part.find(y => y.cid === cid); if (x) ghiWatch.set(id, x); });
     if (res && res.done) ghiResults(res.done.map(r => [part.find(y => y.cid === r.cid), r]).filter(p => p[0]));
   }
-  const at = Date.now();
-  list.filter(x => x.blind && x.classKey).forEach(x => sentCells.set(x.classKey + '|' + x.row + '|' + x.col, { row: x.row, col: x.col, value: x.value, at }));
   if (ghiWatch.size) { ghiTries = 0; ghiLater(8000); }
 };
 
@@ -7211,7 +7214,7 @@ const khoOn = () => /workers\.dev/.test(String(CONFIG.server || ''));
 const khoCell = r => /![A-Z]{1,3}\d{1,5}$/.test(String(r).replace(/\$/g, ''));
 const khoKey = (op, a) => op === 'boot' ? 'boot' : op === 'get' && a && a.file && Array.isArray(a.ranges) && a.ranges.length && !a.ranges.every(khoCell) ? 'g|' + a.file + '|' + a.ranges.join('|') : '';
 const khoReq = (op, a) => op === 'boot' ? { op: 'boot' } : { op: 'get', file: a.file, ranges: a.ranges.slice() };
-function khoDrop(file) { [...kho.keys()].forEach(k => { if (k.startsWith('g|' + file + '|')) kho.delete(k); }); }
+function khoDrop(file) { kho.forEach((x, k) => { if (k.startsWith('g|' + file + '|')) { x.checked = 0; x.v = 'cu'; } }); }
 async function khoFetch(list) {
   if (!list.length) return new Map();
   const res = await callBeforeKho('laynhieu', { reqs: list.map(x => ({ key: x.key, q: x.req })) }, 1);
