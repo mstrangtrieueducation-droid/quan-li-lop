@@ -7326,6 +7326,12 @@ async function khoPrefetchClasses(span) {
 }
 const loadPanelBeforeKho = loadPanel;
 loadPanel = async function () {
-  if (['vang', 'cot', 'tong'].includes(panel)) { try { await khoPrefetchClasses(panel === 'cot' ? [0, 14] : panel === 'vang' ? [-7, 0] : [0, 0]); } catch (e) {} }
-  return loadPanelBeforeKho();
+  if (!['vang', 'cot', 'tong'].includes(panel)) return loadPanelBeforeKho();
+  try { await khoPrefetchClasses(panel === 'cot' ? [0, 14] : panel === 'vang' ? [-7, 0] : [0, 0]); } catch (e) {}
+  // Tests 13/11: the panel redrew the whole screen after every class (45 times, ~0.3 s each = 15 s of a frozen page). While it
+  // loads, the screen is redrawn at most every 1.5 s, and once at the end.
+  // Two loads at once (a quick second tap) share one slowed-down drawing, and the real one always comes back.
+  if (!panelDraw.depth++) { panelDraw.real = render; panelDraw.last = 0; render = function () { const t = Date.now(); if (t - panelDraw.last > 1500) { panelDraw.last = t; return panelDraw.real.apply(this, arguments); } }; }
+  try { return await loadPanelBeforeKho(); } finally { if (!--panelDraw.depth) { render = panelDraw.real; render(); } }
 };
+const panelDraw = { depth: 0, real: null, last: 0 };
