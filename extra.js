@@ -2937,8 +2937,10 @@ window.addEventListener('pagehide', () => {
   try {
     if (!accessKey) return;
     const byFile = {};
-    outbox.filter(x => x.kind === 'cell' && x.blind).forEach(x => { (byFile[x.file] = byFile[x.file] || []).push({ range: x.range, values: [[x.value]] }); });
-    Object.entries(byFile).forEach(([file, data]) => fetch(CONFIG.server, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ k: accessKey, op: 'set', file, data: data.slice(0, 150) }) }).catch(() => {}));
+    // Owner 12/11: sent to the gateway with each item's own id, so the copy sent again at the next opening is not saved twice.
+    outbox.filter(x => x.kind === 'cell' && x.blind).forEach(x => { if (!x.cid) x.cid = newCid(); (byFile[x.file] = byFile[x.file] || []).push({ cid: x.cid, range: x.range, row: x.row, col: x.col, value: x.value, blind: true, colSig: x.colSig || '', name: x.name || '' }); });
+    keep('outbox', outbox);
+    Object.entries(byFile).forEach(([file, items]) => fetch(CONFIG.server, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ k: accessKey, op: 'ghi', file, items: items.slice(0, 150) }) }).catch(() => {}));
   } catch (e) {}
 });
 
@@ -7132,3 +7134,45 @@ const paintPhPopBeforeRole = paintPhPop;
 paintPhPop = function () { if (!popupAllowed()) { const b = document.getElementById('phPop'); if (b) b.remove(); return; } return paintPhPopBeforeRole(); };
 const paintOffPopBeforeRole = paintOffPop;
 paintOffPop = function () { if (!popupAllowed()) { const b = document.getElementById('offPop'); if (b) b.remove(); return; } return paintOffPopBeforeRole(); };
+
+/* ---------- Owner 12/11 ("dứt khỏi Google… chỉ là nơi ghi dự phòng"): cells are saved by the gateway, not by Google ----------
+ * A tap is saved in the app's own database at Cloudflare and counts as saved at once; the gateway then puts it into the sheet with
+ * the same checks as before (the pupil of the row, "someone else wrote here", a column that moved). Nothing is read from Google
+ * before a write any more. A minute later the app asks how each cell went: a cell the sheet refused is named once on screen,
+ * a cell someone else had changed shows their value, a reason written in English comes back in Vietnamese. */
+const ghiWatch = new Map();
+let ghiTimer = null, ghiTries = 0;
+function ghiLater(ms) { clearTimeout(ghiTimer); ghiTimer = setTimeout(ghiCheck, ms); }
+async function ghiCheck() {
+  ghiTimer = null;
+  if (!ghiWatch.size) return;
+  let res;
+  try { res = await call('ghixem', { ids: [...ghiWatch.keys()].slice(0, 300) }, 1); }
+  catch (e) { if (++ghiTries < 30) ghiLater(60000); return; }
+  const clash = [], refused = [];
+  ((res && res.items) || []).forEach(r => {
+    const x = ghiWatch.get(r.id); if (!x) return;
+    const t = trackers[x.classKey];
+    if (r.state === 'cho') return;
+    ghiWatch.delete(r.id);
+    if (r.state === 'xong') { if (t && r.vi != null) t.set(x.row, r.col >= 0 ? r.col : x.col, r.vi); if (t && r.col >= 0 && r.col !== x.col) t.set(x.row, r.col, x.value === '' ? '' : String(x.value)); return; }
+    if (r.state === 'xung') { if (t) t.set(x.row, x.col, r.now || ''); clash.push(x.label || x.range); return; }
+    refused.push((x.label || x.range) + (r.note ? ' (' + Q.clean(r.note).slice(0, 70) + ')' : ''));
+  });
+  if (clash.length) say(T(clash.length + ' ô không ghi vì trên sheet đã có nội dung khác (app không ghi đè): ', clash.length + ' cells skipped, the sheet already holds something else: ') + clash.slice(0, 6).join('; ') + (clash.length > 6 ? '…' : ''), 'bad');
+  if (refused.length) say(T('Sheet không nhận ' + refused.length + ' ô (đã giữ lại để quản lí xem): ', refused.length + ' cells refused by the sheet (kept for the manager): ') + refused.slice(0, 4).join('; ') + (refused.length > 4 ? '…' : ''), 'bad');
+  if (clash.length || refused.length) render();
+  if (ghiWatch.size && ++ghiTries < 30) ghiLater(ghiTries < 3 ? 15000 : 60000); else ghiTries = 0;
+}
+writeCells = async function (file, items) {
+  items.forEach(x => { if (x.row && x.classKey && !x.name) { const t = trackers[x.classKey], p = t && t.pupils.find(q => q.row === x.row); if (p) x.name = p.name; } if (!x.cid) x.cid = newCid(); });
+  const gv = teacherFor(items[0] && items[0].classKey);
+  for (let i = 0; i < items.length; i += 200) {
+    const part = items.slice(i, i + 200);
+    const res = await call('ghi', { file, gv, items: part.map(x => ({ cid: x.cid, range: x.range, row: x.row, col: x.col, value: x.value, expected: x.expected, blind: !!x.blind, colSig: x.colSig || '', name: x.name || '' })) }, 2);
+    ((res && res.ids) || []).forEach(({ cid, id }) => { const x = part.find(y => y.cid === cid); if (x) ghiWatch.set(id, x); });
+  }
+  const at = Date.now();
+  items.filter(x => x.blind && x.classKey).forEach(x => sentCells.set(x.classKey + '|' + x.row + '|' + x.col, { row: x.row, col: x.col, value: x.value, at }));
+  ghiTries = 0; ghiLater(8000);
+};

@@ -75,19 +75,23 @@ function showLogin(expired) {
 async function call(op, args, attempts) {
   if (!accessKey) { showLogin(false); throw new Error('Cần mở bằng link riêng.'); }
   const body = JSON.stringify(Object.assign({ k: accessKey, op }, args));
-  let last = null;
+  let last = null, target = CONFIG.server;
   // Google allows 60 reads a minute for everyone on this server together, so a refusal waits for the next minute.
   for (let k = 0; k < (last && last.status === 429 ? 5 : attempts || 3); k++) {
     if (k) await new Promise(r => setTimeout(r, last && last.status === 429 ? 20000 : 3000 * k));
     try {
-      const r = await fetch(CONFIG.server, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body });
+      const r = await fetch(target, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body });
       const d = await r.json();
       if (d.ok) return d.data;
       last = new Error(d.error || 'Lỗi máy chủ');
       last.status = d.status;
       if (d.status === 401) { accessKey = null; keep('key', ''); showLogin(true); throw last; }
       if (d.status < 500 && d.status !== 429) throw last;
-    } catch (e) { last = e; if (e.status && e.status < 500 && e.status !== 429) throw e; }
+    } catch (e) {
+      last = e; if (e.status && e.status < 500 && e.status !== 429) throw e;
+      // Owner 12/11: the Cloudflare gateway out of reach: reads go straight to the old server; writes stay on the device until it is back.
+      if (!e.status && CONFIG.gas && !/^(ghi|set|add)$/.test(op)) target = CONFIG.gas;
+    }
   }
   throw last;
 }
@@ -100,7 +104,7 @@ const batchGet = async (file, ranges) => {
   return got.flat();
 };
 const batchWrite = (file, data) => call('set', { file, data }, 2);
-const appendRows = (file, tab, rows) => call('add', { file, tab, rows }, 2);
+const appendRows = (file, tab, rows, cids) => call('add', { file, tab, rows, cids }, 2);
 const quote = tab => "'" + tab + "'";
 
 /* ---------- State ---------- */
@@ -215,7 +219,10 @@ async function loadTracker(cls, force, light) {
 /* ---------- Writing: everything goes through one outbox kept on the device ---------- */
 let outbox = [], flushTimer = null, flushDue = 0, flushing = false, flushFailed = false;
 // Many classrooms share one write allowance, so stars wait and go together; anything else goes within seconds.
+// Owner 12/11: each item has its own id, so the gateway never saves the same tap twice when a reply is lost and it is sent again.
+const newCid = () => Date.now().toString(36) + '-' + Array.from(crypto.getRandomValues(new Uint8Array(9)), b => b.toString(36).padStart(2, '0')).join('');
 function queue(item, wait) {
+  if (item && !item.cid) item.cid = newCid();
   outbox.push(item); keep('outbox', outbox); paintSave();
   const due = Date.now() + (wait || 3000);
   if (flushTimer && flushDue <= due) return;
@@ -233,8 +240,8 @@ async function flush() {
   const batch = outbox.slice();
   try {
     const appends = {};
-    batch.filter(x => x.kind === 'append').forEach(x => { const k = x.file + '|' + x.tab; (appends[k] = appends[k] || { file: x.file, tab: x.tab, rows: [] }).rows.push(x.row); });
-    for (const a of Object.values(appends)) await appendRows(a.file, a.tab, a.rows);
+    batch.filter(x => x.kind === 'append').forEach(x => { const k = x.file + '|' + x.tab; const a = appends[k] = appends[k] || { file: x.file, tab: x.tab, rows: [], cids: [] }; a.rows.push(x.row); a.cids.push(x.cid || ''); });
+    for (const a of Object.values(appends)) await appendRows(a.file, a.tab, a.rows, a.cids);
     // Rows are in the sheet now, so a retry below must not send them twice.
     outbox = outbox.filter(x => x.kind !== 'append' || !batch.includes(x));
     const byFile = {};
