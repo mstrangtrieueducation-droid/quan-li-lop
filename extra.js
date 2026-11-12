@@ -7196,3 +7196,107 @@ writeCells = async function (file, items) {
   list.filter(x => x.blind && x.classKey).forEach(x => sentCells.set(x.classKey + '|' + x.row + '|' + x.col, { row: x.row, col: x.col, value: x.value, at }));
   if (ghiWatch.size) { ghiTries = 0; ghiLater(8000); }
 };
+
+/* ---------- Như dashboard (owner 13/11: "làm giống dash… có dữ liệu mới thì update không cần F5, cực kì hiệu quả") ----------
+ * Reads are kept on this page (kho) with the version the gateway gave them. Opening the app asks for the whole first screen in
+ * one request (the reads this device made last time). Every 10 s, while the page is in front, one small request asks the gateway
+ * which of the kept reads changed; only those are fetched again, and the screen redraws by itself. In between, the app's own
+ * refreshes are answered here without going to the network. Writes drop the kept reads of their file, so a read after a write
+ * always asks the gateway. If the gateway cannot answer, everything falls back to the normal way. */
+const KHO_OK_MS = 25000, KHO_POLL_MS = 10000, KHO_IDLE_MS = 10 * 60000, KHO_SAVE = 'kho_keys';
+const kho = new Map();
+const khoClone = typeof structuredClone === 'function' ? x => structuredClone(x) : x => JSON.parse(JSON.stringify(x)); // older phones
+let khoWarm = null, khoBusy = false, khoSaveAt = 0;
+const khoOn = () => /workers\.dev/.test(String(CONFIG.server || ''));
+const khoCell = r => /![A-Z]{1,3}\d{1,5}$/.test(String(r).replace(/\$/g, ''));
+const khoKey = (op, a) => op === 'boot' ? 'boot' : op === 'get' && a && a.file && Array.isArray(a.ranges) && a.ranges.length && !a.ranges.every(khoCell) ? 'g|' + a.file + '|' + a.ranges.join('|') : '';
+const khoReq = (op, a) => op === 'boot' ? { op: 'boot' } : { op: 'get', file: a.file, ranges: a.ranges.slice() };
+function khoDrop(file) { [...kho.keys()].forEach(k => { if (k.startsWith('g|' + file + '|')) kho.delete(k); }); }
+async function khoFetch(list) {
+  if (!list.length) return new Map();
+  const res = await callBeforeKho('laynhieu', { reqs: list.map(x => ({ key: x.key, q: x.req })) }, 1);
+  const out = new Map(), now = Date.now();
+  ((res && res.items) || []).forEach(it => {
+    const x = list.find(l => l.key === it.key), b = it.b || {};
+    if (!x) return;
+    if (b.ok) { const old = kho.get(it.key); kho.set(it.key, { req: x.req, data: b.data, v: it.v, checked: now, used: old ? old.used : now }); }
+    out.set(it.key, b);
+  });
+  return out;
+}
+function khoSave() {
+  const now = Date.now();
+  if (now - khoSaveAt < 20000) return;
+  khoSaveAt = now;
+  keep(KHO_SAVE, { tag: keyTag(accessKey), list: [...kho.entries()].filter(([, x]) => now - x.used < KHO_IDLE_MS).slice(0, 60).map(([key, x]) => ({ key, req: x.req })) });
+}
+const callBeforeKho = call;
+call = async function (op, args, attempts) {
+  if (!khoOn()) return callBeforeKho(op, args, attempts);
+  const key = khoKey(op, args);
+  if (!key) {
+    const out = await callBeforeKho(op, args, attempts);
+    if (/^(ghi|set|add)$/.test(op) && args && args.file) khoDrop(args.file);
+    return out;
+  }
+  if (khoWarm) { try { await khoWarm; } catch (e) {} }
+  const hit = kho.get(key), now = Date.now();
+  if (hit && now - hit.checked < KHO_OK_MS) { hit.used = now; return khoClone(hit.data); }
+  try {
+    const got = await khoFetch([{ key, req: khoReq(op, args) }]), b = got.get(key);
+    if (b && b.ok) { khoSave(); return khoClone(b.data); }
+    if (b && b.status && b.status < 500 && b.status !== 429) { const e = new Error(b.error || 'Lỗi máy chủ'); e.status = b.status; if (b.status === 401) return callBeforeKho(op, args, attempts); throw e; }
+  } catch (e) { if (e.status && e.status < 500 && e.status !== 429) throw e; }
+  return callBeforeKho(op, args, attempts);
+};
+// Opening: the reads of last time, in one request, before the app's own first reads.
+const enterBeforeKho = enter;
+enter = function () {
+  const s = saved.get(KHO_SAVE);
+  if (khoOn() && s && s.tag === keyTag(accessKey) && Array.isArray(s.list) && s.list.length) {
+    khoWarm = khoFetch(s.list).catch(() => {}).finally(() => { khoWarm = null; });
+  }
+  return enterBeforeKho();
+};
+// What changed since: one small request every 10 s while the page is in front; then only the changed reads, and a redraw.
+async function khoPoll() {
+  if (!khoOn() || !me || !accessKey || khoBusy || document.visibilityState !== 'visible' || !kho.size) return;
+  khoBusy = true;
+  try {
+    const now = Date.now();
+    kho.forEach((x, k) => { if (now - x.used > KHO_IDLE_MS) kho.delete(k); });
+    const items = [...kho.entries()].map(([key, x]) => ({ key, q: x.req, v: x.v }));
+    if (!items.length) return;
+    const res = await callBeforeKho('moi', { items }, 1);
+    const changed = new Set((res && res.changed) || []), t = Date.now();
+    kho.forEach((x, k) => { if (!changed.has(k)) x.checked = t; });
+    if (changed.size) {
+      await khoFetch([...changed].filter(k => kho.has(k)).map(k => ({ key: k, req: kho.get(k).req })));
+      khoNews(changed);
+    }
+    khoSave();
+  } catch (e) { /* the normal refreshes still run */ }
+  finally { khoBusy = false; }
+}
+setInterval(khoPoll, KHO_POLL_MS);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') khoPoll(); });
+// New data: the screen follows at once, the same way the app's own timers would (now answered from the page, so instantly).
+function khoNews(changed) {
+  try {
+    const keys = [...changed];
+    const jobs = [];
+    if (keys.some(k => k === 'boot')) jobs.push(call('boot', {}).then(b => { applyBoot(b); keep('boot', { tag: keyTag(accessKey), b, at: Date.now() }); }).catch(() => {}));
+    if (keys.some(k => k.startsWith('g|' + CONFIG.diemDanhId + '|DIEM_DANH'))) jobs.push((logs.marks ? liveMarks() : loadMarks(true)).catch(() => {}));
+    if (keys.some(k => k.startsWith('g|' + CONFIG.diemDanhId + '|HANH_VI'))) jobs.push(loadBehave(true).catch(() => {}));
+    if (keys.some(k => k.startsWith('g|' + CONFIG.scheduleId + '|'))) jobs.push(weekOf(day, true).catch(() => {}));
+    classList.forEach(c => { if (keys.some(k => k.startsWith('g|' + c.tracker + '|'))) jobs.push(loadTracker(c, true).catch(() => {})); });
+    if (keys.some(k => k.startsWith('g|' + CONFIG.quanLiId + '|'))) { try { liveAll.front = 0; jobs.push(liveTick(true).catch(() => {})); } catch (e) {} }
+    Promise.allSettled(jobs).then(() => {
+      const a = document.activeElement;
+      if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+      if (view === 'lenlop' && typeof llFreezeUntil !== 'undefined' && Date.now() < llFreezeUntil) return;
+      render();
+    });
+  } catch (e) {}
+}
+window.addEventListener('pagehide', () => { khoSaveAt = 0; try { khoSave(); } catch (e) {} });
