@@ -5641,8 +5641,16 @@ myDue = function (week, d) {
  * too, and also to the teacher who takes the roll. "Để 10 phút" hides it for 10 minutes; it never covers the class screen. */
 const PH_SNOOZE_MS = 10 * 60 * 1000;
 let phSnoozeUntil = 0, phTried = new Set();
+// Owner 12/11 ("tôi vẫn thấy báo sai": KIDS 26 and IELTS 51 shown as "no roll call" although both had it): the pop-up was worked out
+// from a roll-call list that had not arrived yet, or one kept from earlier. It now waits for a list read in the last 3 minutes.
+const PH_FRESH_MS = 3 * 60 * 1000;
+let phFetching = false;
 function phItems() {
   if (!me) return [];
+  if (!logs.marks || Date.now() - (logs.marks.at || 0) > PH_FRESH_MS) {
+    if (!phFetching) { phFetching = true; (logs.marks ? liveMarks() : loadMarks(true)).catch(() => {}).finally(() => { phFetching = false; try { paintPhPop(); } catch (e) {} }); }
+    return [];
+  }
   const t = today(), now = minutesNow(), w = weeks[Q.weekTab(tabs, t)], out = [];
   (w ? w.data.sessions : []).filter(s => s.day === t && !s.off && classOf(s) && now >= s.start + Q.ROLL_CALL_MINUTES && now <= s.end + 120).forEach(s => {
     const mineCn = isMe(s.ta), mineRoll = takesRoll(s);
