@@ -6615,6 +6615,8 @@ function viewHoSo() {
   let h = '<div class="row-top"><button class="quiet" data-act="hoBack">‹ ' + T('Lớp chủ nhiệm', 'Homerooms') + '</button><span class="spacer"></span><button class="quiet" data-act="hoReload">↻</button></div>' +
     '<h2>📋 ' + esc(c.name) + '</h2>';
   if (ho.err) h += '<div class="notice bad">' + esc(ho.err) + '</div>';
+  h += '<div class="seg hg-mode">' + [['', '👤 ' + T('Danh sách', 'Pupils')], ['grid', '📊 ' + T('Bảng như sheet', 'Sheet view')]].map(([k, t]) => '<button class="' + ((ho.mode || '') === k ? 'on' : '') + '" data-act="hoMode" data-m="' + k + '">' + t + '</button>').join('') + '</div>';
+  if (ho.mode === 'grid') return h + hgView(c);
   if (!I) return h + '<div class="card empty">' + T('Đang đọc sheet lớp…', 'Reading the class sheet…') + '</div>';
   const n = I.pupils.length, owing = I.owed.filter(o => o.length).length, noDash = I.pupils.filter(p => !p.dash).length;
   h += '<div class="filters"><input type="search" data-act="hoQ" value="' + esc(ho.q) + '" placeholder="' + T('Tìm tên…', 'Find…') + '"><div class="seg">' + [['', T('Tất cả ', 'All ') + n], ['owe', T('Nợ bài ', 'Owing ') + owing], ['absent', T('Vắng nhiều', 'Often absent')], ['nodash', T('Chưa có link ', 'No link ') + noDash]].map(([k, t]) => '<button class="' + (ho.filter === k ? 'on' : '') + '" data-act="hoFilter" data-k="' + k + '">' + t + '</button>').join('') + '</div></div>';
@@ -6663,11 +6665,11 @@ document.addEventListener('input', e => { const b = e.target; if (b && b.dataset
 document.addEventListener('change', e => { const b = e.target; if (b && b.dataset && b.dataset.f && ho.form) { ho.form[b.dataset.f] = b.value; render(); } });
 document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-act]');
-  if (!b || !/^ho[A-Z]/.test(b.dataset.act)) return;
+  if (!b || !/^ho[A-Z]/.test(b.dataset.act) || /^ho(Mode|Cell|Grid)/.test(b.dataset.act)) return;
   const act = b.dataset.act; e.stopImmediatePropagation();
-  if (act === 'hoOpen') { const c = classList.find(x => x.key === b.dataset.k); if (!c) return; ho.key = c.key; ho.info = null; ho.q = ''; ho.filter = ''; ho.form = null; ho.menuRow = 0; ho.leftOpen = false; view = 'lopcn'; render(); window.scrollTo(0, 0); guarded(() => hoLoad(false)); }
+  if (act === 'hoOpen') { const c = classList.find(x => x.key === b.dataset.k); if (!c) return; ho.key = c.key; ho.info = null; ho.q = ''; ho.filter = ''; ho.form = null; ho.menuRow = 0; ho.leftOpen = false; view = 'lopcn'; hg.cell = null; render(); window.scrollTo(0, 0); guarded(() => hoLoad(false)); if (ho.mode === 'grid') guarded(() => hgLoad(false)); }
   else if (act === 'hoBack') { ho.key = ''; render(); }
-  else if (act === 'hoReload') { delete trackers[ho.key]; guarded(() => hoLoad(true)); }
+  else if (act === 'hoReload') { delete trackers[ho.key]; if (ho.mode === 'grid') guarded(() => hgLoad(true)); else guarded(() => hoLoad(true)); }
   else if (act === 'hoFilter') { ho.filter = b.dataset.k; render(); }
   else if (act === 'hoMenu') { ho.menuRow = ho.menuRow === Number(b.dataset.row) ? 0 : Number(b.dataset.row); render(); }
   else if (act === 'hoForm') { ho.form = { kind: b.dataset.f, row: Number(b.dataset.row) || 0, since: today() }; ho.menuRow = 0; render(); }
@@ -6677,6 +6679,159 @@ document.addEventListener('click', e => {
   else if (act === 'hoCopy') { navigator.clipboard.writeText(b.dataset.u).then(() => say(T('Đã sao chép link.', 'Link copied.'))).catch(() => prompt(T('Sao chép link:', 'Copy:'), b.dataset.u)); }
   else if (act === 'hoShare') { const text = T('Link theo dõi học tập của ', 'Progress link for ') + b.dataset.n + ': ' + b.dataset.u; if (navigator.share) navigator.share({ text }).catch(() => {}); else navigator.clipboard.writeText(text).then(() => say(T('Đã sao chép, dán vào Zalo.', 'Copied; paste into Zalo.'))); }
 }, true);
+/* ---------- Bảng lớp như sheet (owner 12/11: "làm sao mà Lớp hiển thị phải giống với Sheet ý... đủ thông tin như sheet thì tôi mới
+ * bỏ sheet được") ----------
+ * The Hồ sơ lớp page has a second view, "📊 Bảng như sheet": the whole THEO DÕI TOÀN DIỆN tab drawn as the same grid, with the
+ * sheet's colours, bold, red lines inside a cell, merged headers, column widths, notes and its frozen rows and columns. The
+ * server reads it in one call (op luoi). Hidden columns stay hidden unless asked. The chips jump to a block (a lesson, a test).
+ * Tapping a cell shows its full text, note and header; the homeroom teacher and managers can change a pupil's cell there, and the
+ * write goes through the same outbox (never overwrites a cell someone else changed, row checked against the pupil name). */
+const hg = { key: '', data: null, loading: false, err: '', hidden: false, cell: null, draft: '', scroll: 0 };
+const HG_SCALE = 0.8, HG_NAME_MAX = 170;
+async function hgLoad(force) {
+  const c = hoCls();
+  if (!c || hg.loading || (!force && hg.key === c.key && hg.data && Date.now() - hg.data.at < 120000)) return;
+  hg.loading = true; hg.err = ''; if (hg.key !== c.key) { hg.data = null; hg.cell = null; } hg.key = c.key; render();
+  try {
+    const t = await loadTracker(c, false, true);
+    const d = await call('luoi', { file: c.tracker, tab: t.tab });
+    d.at = Date.now();
+    // Merges: each merged block is drawn once at its first visible cell.
+    d.anchor = {}; d.cover = {};
+    (d.merges || []).forEach(m => { for (let r = m[0]; r < m[1]; r++) for (let k = m[2]; k < m[3]; k++) d.cover[r + ',' + k] = m; });
+    hg.data = d;
+  } catch (e) { hg.err = e.message; }
+  finally { hg.loading = false; render(); }
+}
+const hgShown = (d, k) => hg.hidden || !((d.cols[k] || [])[1]);
+const hgCell = (d, r, k) => ((d.rows[r] || [])[k]) || {};
+const hgIsPupilRow = (d, r) => r >= d.frozenRows && /^\d+$/.test(String(hgCell(d, r, 0).v || '').trim()) && String(hgCell(d, r, 1).v || '').trim();
+function hgText(cell) {
+  const v = String(cell.v || '');
+  if (!cell.r) return esc(v);
+  const runs = cell.r.slice().sort((a, b) => a[0] - b[0]);
+  return esc(v.slice(0, runs[0][0])) + runs.map((x, i) => { const part = v.slice(x[0], i + 1 < runs.length ? runs[i + 1][0] : v.length); if (!part) return ''; const st = (x[1] && x[1] !== '#000000' ? 'color:' + x[1] + ';' : '') + (x[2] ? 'font-weight:700;' : ''); return st ? '<span style="' + st + '">' + esc(part) + '</span>' : esc(part); }).join('');
+}
+function hgWidth(d, k) { const w = Math.round(((d.cols[k] || [])[0] || 100) * HG_SCALE); return k === 1 ? Math.min(w, HG_NAME_MAX) : Math.max(28, Math.min(w, 320)); }
+// Header text of a column: every frozen row's value at that column (or of the merged block covering it), without repeats.
+function hgHead(d, k) {
+  const out = [];
+  for (let r = 0; r < d.frozenRows; r++) { const m = d.cover[r + ',' + k], v = Q.clean(hgCell(d, m ? m[0] : r, m ? m[2] : k).v || ''); if (v && !out.includes(v)) out.push(v); }
+  return out;
+}
+function hgBlocks(d) {
+  const out = [], short = v => v.replace(/KIỂM TRA GIẤY ĐỊNH KÌ/i, 'KT giấy').replace(/KIỂM TRA NÓI CUỐI SÁCH/i, 'KT nói').replace(/CHUỖI VIDEO TỰ LUYỆN/i, 'Video tự luyện').replace(/^Buổi học ngày/i, 'Buổi');
+  let last = null;
+  for (let k = d.frozenCols; k < d.width; k++) {
+    if (!hgShown(d, k)) continue;
+    const m = d.cover['0,' + k];
+    if (m && m[1] >= d.frozenRows && m[3] - m[2] === 1) continue; // a one-column field (năm sinh, SĐT, dash)
+    const block = m ? m[2] + '-' + m[3] : String(k);
+    if (block === last) continue;
+    const v = Q.clean(hgCell(d, 0, m ? m[2] : k).v || '').split('\n')[0];
+    if (!v) continue;
+    last = block;
+    const date = (hgHead(d, k).join(' ').match(/\b(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?\b/) || []);
+    let label = short(v); if (label.length > 22) label = label.slice(0, 21) + '…';
+    if (date[0]) label += ' ' + date[1].padStart(2, '0') + '/' + date[2].padStart(2, '0');
+    if (!out.length || out[out.length - 1].label !== label) out.push({ col: k, label });
+  }
+  return out;
+}
+function hgTable(d) {
+  const cols = []; for (let k = 0; k < d.width; k++) if (hgShown(d, k)) cols.push(k);
+  const frozen = cols.filter(k => k < d.frozenCols).slice(0, innerWidth < 700 ? 2 : 9), left = {};
+  let x = 0; frozen.forEach(k => { left[k] = x; x += hgWidth(d, k); });
+  const total = cols.reduce((n, k) => n + hgWidth(d, k), 0);
+  let h = '<table class="hg" style="width:' + total + 'px"><colgroup>' + cols.map(k => '<col style="width:' + hgWidth(d, k) + 'px">').join('') + '</colgroup>';
+  d.rows.forEach((row, r) => {
+    const head = r < d.frozenRows;
+    h += '<tr' + (head ? ' class="hg-h"' : '') + '>';
+    cols.forEach(k => {
+      const m = d.cover[r + ',' + k];
+      let rs = 1, cs = 1;
+      if (m) {
+        const firstVisible = cols.find(q => q >= m[2] && q < m[3]);
+        if (r !== m[0] || k !== firstVisible) return;
+        rs = Math.min(m[1], d.rows.length) - m[0]; cs = cols.filter(q => q >= m[2] && q < m[3]).length;
+      }
+      const cell = (m ? hgCell(d, m[0], m[2]) : hgCell(d, r, k)), st = [];
+      if (cell.bg) st.push('background:' + cell.bg);
+      if (cell.fg) st.push('color:' + cell.fg);
+      if (cell.b) st.push('font-weight:700');
+      if (cell.i) st.push('font-style:italic');
+      if (cell.a) st.push('text-align:' + (cell.a === 'c' ? 'center' : 'right'));
+      const pin = k in left;
+      if (pin) st.push('left:' + left[k] + 'px');
+      const tag = head ? 'th' : 'td', v = String(cell.v || ''), url = cell.h || (/^https?:\/\/\S+$/.test(v) ? v : '');
+      const body = url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="hg-link">🔗 ' + (/#p=/.test(url) ? 'Dash' : T('Mở', 'Open')) + '</a>' : '<div class="gc">' + hgText(cell) + '</div>';
+      h += '<' + tag + (rs > 1 ? ' rowspan="' + rs + '"' : '') + (cs > 1 ? ' colspan="' + cs + '"' : '') + ' class="' + (pin ? 'pin' : '') + (cell.n ? ' hg-note' : '') + (pin && k === frozen[frozen.length - 1] ? ' pin-end' : '') + '"' +
+        (st.length ? ' style="' + st.join(';') + '"' : '') + (url ? '' : ' data-act="hoCell" data-r="' + (m ? m[0] : r) + '" data-c="' + (m ? m[2] : k) + '"') + '>' + body + '</' + tag + '>';
+    });
+    h += '</tr>';
+  });
+  return h + '</table>';
+}
+// Frozen header rows stay on top while scrolling down: their offsets are measured once the table is on the page.
+function hgPin() {
+  const box = document.querySelector('.hg-box'); if (!box) return;
+  if (hg.scroll) { box.scrollLeft = hg.scroll; hg.scroll = 0; }
+  let y = 0;
+  box.querySelectorAll('tr.hg-h').forEach(tr => { tr.querySelectorAll('th').forEach(th => { th.style.top = y + 'px'; }); y += tr.getBoundingClientRect().height; });
+}
+function hgCellView(c) {
+  const d = hg.data, s = hg.cell; if (!d || !s) return '';
+  const cell = hgCell(d, s.r, s.c), pupil = s.r >= d.frozenRows ? Q.clean(hgCell(d, s.r, 1).v || '').split('\n')[0] : '';
+  const head = hgHead(d, s.c), edit = hoCanEdit(c) && hgIsPupilRow(d, s.r) && s.c > 1;
+  let h = '<div class="ll-veil" data-act="hoCellClose"></div><div class="ll-sheet hg-sheet" role="dialog"><div class="row-top"><b>' + esc(pupil || T('Tiêu đề', 'Header')) + '</b><span class="muted small">' + Q.colName(s.c) + (s.r + 1) + '</span><span class="spacer"></span><button class="quiet" data-act="hoCellClose">' + T('Đóng', 'Close') + '</button></div>';
+  if (head.length && s.r >= d.frozenRows) h += '<div class="small muted hg-path">' + head.map(x => esc(x.split('\n')[0])).join(' › ') + '</div>';
+  h += edit ? '<textarea data-act="hoCellText" rows="6">' + esc(hg.draft) + '</textarea>' : '<div class="hg-full"' + (cell.bg ? ' style="background:' + cell.bg + (cell.fg ? ';color:' + cell.fg : '') + '"' : '') + '>' + (cell.v ? hgText(cell) : '<span class="muted">' + T('(trống)', '(empty)') + '</span>') + '</div>';
+  if (cell.n) h += '<div class="notice">📝 ' + esc(cell.n) + '</div>';
+  if (edit) h += '<div class="choices"><button class="primary" data-act="hoCellSave"' + (hg.draft === String(cell.v || '') ? ' disabled' : '') + '>💾 ' + T('Ghi vào sheet', 'Save to sheet') + '</button></div><p class="small muted">' + T('Ghi qua hàng chờ như mọi thao tác khác; nếu ô vừa bị người khác sửa thì app không ghi đè và báo lại.', 'Saved through the outbox; a cell someone else just changed is never overwritten.') + '</p>';
+  return h + '</div>';
+}
+function hgView(c) {
+  const d = hg.data;
+  let h = '';
+  if (hg.err) h += '<div class="notice bad">' + esc(hg.err) + '</div>';
+  if (!d) return h + '<div class="card empty">' + (hg.loading ? T('Đang đọc nguyên bảng sheet…', 'Reading the sheet…') : '') + '</div>';
+  const hiddenN = d.cols.filter(x => x[1]).length;
+  h += '<div class="hg-bar"><span class="small muted">' + T('Bảng ' + d.tab + ' · đọc lúc ', d.tab + ' · read at ') + new Date(d.at).toTimeString().slice(0, 5) + (hg.loading ? ' ⏳' : '') + '</span>' +
+    (hiddenN ? '<button class="quiet" data-act="hoGridHidden">' + (hg.hidden ? T('Ẩn ' + hiddenN + ' cột ẩn', 'Hide ' + hiddenN + ' hidden columns') : T('Hiện ' + hiddenN + ' cột ẩn', 'Show ' + hiddenN + ' hidden columns')) + '</button>' : '') + '</div>';
+  const blocks = hgBlocks(d);
+  if (blocks.length > 1) h += '<div class="hg-chips">' + blocks.map(b => '<button class="quiet" data-act="hoGridGo" data-c="' + b.col + '">' + esc(b.label) + '</button>').join('') + '</div>';
+  h += '<div class="hg-box">' + hgTable(d) + '</div>';
+  setTimeout(hgPin, 0);
+  return h + hgCellView(c);
+}
+async function hgSave() {
+  const c = hoCls(), d = hg.data, s = hg.cell; if (!c || !d || !s) return;
+  const cell = hgCell(d, s.r, s.c), before = String(cell.v || ''), value = hg.draft;
+  if (value === before) return;
+  const pupil = Q.clean(hgCell(d, s.r, 1).v || '').split('\n')[0], head = hgHead(d, s.c);
+  queue({ kind: 'cell', file: c.tracker, classKey: c.key, range: quote(d.tab) + '!' + Q.colName(s.c) + (s.r + 1), row: s.r + 1, col: s.c, expected: before, value, name: pupil, label: pupil + ' · ' + (head[head.length - 1] || Q.colName(s.c)).split('\n')[0].slice(0, 30) });
+  d.rows[s.r] = d.rows[s.r] || []; d.rows[s.r][s.c] = Object.assign({}, cell, { v: value, r: null });
+  const t = trackers[c.key]; if (t && t.set) t.set(s.r + 1, s.c, value);
+  hg.cell = null; render();
+  say(T('Đã đưa vào hàng chờ ghi sheet.', 'Queued for the sheet.'));
+}
+document.addEventListener('input', e => { const b = e.target; if (b && b.dataset && b.dataset.act === 'hoCellText') { hg.draft = b.value; const btn = document.querySelector('[data-act="hoCellSave"]'); if (btn) btn.disabled = hg.draft === String(hgCell(hg.data, hg.cell.r, hg.cell.c).v || ''); } });
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act]');
+  if (!b || !/^ho(Mode|Cell|CellClose|CellSave|Grid[A-Z]\w*)$/.test(b.dataset.act)) return;
+  const act = b.dataset.act; e.stopImmediatePropagation();
+  const box = document.querySelector('.hg-box');
+  if (act === 'hoMode') { ho.mode = b.dataset.m; render(); if (ho.mode === 'grid') guarded(() => hgLoad(false)); }
+  else if (act === 'hoCell') { if (box) hg.scroll = box.scrollLeft; hg.cell = { r: Number(b.dataset.r), c: Number(b.dataset.c) }; hg.draft = String(hgCell(hg.data, hg.cell.r, hg.cell.c).v || ''); render(); }
+  else if (act === 'hoCellClose') { if (box) hg.scroll = box.scrollLeft; hg.cell = null; render(); }
+  else if (act === 'hoCellSave') { if (box) hg.scroll = box.scrollLeft; hgSave(); }
+  else if (act === 'hoGridHidden') { hg.hidden = !hg.hidden; render(); }
+  else if (act === 'hoGridGo') {
+    const td = box && box.querySelector('[data-c="' + b.dataset.c + '"]'), pinned = [...(box ? box.querySelectorAll('tr:first-child .pin') : [])].reduce((n, x) => Math.max(n, x.offsetLeft + x.offsetWidth), 0);
+    if (td) box.scrollTo({ left: Math.max(0, td.offsetLeft - pinned - 4), behavior: 'smooth' });
+  }
+}, true);
+
 const viewHomeroomsBeforeHs = viewHomerooms;
 viewHomerooms = function () {
   if (ho.key) return viewHoSo();
