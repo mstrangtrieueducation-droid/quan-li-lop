@@ -6653,7 +6653,7 @@ function hoRow(c, p, i) {
   let marks = '';
   if (!ielts) {
     const g = I.grades.map(b => I.cell(p.row, b.grade)).map(v => (String(v).split('\n')[0].match(/^\s*(A\+|A|B|F)(?![A-Za-z])/i) || [])[1]).filter(Boolean);
-    const st = I.stars.reduce((n, b) => n + (Number(String(I.cell(p.row, b.stars)).replace(/[^\d]/g, '')) || 0), 0);
+    const st = I.stars.reduce((n, b) => n + (starNum(I.cell(p.row, b.stars)) || 0), 0);
     if (g.length) marks += '<span class="hs-g">' + g.map(x => '<b class="g' + x.replace('+', 'p') + '">' + esc(x) + '</b>').join('') + '</span>';
     if (st) marks += '<span class="tag">⭐ ' + st + '</span>';
     const byTest = new Map();

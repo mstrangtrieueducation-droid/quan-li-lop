@@ -333,7 +333,9 @@ function setAbsence(ctx, pupil, status) {
 }
 /* ---------- Lên lớp: stars and absence on the classroom touch screen ---------- */
 const NGHI = 'GV báo nghỉ';
-let starsOf = (ctx, p) => { const v = ctx.block && ctx.block.stars >= 0 ? Q.clean(ctx.tracker.cell(p.row, ctx.block.stars)) : ''; return /^\d+$/.test(v) ? Number(v) : 0; };
+// Owner 12/11 (KIDS 20 Ronaldo): a star column formatted with decimals shows "2,00"; it is still the number 2, never a note.
+const starNum = v => { const m = Q.clean(v).match(/^(\d+)(?:[.,]0+)?$/); return m ? Number(m[1]) : null; };
+let starsOf = (ctx, p) => { const v = ctx.block && ctx.block.stars >= 0 ? ctx.tracker.cell(p.row, ctx.block.stars) : ''; return starNum(v) || 0; };
 // Owner 08/11: 30 minutes after a lesson ends it locks for teachers and TAs (A/B/F, stars, attendance), so nothing is tapped by mistake later; managers can still correct.
 const CLOSE_AFTER = 30;
 // Owner 09/11: "các lớp ielts viết bị dài... cho tôi 30p hạn thêm chốt lớp": IELTS writing lessons lock 30 minutes later.
@@ -355,7 +357,7 @@ function setStars(ctx, pupil, count) {
   const { block, tracker, cls, session } = ctx;
   if (!block || block.stars < 0) return say(T('Tiết này chưa có cột Số sao trong sheet lớp, TA mở cột giúp.', 'This lesson has no star column yet, TA please open it.'), 'bad');
   const current = Q.clean(tracker.cell(pupil.row, block.stars));
-  if (current && !/^\d+$/.test(current)) return say(pupil.eng + T(': ô Số sao đang có ghi chú, vui lòng sửa trong sheet.', ': the star cell holds a note, please edit it in the sheet.'), 'bad');
+  if (current && starNum(current) === null) return say(pupil.eng + T(': ô Số sao đang có ghi chú, vui lòng sửa trong sheet.', ': the star cell holds a note, please edit it in the sheet.'), 'bad');
   const value = Math.max(0, Math.min(99, count)), range = quote(tracker.tab) + '!' + Q.colName(block.stars) + pupil.row, expected = tracker.cell(pupil.row, block.stars);
   tracker.set(pupil.row, block.stars, value ? String(value) : '');
   queue({ kind: 'cell', file: cls.tracker, classKey: cls.key, range, row: pupil.row, col: block.stars, expected, value: value || '', blind: true, label: pupil.eng + ' · ' + T('Số sao', 'Stars') }, STAR_WAIT);
