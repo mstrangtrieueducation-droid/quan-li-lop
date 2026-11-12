@@ -1767,11 +1767,15 @@ document.addEventListener('click', e => {
  * homework grade with its reason, reminders, and the videos still owed, stamped with the time the class sheet was read. */
 let llSummary = { key: '', mode: null };
 const lessonEnded = s => s.day < today() || (s.day === today() && minutesNow() >= s.end);
+// Owner 13/11: the close-lesson screen and its pop-up come 5 minutes after the lesson ends (the teacher is still wrapping up);
+// the close button itself works from the end of the lesson.
+const CHOT_AFTER_MIN = 5;
+const chotTime = s => s.day < today() || (s.day === today() && minutesNow() >= s.end + CHOT_AFTER_MIN);
 const sumStamp = at => { const d = new Date(at || Date.now()), p = n => String(n).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()) + ' ngày ' + p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear(); };
 function summaryOn(s) {
   const key = Q.sessionKey(s);
   if (llSummary.key !== key) llSummary = { key, mode: null };
-  return llSummary.mode === null ? lessonEnded(s) : llSummary.mode;
+  return llSummary.mode === null ? chotTime(s) : llSummary.mode;
 }
 function attendText(m) {
   const st = m ? m.status : '';
@@ -1824,7 +1828,7 @@ llAction = function (act, i, v) {
   return llActionBeforeSummary(act, i, v);
 };
 // The class screen does not redraw by itself every 30 s; at the end of the lesson it switches to the summary once.
-setInterval(() => { if (view === 'lenlop' && current && llSummary.mode === null && lessonEnded(current) && !document.querySelector('.sum-sheet')) render(); }, 20000);
+setInterval(() => { if (view === 'lenlop' && current && llSummary.mode === null && chotTime(current) && !document.querySelector('.sum-sheet')) render(); }, 20000);
 
 /* ---------- Live data on the class page and class screen (owner 08/11: "đảm bảo tất cả dữ liệu phải live, update ngay lập tức mà không hết quota") ----------
  * While a class is open and the page is visible: new roll-call rows every 30 s (only the rows added since the last read, one request),
@@ -2657,7 +2661,7 @@ llAction = function (act, i, v) {
 function paintChotPop() {
   let box = document.getElementById('chotPop');
   const s = current, key = s ? Q.sessionKey(s) : '';
-  const show = s && view === 'lenlop' && !isChot(s) && lessonEnded(s) && canConfirm(s) && !(chotSnooze.key === key && Date.now() < chotSnooze.until) && !document.querySelector('.ll-sheet');
+  const show = s && view === 'lenlop' && !isChot(s) && chotTime(s) && canConfirm(s) && !(chotSnooze.key === key && Date.now() < chotSnooze.until) && !document.querySelector('.ll-sheet');
   if (!show) { if (box) box.remove(); return; }
   if (!box) { box = document.createElement('div'); box.id = 'chotPop'; document.body.appendChild(box); }
   // In the app's language (owner 08/11: foreign teachers use English; only the class screen pupils look at stays bilingual).
