@@ -7318,10 +7318,10 @@ async function khoPrefetchClasses(span) {
   await Promise.all([from, t, until].map(d => Promise.resolve(weekOf(d)).catch(() => {})));
   const set = new Set();
   Object.values(weeks).forEach(w => ((w && w.data && w.data.sessions) || []).forEach(s => { const c = classOf(s); if (c && !s.off && s.day >= from && s.day <= until) set.add(c); }));
-  const list = [...set].filter(c => !trackers[c.key]).map(c => {
+  const list = [...set].map(c => {
     const tab = quote(c.tab || TRACKER_TAB), a = { file: c.tracker, ranges: [tab + '!A1:8', tab + '!A1:E' + ROSTER_LAST] };
     return { key: khoKey('get', a), req: khoReq('get', a) };
-  }).filter(x => x.key && !kho.has(x.key));
+  }).filter(x => x.key && !(kho.has(x.key) && Date.now() - kho.get(x.key).checked < KHO_OK_MS));
   for (let i = 0; i < list.length; i += 15) await khoFetch(list.slice(i, i + 15)).catch(() => {});
 }
 const loadPanelBeforeKho = loadPanel;
