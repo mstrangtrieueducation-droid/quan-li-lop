@@ -7309,3 +7309,23 @@ function khoNews(changed) {
   } catch (e) {}
 }
 window.addEventListener('pagehide', () => { khoSaveAt = 0; try { khoSave(); } catch (e) {} });
+
+/* Owner 13/11 (tests: Điều hành › HS vắng took over a minute, ~30 class sheets read two at a time): the class sheets a panel needs
+ * are asked for together first (a few requests of 15), so the panel's own reads are then answered on this page at once. */
+async function khoPrefetchClasses(span) {
+  if (!khoOn()) return;
+  const t = today(), from = Q.addDays(t, span[0]), until = Q.addDays(t, span[1]);
+  await Promise.all([from, t, until].map(d => Promise.resolve(weekOf(d)).catch(() => {})));
+  const set = new Set();
+  Object.values(weeks).forEach(w => ((w && w.data && w.data.sessions) || []).forEach(s => { const c = classOf(s); if (c && !s.off && s.day >= from && s.day <= until) set.add(c); }));
+  const list = [...set].filter(c => !trackers[c.key]).map(c => {
+    const tab = quote(c.tab || TRACKER_TAB), a = { file: c.tracker, ranges: [tab + '!A1:8', tab + '!A1:E' + ROSTER_LAST] };
+    return { key: khoKey('get', a), req: khoReq('get', a) };
+  }).filter(x => x.key && !kho.has(x.key));
+  for (let i = 0; i < list.length; i += 15) await khoFetch(list.slice(i, i + 15)).catch(() => {});
+}
+const loadPanelBeforeKho = loadPanel;
+loadPanel = async function () {
+  if (['vang', 'cot', 'tong'].includes(panel)) { try { await khoPrefetchClasses(panel === 'cot' ? [0, 14] : panel === 'vang' ? [-7, 0] : [0, 0]); } catch (e) {} }
+  return loadPanelBeforeKho();
+};
