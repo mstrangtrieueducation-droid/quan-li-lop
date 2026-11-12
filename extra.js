@@ -6365,13 +6365,13 @@ refreshOwedNow = function (s) {
  * luôn ô nhận xét sheet... với IELTS thì cứ thẳng thắn... xưng cô/thầy và em, không xưng con... tất cả những lần kiểm tra nữa sẽ có ô
  * mở ra... không chốt sớm quá... nhanh, không hết quota") ----------
  * Every IELTS lesson with a "Nhận xét Buổi học" column (tests included) gets "📝 Comments" on the class screen and on the close sheet.
- * The teacher types English for each pupil; "Save & translate" sends only the changed ones in one call. The server translates them
+ * The teacher types English for each pupil; "a save goes by itself a few seconds after typing stops and sends only the changed ones in one call. The server translates them
  * with the same Google translation as the KIDS reasons (cached, so an unchanged comment is never translated twice), speaks as
  * "thầy"/"cô" (staff list, column Giới tính) to "em", and writes "💬 Nhận xét của cô: …" under the reminders in the cell. The English
  * is kept in NHAN_XET_GV so it opens again for editing. Teachers, TAs and the class screen can edit until 23:59 of the lesson day,
  * after the close too; managers at any time. Drafts stay on the device until they are saved. */
 const NX_MARK = '💬', NX_MAX = 1800;
-const nx = { open: false, key: '', rows: null, loading: false, saving: false, error: '' };
+const nx = { open: false, key: '', rows: null, loading: false, saving: false, error: '', timer: null, again: false, savedAt: 0 };
 // Speaking only (owner 12/11: "Writing tôi không nhận xét trên lớp nhé nên không cần có nút").
 const nxCol = ctx => ctx && ctx.block && ctx.tracker && /^IELTS/.test(Q.key(ctx.session.cls)) && ctx.block.skill === 'NOI' && ctx.block.nx >= 0 ? ctx.block.nx : -1;
 const nxCan = s => !!me && (isManager() || s.day === today());
@@ -6414,15 +6414,44 @@ function nxDialog() {
       '<textarea data-act="nxField" data-k="' + esc(k) + '" rows="3" maxlength="1200" lang="en" spellcheck="true"' + (can ? '' : ' disabled') + ' placeholder="' + T('Nhận xét bằng tiếng Anh…', 'Comment in English…') + '">' + esc(text) + '</textarea>' +
       (vi ? '<div class="small nx-vi">🇻🇳 ' + esc(vi) + '</div>' : '') + '</div>';
   }).join('');
-  if (can) h += '<div class="choices nx-foot"><button class="primary" data-act="nxSave"' + (nx.saving ? ' disabled' : '') + '>' + (nx.saving ? '⏳ ' + T('Đang dịch và ghi…', 'Translating…') : '💾 ' + T('Lưu & dịch', 'Save & translate') + (changed ? ' (' + changed + ')' : '')) + '</button></div>';
+  if (can) h += '<div class="choices nx-foot"><span class="small nx-state">' + nxStateText(changed) + '</span></div>';
   return h + '</div>';
 }
-async function nxSave() {
+// Owner 12/11: "tự động lưu nhé". A save goes 4 s after the teacher stops typing, at once when they leave the box or close the list.
+function nxStateText(changed) {
+  if (nx.saving) return '⏳ ' + T('Đang dịch và lưu…', 'Translating and saving…');
+  if (nx.error) return '⚠️ ' + esc(nx.error);
+  if (changed) return '✏️ ' + T('Sẽ tự lưu sau vài giây', 'Saves automatically in a few seconds');
+  return nx.savedAt ? '✓ ' + T('Đã tự lưu và ghi vào sheet', 'Saved to the sheet') : '✓ ' + T('Tự động lưu', 'Saves automatically');
+}
+function nxSoon(ms) { if (nx.timer) clearTimeout(nx.timer); nx.timer = setTimeout(() => { nx.timer = null; if (current && nx.open) nxSave(true); }, ms); }
+// Updates the tags and the footer without redrawing the boxes, so the cursor stays where the teacher is typing.
+function nxPaint() {
+  const box = document.querySelector('.nx-sheet');
+  if (!box || !current) return render();
+  const ctx = classContext(current), s = ctx.session, dr = nxDrafts();
+  let changed = 0;
+  box.querySelectorAll('textarea[data-act="nxField"]').forEach(t => {
+    const p = ctx.tracker.pupils.find(q => nxDk(s, q) === t.dataset.k), row = t.closest('.nx-row');
+    if (!p || !row) return;
+    const dirty = dr[t.dataset.k] != null && dr[t.dataset.k] !== nxSavedEn(p), vi = nxCellVi(ctx, p);
+    if (dirty) changed++;
+    const tag = row.querySelector('.row-top .tag.warn, .row-top .tag.ok'), html = dirty ? '<span class="tag warn">' + T('Chưa lưu', 'Not saved') + '</span>' : vi ? '<span class="tag ok">✓ ' + T('Đã ghi sheet', 'In the sheet') + '</span>' : '';
+    if (tag) tag.outerHTML = html; else if (html) row.querySelector('.row-top').insertAdjacentHTML('beforeend', html);
+    let v = row.querySelector('.nx-vi');
+    if (vi) { if (!v) { t.insertAdjacentHTML('afterend', '<div class="small nx-vi"></div>'); v = row.querySelector('.nx-vi'); } v.textContent = '🇻🇳 ' + vi; } else if (v) v.remove();
+  });
+  const st = box.querySelector('.nx-state'), btn = box.querySelector('[data-act="nxSave"]');
+  if (st) st.innerHTML = nxStateText(changed);
+  if (btn) btn.disabled = nx.saving || !changed;
+}
+async function nxSave(auto) {
   const ctx = classContext(current), s = ctx.session, col = nxCol(ctx), dr = nxDrafts();
-  if (col < 0 || nx.saving || !nxCan(s)) return;
+  if (col < 0 || !nxCan(s)) return;
+  if (nx.saving) { nx.again = true; return; }
   const list = ctx.tracker.pupils.filter(p => dr[nxDk(s, p)] != null && dr[nxDk(s, p)] !== nxSavedEn(p));
-  if (!list.length) { say(T('Không có nhận xét nào mới.', 'Nothing new to save.')); return; }
-  nx.saving = true; render();
+  if (!list.length) { if (!auto) say(T('Không có nhận xét nào mới.', 'Nothing new to save.')); return; }
+  nx.saving = true; nxPaint();
   try {
     const teacher = Q.clean(s.teacher) || (me && me.name) || '';
     const items = list.map(p => ({ name: p.name, range: quote(ctx.tracker.tab) + '!' + Q.colName(col) + p.row, en: String(dr[nxDk(s, p)] || '').trim().slice(0, 1200) }));
@@ -6433,24 +6462,28 @@ async function nxSave() {
       if (!p) return;
       ctx.tracker.set(p.row, col, x.value);
       nx.rows = nx.rows || {}; nx.rows[Q.key(p.name)] = { name: p.name, en: x.en, vi: x.vi };
-      delete left[nxDk(s, p)];
+      if (String(left[nxDk(s, p)] || '').trim() === x.en) delete left[nxDk(s, p)];
     });
     keep('nxDraft', left);
-    say(T('Đã dịch và ghi ' + (r.items || []).length + ' nhận xét vào sheet.', (r.items || []).length + ' comments translated and saved.'));
-  } catch (e) { say(T('Chưa lưu được: ', 'Not saved: ') + e.message + T('. Nhận xét vẫn giữ trên máy, bấm lưu lại sau.', '. Your text stays on this device; try again.'), 'bad'); }
-  finally { nx.saving = false; render(); }
+    nx.error = ''; nx.savedAt = Date.now();
+    if (!auto) say(T('Đã dịch và ghi ' + (r.items || []).length + ' nhận xét vào sheet.', (r.items || []).length + ' comments translated and saved.'));
+  } catch (e) { nx.error = T('Chưa lưu được: ', 'Not saved: ') + e.message + T('. Nhận xét vẫn giữ trên máy, app sẽ thử lại.', '. Your text stays on this device; the app will try again.'); if (!auto) say(nx.error, 'bad'); nxSoon(20000); }
+  finally { nx.saving = false; nxPaint(); if (nx.again) { nx.again = false; nxSoon(800); } }
 }
 document.addEventListener('input', e => {
   const b = e.target;
   if (!b || b.dataset.act !== 'nxField') return;
   const d = Object.assign({}, nxDrafts()); d[b.dataset.k] = b.value; keep('nxDraft', d);
+  nxSoon(4000); nxPaint();
 });
+document.addEventListener('focusout', e => { if (e.target && e.target.dataset && e.target.dataset.act === 'nxField') nxSoon(300); });
+window.addEventListener('pagehide', () => { if (nx.timer) { clearTimeout(nx.timer); nx.timer = null; nxSave(true); } });
 document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-act]');
   if (!b || !/^nx(Open|Close|Save)$/.test(b.dataset.act)) return;
   e.stopImmediatePropagation();
   if (b.dataset.act === 'nxOpen') { nx.open = true; if (current) nxLoad(current, true); render(); }
-  if (b.dataset.act === 'nxClose') { nx.open = false; render(); }
+  if (b.dataset.act === 'nxClose') { if (nx.timer) { clearTimeout(nx.timer); nx.timer = null; nxSave(true); } nx.open = false; render(); }
   if (b.dataset.act === 'nxSave') nxSave();
 }, true);
 const viewLenLopBeforeNx = viewLenLop;
