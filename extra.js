@@ -6947,7 +6947,10 @@ writeCells = async function (file, items) {
  *  3. A save the server refuses (a row that changed, a bad cell) no longer blocks everything else forever: the batch is split until
  *     the one bad cell is found, that cell is dropped with a note, and the rest is written. */
 const colSig = (head, col) => {
-  const rows = head || [], at = (r, c) => Q.key(String((rows[r] || [])[c] || ''));
+  // Owner 12/11 (FIGHTER 5 test scores, only Lucy's saved): rows 1–4 of a sheet often hold the first pupil on row 4; a pupil row is
+  // never part of the column's identity, or the first pupil's own score would make every other score of that column "moved".
+  const all = head || [], cut = all.findIndex(r => /^\d+$/.test(Q.clean((r || [])[0]))), rows = cut < 0 ? all : all.slice(0, cut);
+  const at = (r, c) => Q.key(String((rows[r] || [])[c] || ''));
   let title = '';
   for (let c = col; c >= 0 && !title; c--) { const t = at(0, c); if (t) title = t; }
   return title.slice(0, 80) + '|' + [1, 2, 3].map(r => at(r, col)).join('/').slice(0, 120);
