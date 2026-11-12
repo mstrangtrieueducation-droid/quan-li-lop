@@ -7116,3 +7116,12 @@ appSafe = function () {
   const keep = outbox; outbox = [];
   try { return appSafeBeforeOutbox(); } finally { outbox = keep; }
 };
+
+/* ---------- Owner 12/11: pop-ups only for TAs, managers and homerooms, never for a teacher who is teaching ----------
+ * "màn hình cảnh báo nổi chỉ hiện cho TA, quản lí và chủ nhiệm, tuyệt đối không hiện cho GV — họ đang dạy, bận và phân tâm".
+ * Teachers (role GV) who are nobody's homeroom get no pop-up at all; the bell and the lists stay. */
+const popupAllowed = () => !!me && (isManager() || !/^GV/i.test(Q.clean(me.role || '')) || myHomerooms().some(x => isMe(x.cm)));
+const paintPhPopBeforeRole = paintPhPop;
+paintPhPop = function () { if (!popupAllowed()) { const b = document.getElementById('phPop'); if (b) b.remove(); return; } return paintPhPopBeforeRole(); };
+const paintOffPopBeforeRole = paintOffPop;
+paintOffPop = function () { if (!popupAllowed()) { const b = document.getElementById('offPop'); if (b) b.remove(); return; } return paintOffPopBeforeRole(); };
