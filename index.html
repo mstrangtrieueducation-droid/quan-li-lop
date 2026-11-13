@@ -1388,13 +1388,19 @@
    * strip always wears the top bar's colour, also after the bar has scrolled away. Every inset is 0 in a normal browser tab. */
   :root { --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); }
   body { padding: var(--sat) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px); }
-  body::before { content: ''; position: fixed; z-index: 80; top: 0; left: 0; right: 0; height: var(--sat); background: var(--head); pointer-events: none; }
+  body::before { content: ''; position: fixed; z-index: 80; top: 0; left: 0; right: 0; height: var(--sat); background: var(--head); }
   header { top: var(--sat); }
   .bell-box { top: calc(56px + var(--sat)); max-height: calc(100vh - 80px - var(--sat)); }
   .drawer { top: var(--sat); padding-bottom: var(--sab); }
   .pair-sheet, .dash-modal { max-height: calc(100vh - 40px - var(--sat) - var(--sab)); }
   .ll-sheet { padding-bottom: calc(18px + var(--sab)); }
   .toasts { bottom: calc(16px + var(--sab)); }
+  /* Owner's iPhone 13/11 (screenshot: a grey haze over the navy bar): newer iOS tints the haze under the clock from the page's own
+   * background, so in the home-screen app the page background is the bar colour and the content area paints the light one. */
+  @supports (-webkit-touch-callout: none) { @media (display-mode: standalone) {
+    html[data-theme], html[data-theme] body { background: var(--head); }
+    html[data-theme] #app, html[data-theme] #login { background: var(--bg); min-height: calc(100vh - var(--sat)); min-height: calc(100dvh - var(--sat)); }
+  } }
 </style>
 </head>
 <body class="notranslate">
@@ -1424,11 +1430,11 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261113P"></script>
-<script src="logic.js?v=20261113P"></script>
-<script src="app.js?v=20261113P"></script>
-<script src="qrcode.js?v=20261113P"></script>
-<script src="extra.js?v=20261113P"></script>
-<script src="nentang.js?v=20261113P"></script>
+<script src="config.js?v=20261113Q"></script>
+<script src="logic.js?v=20261113Q"></script>
+<script src="app.js?v=20261113Q"></script>
+<script src="qrcode.js?v=20261113Q"></script>
+<script src="extra.js?v=20261113Q"></script>
+<script src="nentang.js?v=20261113Q"></script>
 </body>
 </html>
