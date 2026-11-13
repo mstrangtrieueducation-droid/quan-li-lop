@@ -75,18 +75,25 @@ self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : '' }; }
   e.waitUntil(self.registration.showNotification(d.title || 'Quản lí lớp', {
-    body: d.body || '', tag: d.tag || undefined, renotify: !!d.tag, icon: 'logo.png', badge: 'logo.png', data: { url: d.url || './' }
+    // 14/11 (lessons from the parent pages on the owner's phones): Android shows the small icon only from a white picture on a
+    // transparent ground, and rings/vibrates reliably when told so.
+    body: d.body || '', tag: d.tag || undefined, renotify: !!d.tag, icon: 'logo.png', badge: 'badge.png', vibrate: [200, 100, 200, 100, 300], silent: false, data: { url: d.url || './' }
   }));
 });
+// Where a tapped notification leads is also kept in this app's cache: on an iPhone the message to an open window can be lost
+// (the page is asleep) and moving the window by itself does nothing; the page reads the kept place when it comes back to the front.
+const MO_KEY = new URL('__mo', self.registration.scope).href;
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
   e.waitUntil((async () => {
-    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const w = wins.find(c => c.url.startsWith(self.registration.scope));
-    // Owner 13/11 (iPhone: "bấm vào nhận xét của GV chả ra gì"): an open window is told where to go and brought forward; where
-    // that is not possible (iPhone home-screen app), the app is opened at the address itself, which it reads when it starts.
-    if (w) { w.postMessage({ type: 'mo', url }); try { await w.focus(); return; } catch (err) {} }
+    try { const c = await caches.open(CACHE); await c.put(MO_KEY, new Response(JSON.stringify({ url, at: Date.now() }), { headers: { 'Content-Type': 'application/json' } })); } catch (err) {}
+    const wins = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true })).filter(c => c.url.startsWith(self.registration.scope));
+    const w = wins[0];
+    // Owner 13/11 (iPhone: "bấm vào nhận xét của GV chả ra gì"): every open window is told where to go and one is brought forward;
+    // where that is not possible (iPhone home-screen app), the app is opened at the address itself, which it reads when it starts.
+    wins.forEach(c => { try { c.postMessage({ type: 'mo', url }); } catch (err) {} });
+    if (w) { try { await w.focus(); return; } catch (err) {} }
     try { await self.clients.openWindow(url); } catch (err) { if (w && w.navigate) { try { await w.navigate(url); } catch (x) {} } }
   })());
 });

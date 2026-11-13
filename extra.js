@@ -8259,3 +8259,148 @@ document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-act="llChot"]');
   if (b && current) { const s = current; setTimeout(() => { nxAdopt(s).catch(() => {}); }, 4000); }
 }, true);
+
+/* ---------- Owner 14/11 (passed on by the Dashboard session: "app quản trị cũng làm thế với nhân viên tôi đi để họ cài vào điện
+ * thoại và laptop") ----------
+ * Same quiet pattern as on the parent pages. The long "Bật thông báo" card at the top of the schedule is gone. A device that does
+ * not get notifications yet shows one small round bell in the corner (never on the class screen, never while teaching); a tap
+ * opens a small sheet with the steps for that very device:
+ *  - Android in Chrome: nothing to install, one button.
+ *  - Laptop in Chrome / Edge: "Thêm biểu tượng ra màn hình" beside "Bật thông báo".
+ *  - iPhone: copy the private link, add to the home screen, open the icon, paste, then turn on (iPhone only notifies there).
+ *  - Opened inside Zalo / Facebook, or in Samsung Internet (it registers but never rings): open in Chrome / Safari, copy the link.
+ * The same sheet opens from the bell ("Cài app và thông báo trên máy này"), also once notifications are on. */
+const tbUA = navigator.userAgent || '';
+const tbInApp = /Zalo|FBAN|FBAV|FB_IAB|FB4A|Messenger|Instagram|Line\//i.test(tbUA);
+const tbSamsung = /SamsungBrowser/i.test(tbUA);
+const tbAndroid = /Android/i.test(tbUA);
+const tbIOSNotSafari = tbIOS && /CriOS|FxiOS|EdgiOS|OPiOS/i.test(tbUA);
+const tbsheet = { open: false };
+let tbInstall = null;
+// The browser's own "install" offer is held back (on Android it led to a blocked install on Samsung phones) and only used by the
+// laptop button.
+window.addEventListener('beforeinstallprompt', e => { try { e.preventDefault(); tbInstall = e; tbSheetPaint(); } catch (x) {} });
+window.addEventListener('appinstalled', () => { tbInstall = null; try { tbSheetPaint(); } catch (x) {} });
+const tbIsOn = () => { try { return tbOk() && !!tb.sub && Notification.permission === 'granted'; } catch (e) { return false; } };
+tbCard = function () { return ''; };
+function tbSheetHtml() {
+  const on = tbIsOn();
+  const p = t => '<p>' + t + '</p>', steps = list => '<ol>' + list.map(t => '<li>' + t + '</li>').join('') + '</ol>', btns = h => h ? '<div class="tb-btns">' + h + '</div>' : '';
+  const link = accessKey ? '<button class="primary" data-act="tbCopyLink">📋 ' + T('Chép link riêng', 'Copy my link') + '</button>' : '';
+  const onBtn = '<button class="primary" data-act="tbOn"' + (tb.busy ? ' disabled' : '') + '>🔔 ' + T('Bật thông báo', 'Turn on notifications') + '</button>';
+  const inst = tbInstall && !tbAndroid && !tbIOS ? '<button class="' + (on ? 'primary' : 'quiet') + '" data-act="tbInstall">💻 ' + T('Thêm biểu tượng ra màn hình', 'Add the app icon') + '</button>' : '';
+  let body;
+  if (tbInApp) body = p(T('Bạn đang mở app bên trong Zalo / Facebook nên máy không nhận được thông báo.', 'The app is open inside Zalo / Facebook, which cannot show notifications.')) +
+    steps([T('Bấm "Chép link riêng".', 'Tap "Copy my link".'), tbIOS ? T('Mở Safari, dán link vào ô địa chỉ.', 'Open Safari and paste the link.') : T('Mở Chrome, dán link vào ô địa chỉ.', 'Open Chrome and paste the link.'), T('Bấm lại vào chuông này.', 'Tap this bell again.')]) + btns(link);
+  else if (tbSamsung) body = p(T('Trình duyệt Samsung Internet thường không đổ chuông khi có thông báo. Hãy mở app bằng Chrome.', 'Samsung Internet often does not ring. Please open the app in Chrome.')) +
+    steps([T('Bấm "Chép link riêng".', 'Tap "Copy my link".'), T('Mở Chrome, dán link vào ô địa chỉ.', 'Open Chrome and paste the link.'), T('Bấm lại vào chuông này.', 'Tap this bell again.')]) + btns(link);
+  else if (tbIOS && !tbStandalone()) body = p(T('iPhone chỉ nhận thông báo khi mở app từ biểu tượng ở màn hình chính.', 'An iPhone only gets notifications in the app opened from its home-screen icon.')) +
+    steps([T('Bấm "Chép link riêng".', 'Tap "Copy my link".'),
+      (tbIOSNotSafari ? T('Mở Safari và dán link vào ô địa chỉ. ', 'Open Safari and paste the link. ') : '') + T('Bấm nút Chia sẻ ⬆️ → "Thêm vào MH chính".', 'Tap Share ⬆️ → "Add to Home Screen".'),
+      T('Mở app từ biểu tượng mới, dán link vào ô "dán link riêng", bấm Vào app.', 'Open the new icon, paste the link, tap Open.'),
+      T('Bấm chuông ở góc → Bật thông báo → Cho phép.', 'Tap the bell in the corner → Turn on → Allow.')]) + btns(link);
+  else if (!tbOk()) body = p(tbIOS ? T('iPhone này cần iOS 16.4 trở lên để nhận thông báo. Cập nhật iOS rồi mở lại app.', 'This iPhone needs iOS 16.4 or later for notifications.') : T('Trình duyệt này không nhận được thông báo. Hãy mở app bằng Chrome.', 'This browser cannot get notifications. Please use Chrome.')) + btns(tbIOS ? '' : link);
+  else if (on) body = p('✓ ' + T('Máy này đã bật thông báo. Các tin đã gửi xem ở nút chuông phía trên.', 'Notifications are on for this device. Past messages are under the bell at the top.')) +
+    (inst ? p(T('Máy tính: thêm biểu tượng để mở app như một ứng dụng riêng.', 'On a computer: add the icon to open the app like a program of its own.')) : '') + btns(inst);
+  else if (Notification.permission === 'denied') body = p('🔕 ' + T('Thông báo đang bị chặn trên máy này.', 'Notifications are blocked on this device.')) +
+    steps(tbIOS ? [T('Mở Cài đặt của iPhone → Thông báo → Quản lí lớp.', 'iPhone Settings → Notifications → Quản lí lớp.'), T('Bật "Cho phép thông báo" rồi mở lại app.', 'Turn "Allow Notifications" on, then open the app again.')]
+      : [T('Bấm biểu tượng ổ khoá (hoặc ⓘ) cạnh địa chỉ trang → Thông báo → Cho phép.', 'Tap the lock (or ⓘ) by the address → Notifications → Allow.'), T('Tải lại trang rồi bấm chuông này.', 'Reload, then tap this bell.')]);
+  else if (tbAndroid) body = p(T('Điện thoại Android: không cần cài gì thêm. Bấm nút dưới rồi chọn "Cho phép".', 'Android: nothing to install. Tap the button, then "Allow".')) + btns(onBtn);
+  else if (tbIOS) body = p(T('Bấm nút dưới rồi chọn "Cho phép".', 'Tap the button, then "Allow".')) + btns(onBtn);
+  else body = p(T('Máy tính: bấm "Bật thông báo" rồi chọn "Cho phép".', 'Computer: press "Turn on notifications", then "Allow".') + ' ' +
+    (inst ? T('Thêm biểu tượng để mở app như một ứng dụng riêng.', 'Add the icon to open the app like a program of its own.') : T('Muốn có biểu tượng riêng: bấm biểu tượng cài đặt ở cuối thanh địa chỉ của Chrome / Edge.', 'For an icon of its own: use the install button at the end of the address bar in Chrome / Edge.'))) + btns(onBtn + inst);
+  return '<div class="tb-veil" data-act="tbHelpClose"></div><div class="tb-sheet" role="dialog" aria-label="' + T('Thông báo trên máy này', 'Notifications on this device') + '">' +
+    '<div class="tb-top"><b>🔔 ' + T('Thông báo trên máy này', 'Notifications on this device') + '</b><button class="quiet" data-act="tbHelpClose">' + T('Đóng', 'Close') + '</button></div>' + body +
+    '<div class="small muted">' + T('Mỗi máy (điện thoại, laptop) bật một lần. App báo khi có việc cần bạn; giáo viên đang dạy không bị làm phiền.', 'Once per device. You are told when something needs you; nobody is disturbed while teaching.') + '</div></div>';
+}
+function tbSheetPaint() {
+  let box = document.getElementById('tbSheetBox');
+  if (!tbsheet.open) { if (box) box.innerHTML = ''; return; }
+  if (!box) { box = document.createElement('div'); box.id = 'tbSheetBox'; document.body.appendChild(box); }
+  const h = tbSheetHtml();
+  if (box._html !== h) { box.innerHTML = h; box._html = h; }
+}
+function tbFabPaint() {
+  try {
+    let b = document.getElementById('tbFab');
+    const show = !!me && !isBoard() && tb.checked && !tbIsOn() && view !== 'lenlop' && !document.body.classList.contains('lenlop');
+    if (!show) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('button'); b.id = 'tbFab'; b.type = 'button'; b.dataset.act = 'tbHelp'; b.innerHTML = '<span aria-hidden="true">🔔</span><i aria-hidden="true"></i>'; document.body.appendChild(b); }
+    const label = T('Cài app và bật thông báo trên máy này', 'Install the app and turn notifications on');
+    if (b.title !== label) { b.title = label; b.setAttribute('aria-label', label); }
+  } catch (e) {}
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="tbHelp"],[data-act="tbHelpClose"],[data-act="tbInstall"]');
+  if (!b) return;
+  e.stopImmediatePropagation();
+  const act = b.dataset.act;
+  if (act === 'tbHelp') { tbsheet.open = true; try { if (bell.open) { bell.open = false; paintBell(); } } catch (x) {} }
+  if (act === 'tbHelpClose') tbsheet.open = false;
+  if (act === 'tbInstall' && tbInstall) { const ev = tbInstall; tbInstall = null; try { ev.prompt(); if (ev.userChoice) ev.userChoice.then(() => tbSheetPaint(), () => {}); } catch (x) {} }
+  const box = document.getElementById('tbSheetBox'); if (box) box._html = '';
+  tbSheetPaint();
+}, true);
+const renderBeforeTbFab = render;
+render = function () {
+  renderBeforeTbFab();
+  try { tbFabPaint(); if (tbsheet.open) tbSheetPaint(); } catch (e) {}
+};
+// The gateway's copy of this device's address is renewed at once when the browser has changed it (an old address is dropped by
+// the push service), not only once a day. No message is sent for it.
+const tbCheckBeforeEp = tbCheck;
+tbCheck = async function () {
+  await tbCheckBeforeEp();
+  try {
+    if (tb.sub && Notification.permission === 'granted' && me && !isBoard() && saved.get('tbEp') !== tb.sub.endpoint) {
+      await call('tbdk', { sub: tb.sub.toJSON(), ua: navigator.userAgent.slice(0, 120) });
+      keep('tbEp', tb.sub.endpoint); keep('tbAt', Date.now());
+    }
+  } catch (e) {}
+  tbFabPaint();
+};
+const paintBellBeforeTbHelp = paintBell;
+paintBell = function () {
+  paintBellBeforeTbHelp();
+  try {
+    const hopBox = document.querySelector('#bellPanel .bell-box .hop');
+    if (hopBox && me && !isBoard() && !hopBox.querySelector('[data-act="tbHelp"]')) hopBox.insertAdjacentHTML('beforeend', '<button class="quiet small" data-act="tbHelp">📲 ' + T('Cài app và thông báo trên máy này', 'App and notifications on this device') + '</button>');
+  } catch (e) {}
+};
+try {
+  const st = document.createElement('style');
+  st.textContent = '#tbFab{position:fixed;z-index:25;right:16px;bottom:calc(18px + env(safe-area-inset-bottom,0px));width:46px;height:46px;border-radius:50%;border:1px solid var(--line);background:#fff;color:#111;font-size:22px;line-height:1;padding:0;display:grid;place-items:center;box-shadow:0 4px 14px rgba(15,23,42,.18);cursor:pointer;animation:tbWig .9s ease-in-out 1.2s 2}' +
+    '#tbFab i{position:absolute;top:9px;right:10px;width:9px;height:9px;border-radius:50%;background:#e11d48;border:2px solid #fff;box-sizing:content-box}' +
+    '@keyframes tbWig{0%,100%{transform:rotate(0)}20%{transform:rotate(-14deg)}40%{transform:rotate(12deg)}60%{transform:rotate(-8deg)}80%{transform:rotate(5deg)}}' +
+    '@media (prefers-reduced-motion:reduce){#tbFab{animation:none}}' +
+    '.tb-veil{position:fixed;inset:0;z-index:45;background:rgba(10,20,40,.35)}' +
+    '.tb-sheet{position:fixed;z-index:46;left:50%;bottom:0;transform:translateX(-50%);width:min(100%,520px);box-sizing:border-box;max-height:min(86vh,calc(100dvh - 24px));overflow:auto;background:var(--card);color:var(--ink);border-radius:18px 18px 0 0;padding:16px 16px calc(18px + env(safe-area-inset-bottom,0px));display:grid;gap:10px;box-shadow:0 -8px 30px rgba(15,23,42,.25);text-align:left}' +
+    '.tb-top{display:flex;align-items:center;justify-content:space-between;gap:10px}.tb-sheet p{margin:0;line-height:1.5}.tb-sheet ol{margin:0;padding-left:22px;display:grid;gap:6px;line-height:1.45}' +
+    '.tb-btns{display:flex;flex-wrap:wrap;gap:8px}.tb-btns button{flex:1 1 180px;min-height:44px}';
+  document.head.appendChild(st);
+} catch (e) {}
+
+// A tapped notification: where it leads is also read from the app's cache when the page comes back to the front (sw.js keeps it
+// there), because on an iPhone the message to an open app is often lost.
+const MO_CACHE = 'app-' + new URL('./', location.href).pathname.replace(/\W+/g, '-'), MO_KEY = new URL('__mo', new URL('./', location.href)).href;
+let moSeen = nlPending ? { k: nlPending.mo + '|' + nlPending.id, at: Date.now() } : null;
+try { navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'mo') { try { const u = new URL(e.data.url, location.href); moSeen = { k: (u.searchParams.get('mo') || '') + '|' + (u.searchParams.get('id') || ''), at: Date.now() }; } catch (x) {} } }); } catch (e) {}
+async function moCheck() {
+  try {
+    if (!('caches' in window)) return;
+    const c = await caches.open(MO_CACHE), hit = await c.match(MO_KEY);
+    if (!hit) return;
+    const d = await hit.json();
+    await c.delete(MO_KEY);
+    if (!d || !d.url || Date.now() - (d.at || 0) > 10 * 60000) return;
+    const u = new URL(d.url, location.href), mo = u.searchParams.get('mo') || '', id = u.searchParams.get('id') || '';
+    if (!mo) return;
+    if (moSeen && moSeen.k === mo + '|' + id && Date.now() - moSeen.at < 20000) return; // already opened by the message or the address
+    moSeen = { k: mo + '|' + id, at: Date.now() };
+    nlPending = { mo, id }; nlTryPending();
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) moCheck(); });
+window.addEventListener('pageshow', () => { moCheck(); });
+window.addEventListener('focus', () => { moCheck(); });
+setTimeout(moCheck, 1500);
