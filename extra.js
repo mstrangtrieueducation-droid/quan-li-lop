@@ -4306,11 +4306,14 @@ function fitRoll() {
   // size and class; a tap only re-checks that the kept answer still fits.
   // A layout also has to keep every button of a tile inside it (no icon cut off at the tile edge).
   const wide = () => [...list.querySelectorAll(':scope > .pupil')].slice(0, 4).every(p => p.scrollWidth <= p.clientWidth + 1);
-  const fits = () => list.getBoundingClientRect().bottom <= innerHeight - 8 && wide();
+  // Owner 13/11 (video, iPhone: one column turned into two or three after a tick made while scrolled down): the room was
+  // measured from the list's place on screen, so scrolling down made any layout look as if it fitted. Everything is now measured
+  // on the page itself (as if scrolled to the top), and a layout that has to scroll is kept as it is until the window or the class changes.
+  const fits = () => list.getBoundingClientRect().bottom + scrollY <= innerHeight - 8 && wide();
   const key = innerWidth + 'x' + innerHeight + '|' + n + '|' + Math.round(list.getBoundingClientRect().top + scrollY);
   const apply = b => { set(b.c, b.narrow); list.style.zoom = b.z < 0.999 ? b.z : ''; };
-  if (fitRollLast.key === key && fitRollLast.best) { apply(fitRollLast.best); if (fits()) return; }
-  const top = list.getBoundingClientRect().top, room = innerHeight - 8 - top, tries = [];
+  if (fitRollLast.key === key && fitRollLast.best) { apply(fitRollLast.best); if (fitRollLast.scrolls || fits()) return; }
+  const top = list.getBoundingClientRect().top + scrollY, room = innerHeight - 8 - top, tries = [];
   let best = null;
   search: for (const [minCol, narrow] of [[400, false], [290, false], [230, false], [150, true], [118, true]]) {
     const most = Math.max(1, Math.min(6, Math.floor(width / minCol)));
@@ -4337,6 +4340,7 @@ function fitRoll() {
   if (phone && best && best.z < 1) best = { c: 1, narrow: false, z: 1 };
   fitRollLast = { key, best: best || { c: 1, narrow: false, z: 1 } };
   apply(fitRollLast.best);
+  fitRollLast.scrolls = !fits();
 }
 let fitRollLast = { key: '', best: null };
 const renderBeforeRollFit = render;
