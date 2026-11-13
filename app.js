@@ -1408,3 +1408,5 @@ const start = () => openStore().then(() => {
   if (accessKey) enter(); else showLogin(false);
 });
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+// Read by tai-lai.js: this file ran to its end.
+window.QL_APP = 1;
