@@ -607,8 +607,14 @@ const kindName = k => k === 'other' ? T('KHÁC', 'OTHER') : (KINDS.find(x => x[0
 // Owner 08/11: G = homeroom (Chủ nhiệm); F = Quay only for VIDEOTAPER NEEDED, Trông kiểm tra for TA NEEDED, else TA.
 const invigilated = s => /\bTA NEEDED\b/.test(Q.key([s.note, s.detail].join(' '))) && !!s.video;
 const rollTaker = s => invigilated(s) ? s.video : s.teacher;
-// Who may take the roll and mark the class: the teacher, or the invigilator on a TA NEEDED session (homeroom and video TAs only look).
-const takesRoll = s => !!me && (Q.nameKey(s.teacher) === Q.nameKey(me.name) || (invigilated(s) && Q.nameKey(s.video) === Q.nameKey(me.name)));
+// Who may take the roll and mark the class. Owner 13/11 ("cho phép TA trông kiểm tra hoặc trông lớp điểm danh hoặc TA phụ trách…
+// F9 hôm qua Bảo Khánh hay Thu Hiền không điểm danh được"): the teacher, the TA in column F (trông lớp / trông kiểm tra; not the one
+// only filming, VIDEOTAPER NEEDED) and the homeroom TA in column G. Who is answerable for the roll (rollTaker) stays the same.
+const takesRoll = s => {
+  if (!me) return false;
+  const mine = n => !!n && Q.nameKey(n) === Q.nameKey(me.name), filming = /VIDEO ?TAPER/.test(Q.key([s.note, s.detail].join(' ')));
+  return mine(s.teacher) || (mine(s.video) && !filming) || mine(s.ta);
+};
 function helperRole(s) { const n = Q.key([s.note, s.detail].join(' ')); return /VIDEO ?TAPER/.test(n) ? T('Quay', 'Video') : /\bTA NEEDED\b/.test(n) ? T('Trông kiểm tra', 'Invigilator') : 'TA'; }
 function sessionCard(s) {
   const c = classOf(s), k = kindOf(s), name = k === 'tutor' ? Q.clean(s.cls).replace(/^TUTOR\s*/i, '') : s.cls;
