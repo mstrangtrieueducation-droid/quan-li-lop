@@ -8130,3 +8130,52 @@ render = function () {
   try { if (top) { const now = $('main').querySelector('.ll-sheet'); if (now && now !== sh) now.scrollTop = top; } } catch (e) {}
 };
 try { const st = document.createElement('style'); st.textContent = '.ll-sheet.nx-sheet{overscroll-behavior:contain;-webkit-overflow-scrolling:touch;max-height:min(88vh,calc(100dvh - 24px))}'; document.head.appendChild(st); } catch (e) {}
+
+/* ---------- Owner 14/11 ("làm sao 100% đọc theo dash không theo sheet, bỏ luôn sheet") ----------
+ * For classes whose pupils have their own pages (KIDS, IELTS, FIGHTER) the work still owed comes from those pages only. The
+ * sheet-based count is never shown in their place any more: not while the pages are being read, and not for a pupil whose page
+ * gave no answer (the two disagreed: Linda of KIDS 34, who moved in on 25/10, was shown owing videos 31 and 32 that her page
+ * never gave her). While the pages are being read, or when they could not be read, the class page and the class screen say so
+ * instead of showing a number. A class without pupil pages keeps the sheet. */
+const dashOnly = s => !!s && !!classOf(s) && (isSecondary(s) || /^KIDS\s*\d+/i.test(Q.clean(s.cls)));
+function dashStateOf(s) {
+  const c = s && classOf(s);
+  if (!c || !dashOnly(s)) return 'none';
+  if (isSecondary(s)) { const st = pageRun[c.key]; return st && st.rows && st.rows.length ? 'ok' : !st || st.running ? 'wait' : 'fail'; }
+  const hit = dashOwed[c.key], d = hit && hit.data;
+  return d && d.pupils && d.pupils.some(p => p.ok) ? 'ok' : !hit || hit.loading ? 'wait' : 'fail';
+}
+const dashOpened = s => s.day < today() || (s.day === today() && minutesNow() >= s.start - Q.OPEN_BEFORE);
+const owedOfBeforeDashOnly = owedOf;
+owedOf = function (ctx) {
+  const s = ctx && ctx.session;
+  if (!s || !ctx.tracker || isSecondary(s) || !dashOnly(s)) return owedOfBeforeDashOnly(ctx);
+  const dash = dashOwedFor(ctx), opened = dashOpened(s);
+  return ctx.tracker.pupils.map((p, i) => dash && dash[i] ? dash[i].filter(x => !x.resubmit && (x.due < s.day || (opened && x.due === s.day))).map(dashToOwed) : []);
+};
+const totalOwedBeforeDashOnly = totalOwed;
+totalOwed = function (ctx) {
+  const s = ctx && ctx.session;
+  if (!s || !ctx.tracker || isSecondary(s) || !dashOnly(s)) return totalOwedBeforeDashOnly(ctx);
+  const dash = dashOwedFor(ctx);
+  return ctx.tracker.pupils.map((p, i) => dash && dash[i] ? dash[i].filter(x => !x.resubmit && x.due < s.day).map(dashToOwed) : []);
+};
+const secOwedForBeforeDashOnly = secOwedFor;
+secOwedFor = function (s) {
+  const c = s && classOf(s);
+  if (!c || !isSecondary(s)) return secOwedForBeforeDashOnly(s);
+  const run = pageRunFor(s);
+  if (!run) return null;
+  const yesterday = Q.addDays(today(), -1), tr = trackers[c.key], who = row => (tr && tr.pupils.find(p => p.row === row)) || {};
+  return { at: run.at, data: { pupils: run.rows.filter(r => r.owed && r.owed.length).map(r => ({ row: r.row, name: who(r.row).name || '', eng: who(r.row).eng || '', owed: r.owed.map(label => ({ label, due: yesterday, self: /tự luyện|reading intensive|listening|shadowing/i.test(label) })) })) } };
+};
+const dashNote = s => {
+  const st = dashStateOf(s);
+  return st === 'wait' ? '<div class="small muted dash-note">⏳ ' + T('Đang đọc bài thiếu từ trang học sinh…', 'Reading owed work from the pupils\' pages…') + '</div>'
+    : st === 'fail' ? '<div class="notice warn dash-note">⚠️ ' + T('Chưa đọc được bài thiếu từ trang học sinh, nên số bài thiếu chưa hiện. Bấm "↻ Đọc lại sheet" để thử lại.', 'Owed work could not be read from the pupils\' pages yet, so it is not shown. Press ↻ to try again.') + '</div>' : '';
+};
+const withDashNote = (h, anchor) => { try { const n = current ? dashNote(current) : ''; if (!n) return h; const at = h.indexOf(anchor); return at >= 0 ? h.slice(0, at) + n + h.slice(at) : n + h; } catch (e) { return h; } };
+const viewLenLopBeforeDashOnly = viewLenLop;
+viewLenLop = function () { return withDashNote(viewLenLopBeforeDashOnly(), '<div class="rv-list"'); };
+const viewClassBeforeDashOnly = viewClass;
+viewClass = function () { return withDashNote(viewClassBeforeDashOnly(), '<div class="card roll-fit">'); };
