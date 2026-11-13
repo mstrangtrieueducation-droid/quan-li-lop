@@ -205,7 +205,9 @@ async function loadTracker(cls, force, light) {
   const blocks = Q.trackerBlocks(head, year), practices = Q.practiceColumns(head, year);
   const from = Q.addDays(today(), -60);
   const wanted = new Set();
-  blocks.filter(b => !b.date || b.date >= from).forEach(b => { if (b.grade >= 0) wanted.add(b.grade); if (b.stars >= 0) wanted.add(b.stars); b.videos.forEach(v => wanted.add(v.col)); });
+  // 14/11: the comment column is read too. Until then the app took every comment cell for empty, so a comment a teacher had typed
+  // straight into the sheet was unknown to it and the close tried to write over it (the gateway kept the teacher's text).
+  blocks.filter(b => !b.date || b.date >= from).forEach(b => { if (b.grade >= 0) wanted.add(b.grade); if (b.stars >= 0) wanted.add(b.stars); if (b.comment >= 0) wanted.add(b.comment); b.videos.forEach(v => wanted.add(v.col)); });
   practices.filter(p => p.due >= from).forEach(p => wanted.add(p.col));
   const cols = light ? [] : [...wanted];
   const values = {};

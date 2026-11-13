@@ -8188,3 +8188,74 @@ const viewLenLopBeforeDashOnly = viewLenLop;
 viewLenLop = function () { return withDashNote(viewLenLopBeforeDashOnly(), '<div class="rv-list"'); };
 const viewClassBeforeDashOnly = viewClass;
 viewClass = function () { return withDashNote(viewClassBeforeDashOnly(), '<div class="card roll-fit">'); };
+
+/* ---------- Owner 14/11 ("dịch đi được rồi"): a comment the teacher typed straight into the sheet (IELTS Speaking) ----------
+ * Tim wrote his comments of IELTS 48.1 lesson 19 in the sheet's "Nhận xét Buổi học" cells instead of the app, in English. The app
+ * now reads that column (loadTracker), and takes such a text as the teacher's comment: it goes through the same save as a comment
+ * typed in the app (translated, "thầy/cô" to "em", English kept in NHAN_XET_GV so it opens for editing), and the English in the
+ * cell is replaced by the Vietnamese line. It happens by itself once the lesson time is over or the lesson is closed (never while
+ * the teacher may still be typing), when the lesson is opened on a device that may write comments (teacher, TA and class screen
+ * on the lesson day, managers on any day), when the comment window opens, and at the close.
+ * Only plain English counts: a line the app writes itself, the absence mark, a Vietnamese text or a few letters are left alone. */
+const NX_VI_LETTER = /[ăâđêôơưàảãáạằẳẵắặầẩẫấậèẻẽéẹềểễếệìỉĩíịòỏõóọồổỗốộờởỡớợùủũúụừửữứựỳỷỹýỵ]/i;
+function nxTyped(ctx, p) {
+  const col = nxCol(ctx);
+  if (col < 0) return '';
+  const v = String(ctx.tracker.cell(p.row, col) || '');
+  if (v.indexOf(NX_MARK) >= 0) return ''; // the cell already holds a translated comment
+  const lines = v.split('\n').map(l => l.trim()).filter(l => l && !AUTO_LINE.test(l) && !/^\/$/.test(l) && !/^(con )?vắng mặt!?$/i.test(l));
+  const text = lines.join('\n');
+  return text.length >= 12 && text.length <= 1200 && /[a-z]{3,}\s+[a-z]{2,}/i.test(text) && !NX_VI_LETTER.test(text) ? text : '';
+}
+const nxAdopting = {}, nxAdoptTried = {};
+async function nxAdopt(s) {
+  if (!s || !me || s.day > today()) return 0;
+  // Never during the lesson: a teacher typing in the sheet would see the English swapped for Vietnamese cell by cell.
+  if (!(s.day < today() || isChot(s) || minutesNow() > s.end)) return 0;
+  const key = Q.sessionKey(s);
+  if (nxAdopting[key] || Date.now() - (nxAdoptTried[key] || 0) < 60000) return 0;
+  let ctx;
+  try { ctx = classContext(s); } catch (e) { return 0; }
+  const col = nxCol(ctx);
+  if (col < 0 || !ctx.tracker || ctx.tracker.light || !nxCan(s)) return 0;
+  const typed = new Map();
+  ctx.tracker.pupils.forEach(p => { const t = nxTyped(ctx, p); if (t) typed.set(p.name, t); });
+  if (!typed.size) return 0;
+  nxAdopting[key] = true; nxAdoptTried[key] = Date.now();
+  let n = 0;
+  try {
+    const cls = Q.clean(s.cls), lesson = String(s.lesson);
+    // A pupil whose comment was written in the app keeps it: only cells with no saved English are taken.
+    const have = new Set((((await call('nxlay', { cls, day: s.day, lesson })) || {}).rows || []).filter(x => Q.clean(x.en)).map(x => Q.key(x.name)));
+    const list = ctx.tracker.pupils.filter(p => typed.has(p.name) && !have.has(Q.key(p.name)) && nxTyped(ctx, p) === typed.get(p.name));
+    if (!list.length) return 0;
+    const items = list.map(p => ({ name: p.name, range: quote(ctx.tracker.tab) + '!' + Q.colName(col) + p.row, en: typed.get(p.name) }));
+    const r = await call('nxghi', { file: ctx.cls.tracker, cls, day: s.day, lesson, teacher: Q.clean(s.teacher) || (me && me.name) || '', items }, 2);
+    (r.items || []).forEach(x => {
+      const p = list.find(q => q.name === x.name);
+      if (!p || !x.vi) return;
+      // The server keeps what stood above its line, so the English is still there: one more write takes those lines out.
+      const gone = new Set(typed.get(p.name).split('\n').map(l => l.trim()));
+      const value = String(x.value || '').split('\n').filter(l => !gone.has(l.trim())).join('\n');
+      ctx.tracker.set(p.row, col, value);
+      if (value !== x.value) queue({ kind: 'cell', file: ctx.cls.tracker, classKey: ctx.cls.key, range: x.range, row: p.row, col, expected: x.value, value, label: (p.eng || p.name) + ' · ' + T('Nhận xét', 'Comment') });
+      if (nx.key === key) { nx.rows = nx.rows || {}; nx.rows[Q.key(p.name)] = { name: p.name, en: x.en, vi: x.vi }; }
+      n++;
+    });
+    if (n) say(T('Đã dịch ' + n + ' nhận xét giáo viên gõ trong sheet (' + cls + ' tiết ' + lesson + ').', n + ' comments typed in the sheet were translated (' + cls + ' lesson ' + lesson + ').'));
+  } catch (e) { console.warn('nxAdopt', e && e.message); }
+  finally { delete nxAdopting[key]; if (n) render(); }
+  return n;
+}
+const nxButtonBeforeTyped = nxButton;
+nxButton = function (ctx) {
+  const h = nxButtonBeforeTyped(ctx);
+  try { if (h && ctx && ctx.session && ctx.tracker.pupils.some(p => nxTyped(ctx, p))) setTimeout(() => { nxAdopt(ctx.session).catch(() => {}); }, 1500); } catch (e) {}
+  return h;
+};
+const nxLoadBeforeTyped = nxLoad;
+nxLoad = function (s, force) { nxLoadBeforeTyped(s, force); try { setTimeout(() => { nxAdopt(s).catch(() => {}); }, 2500); } catch (e) {} };
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="llChot"]');
+  if (b && current) { const s = current; setTimeout(() => { nxAdopt(s).catch(() => {}); }, 4000); }
+}, true);
