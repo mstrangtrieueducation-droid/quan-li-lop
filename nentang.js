@@ -51,7 +51,9 @@ async function loadNt() {
   if (document.getElementById('nt-style')) return;
   const st = document.createElement('style'); st.id = 'nt-style';
   st.textContent = `
-.ntp{max-width:100%;min-width:0;overflow-x:hidden}
+.ntp{max-width:100%;min-width:0}
+.dash-body:has(> .ntp){flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+@media (max-width:640px){.dash-modal:has(.ntp){height:100dvh;max-height:100dvh}}
 .ntp *{box-sizing:border-box}
 .ntp .ns-bar input:not([type=search]){flex:1 1 160px;min-width:0;padding:9px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:15px}
 .ntp .ns-bar input[type=search]{max-width:none}
@@ -108,7 +110,7 @@ function ntDetail() {
     '<p>Tạo ' + ntDate(s.created) + ' · Bắt đầu ' + ntDate(s.start) + ' · Hạn chót <b>' + ntDate(s.deadline) + '</b> (' + ntLeft(s) + ')' + (p ? ' · Ngày ' + Math.min(p.d, 30) + '/30, cần xong đến Bài ' + p.target : '') + '</p>' +
     '<p>Tiến độ <b>' + esc(s.progress || '0%') + '</b> · ' + (parseInt(s.done) || 0) + '/14 bài · Đang học: ' + esc(s.current || '—') + ' · Kiểm tra cuối: ' + (s.final != null && s.final !== '' ? s.final + '%' : '—') + '</p>' +
     (s.weak ? '<p class="card" style="background:var(--bad-soft)"><b>Từ hay sai:</b> ' + esc(s.weak) + '</p>' : '') +
-    '<div class="ns-bar"><button data-act="ntCopy" data-c="' + esc(s.code) + '">Copy link</button><button class="quiet" data-act="ntCopyMsg" data-c="' + esc(s.code) + '">Copy tin nhắn</button><button class="quiet" data-act="ntExt" data-d="3">Gia hạn +3 ngày</button><button class="quiet" data-act="ntExt" data-d="7">Gia hạn +7 ngày</button><button class="quiet" data-act="ntEdit">Sửa tên / lớp / ghi chú</button><button class="quiet" data-act="ntDel" style="color:var(--bad)">Xoá học sinh</button></div>';
+    '<div class="ns-bar"><button data-act="ntCopy" data-c="' + esc(s.code) + '">Copy link</button><button class="quiet" data-act="ntCopyMsg" data-c="' + esc(s.code) + '">Copy tin nhắn</button><button class="quiet" data-act="ntExt" data-d="3">Gia hạn +3 ngày</button><button class="quiet" data-act="ntExt" data-d="7">Gia hạn +7 ngày</button><button class="quiet" data-act="ntEdit">Sửa tên / lớp / ghi chú</button><button class="quiet" data-act="ntReset">Đặt lại từ đầu…</button><button class="quiet" data-act="ntDel" style="color:var(--bad)">Xoá học sinh</button></div>';
   let g = '';
   for (let i = 1; i <= 14; i++) {
     const u = (st.units || {})[i] || {};
@@ -154,6 +156,14 @@ document.addEventListener('click', e => {
     const cls = prompt('Lớp:', s.cls || ''); if (cls === null) return;
     const note = prompt('Ghi chú:', s.note || ''); if (note === null) return;
     ntPost({ action: 'edit', code: s.code, name, cls, note }).then(j => { ntPut(j.student); say('Đã lưu.'); ntOpen(s.code); }).catch(ntFail);
+  }
+  else if (act === 'ntReset') {
+    const s = nt.detail && nt.detail.student; if (!s) return;
+    const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7));   // mặc định: thứ Hai tới
+    const def = d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear();
+    const v = prompt('Đặt lại ' + s.name + ': xoá toàn bộ điểm và tiến độ, học lại từ đầu.\nNgày bắt đầu mới (ngày/tháng/năm), hạn 30 ngày tính từ ngày này:', def);
+    const m = v && v.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if (!m) { if (v) say('Ngày chưa đúng dạng ngày/tháng/năm.'); return; }
+    ntPost({ action: 'reset', code: s.code, start: m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') }).then(j => { ntPut(j.student); say('Đã đặt lại ' + s.name + ', bắt đầu ' + v.trim() + '.'); ntOpen(s.code); }).catch(ntFail);
   }
   else if (act === 'ntDel') {
     const s = nt.detail && nt.detail.student; if (!s) return;
