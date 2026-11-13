@@ -22,7 +22,7 @@
 </style>
 <!-- The app has its own English; a browser translation turns pupils' names into words (TONY became TODAY, 08/11). -->
 <meta name="google" content="notranslate">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#0F172A">
 <!-- Owner 13/11: added to the home screen it opens like an app (needed on iPhone for notifications). -->
@@ -31,6 +31,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Quản lí lớp">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src 'self' https://*.workers.dev https://script.google.com https://script.googleusercontent.com https://www.vietcombank.com.vn; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src 'self'">
 <title>Quản lí lớp</title>
 <link rel="icon" href="logo.png">
@@ -1383,6 +1384,17 @@
   .ph-btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .ph-btns button { padding: 6px 10px; font-size: 13px; }
   #phPop .pair-veil { background: rgba(127,29,29,.35); }
+  /* iPhone home-screen app (owner 13/11: "trên đầu của app cứ trắng trắng"): the page now runs under the clock strip, and that
+   * strip always wears the top bar's colour, also after the bar has scrolled away. Every inset is 0 in a normal browser tab. */
+  :root { --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); }
+  body { padding: var(--sat) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px); }
+  body::before { content: ''; position: fixed; z-index: 80; top: 0; left: 0; right: 0; height: var(--sat); background: var(--head); pointer-events: none; }
+  header { top: var(--sat); }
+  .bell-box { top: calc(56px + var(--sat)); max-height: calc(100vh - 80px - var(--sat)); }
+  .drawer { top: var(--sat); padding-bottom: var(--sab); }
+  .pair-sheet, .dash-modal { max-height: calc(100vh - 40px - var(--sat) - var(--sab)); }
+  .ll-sheet { padding-bottom: calc(18px + var(--sab)); }
+  .toasts { bottom: calc(16px + var(--sab)); }
 </style>
 </head>
 <body class="notranslate">
