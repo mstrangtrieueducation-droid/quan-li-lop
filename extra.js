@@ -7902,10 +7902,9 @@ setInterval(skWatch, 20000);
 // The red pop-up stays only on devices without notifications.
 const skPushOn = () => { try { return !!tb.sub && Notification.permission === 'granted'; } catch (e) { return false; } };
 const paintPhPopBeforeSk = paintPhPop;
-paintPhPop = function () {
-  if (skPushOn()) { const box = document.getElementById('phPop'); if (box) box.remove(); return; }
-  return paintPhPopBeforeSk();
-};
+// Owner 13/11 22:46: "bỏ hẳn popup đi": the red "Cần nhắn phụ huynh ngay" pop-up is gone for everyone; the phone notifications
+// and the bell carry it.
+paintPhPop = function () { const box = document.getElementById('phPop'); if (box) box.remove(); };
 try { const st = document.createElement('style'); st.textContent = '.sk-card{display:block}.sk-card .ph-cls:first-of-type{margin-top:8px}.sk-card .tag{white-space:nowrap}'; document.head.appendChild(st); } catch (e) {}
 
 /* ---------- Owner 13/11: "tôi vẫn chưa nhận được thông báo nào kể từ khi cài app"; "không có gì lưu trữ… tôi xem ở đâu" ----------
