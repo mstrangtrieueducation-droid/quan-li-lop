@@ -7831,12 +7831,16 @@ async function skRegister() {
   const rows = list.map(s => {
     let names = [];
     try { const ctx = trackers[classOf(s).key] ? classContext(s) : null; if (ctx && ctx.tracker) names = ctx.tracker.pupils.map(p => [p.name, p.eng || '']); } catch (e) {}
-    return { id: Q.sessionKey(s), day: s.day, cls: Q.clean(s.cls), lesson: String(s.lesson), gio: Q.clock(s.start), bd: s.start, kt: s.end, gv: Q.clean(s.teacher || ''), cn: skCn(s), names };
+    // Owner 13/11 "đến giờ chưa đến cũng báo": teacher and video staff are due 10 minutes before the lesson (TAs register their own time).
+    const staff = Q.staffOf(s).filter(p => p.role !== 'TA').map(p => [Q.clean(p.name), p.role, p.due]);
+    return { id: Q.sessionKey(s), day: s.day, cls: Q.clean(s.cls), lesson: String(s.lesson), gio: Q.clock(s.start), bd: s.start, kt: s.end, gv: Q.clean(s.teacher || ''), cn: skCn(s), names, staff };
   });
-  const sig = JSON.stringify(rows);
+  let toi = null;
+  try { if (!isOwner()) { const due = myDue(weeks[Q.weekTab(tabs, today())], today()); if (due !== null && due !== undefined && due > 0) toi = { due }; } } catch (e) {}
+  const sig = JSON.stringify([rows, toi]);
   if (sig === sk.sig) return;
   sk.busy = true;
-  try { await call('skdk', { rows }); sk.sig = sig; } catch (e) { sk.restUntil = Date.now() + 10 * 60000; /* gateway away or not updated yet: asked again in 10 minutes, nothing is lost */ } finally { sk.busy = false; }
+  try { await call('skdk', { rows, toi }); sk.sig = sig; } catch (e) { sk.restUntil = Date.now() + 10 * 60000; /* gateway away or not updated yet: asked again in 10 minutes, nothing is lost */ } finally { sk.busy = false; }
 }
 setInterval(() => { if (!document.hidden) skRegister().catch(() => {}); }, 60000);
 setTimeout(() => skRegister().catch(() => {}), 15000);
@@ -7902,3 +7906,61 @@ paintPhPop = function () {
   return paintPhPopBeforeSk();
 };
 try { const st = document.createElement('style'); st.textContent = '.sk-card{display:block}.sk-card .ph-cls:first-of-type{margin-top:8px}.sk-card .tag{white-space:nowrap}'; document.head.appendChild(st); } catch (e) {}
+
+/* ---------- Owner 13/11: "tôi vẫn chưa nhận được thông báo nào kể từ khi cài app"; "không có gì lưu trữ… tôi xem ở đâu" ----------
+ * The bell keeps every message the gateway sent you (30 days), so nothing is lost when a phone does not show it. "Gửi thử tới máy
+ * này" re-registers this device and has the gateway send one message to it 8 seconds later, time enough to leave the app. A message
+ * about a class comment opens that comment. A teacher only teaching a lesson no longer gets the red "chưa điểm danh" pop-up
+ * (owner: "giáo viên đang dạy tuyệt đối không làm phiền"); the homeroom teacher and managers still do. */
+const hop = { items: null, at: 0, busy: false, here: null, test: '', all: false };
+async function hopLoad(force) {
+  if (!me || isBoard() || hop.busy || (!force && Date.now() - hop.at < 30000)) return;
+  hop.busy = true;
+  try { const r = await call('tbhop', { endpoint: tb.sub ? tb.sub.endpoint : '' }); hop.items = r.items || []; hop.here = r.thisDevice; }
+  catch (e) { if (hop.items == null) hop.items = []; }
+  finally { hop.at = Date.now(); hop.busy = false; if (bell.open) paintBell(); }
+}
+const hopWhen = ms => { const d = new Date(ms), p = n => ('0' + n).slice(-2); return p(d.getHours()) + ':' + p(d.getMinutes()) + ' ' + p(d.getDate()) + '/' + p(d.getMonth() + 1); };
+function hopHtml() {
+  const on = tbOk() && tb.sub && Notification.permission === 'granted';
+  const state = !tbOk() ? (tbIOS && !tbStandalone() ? T('Trên iPhone chỉ nhận thông báo khi mở app từ biểu tượng ở màn hình chính.', 'On iPhone, open the app from its home-screen icon to get notifications.') : T('Trình duyệt này không nhận được thông báo.', 'This browser cannot get notifications.'))
+    : Notification.permission === 'denied' ? T('Thông báo đang bị chặn trên máy này.', 'Notifications are blocked on this device.')
+    : on ? (hop.here === false ? T('Máy này đã cho phép nhưng cổng chưa có địa chỉ máy: bấm Gửi thử để đăng ký lại.', 'Allowed here but not registered: press Test.') : T('Máy này đã bật thông báo.', 'Notifications are on for this device.'))
+    : T('Máy này chưa bật thông báo.', 'Notifications are off on this device.');
+  const btn = on ? '<button class="quiet" data-act="hopTest">🔔 ' + T('Gửi thử tới máy này', 'Test this device') + '</button>' : (tbOk() && Notification.permission !== 'denied' ? '<button class="primary" data-act="tbOn">' + T('Bật thông báo', 'Turn on') + '</button>' : '');
+  const list = hop.items == null ? '<div class="small muted">' + T('Đang tải…', 'Loading…') + '</div>' : !hop.items.length ? '<div class="small muted">' + T('Chưa có thông báo nào gửi tới bạn.', 'Nothing sent to you yet.') + '</div>'
+    : hop.items.slice(0, hop.all ? 30 : 3).map(x => { const id = (String(x.url || '').match(/[?&]id=([^&]+)/) || [])[1]; return '<div class="hop-item' + (id ? ' go' : '') + '"' + (id ? ' data-act="hopGo" data-id="' + esc(decodeURIComponent(id)) + '"' : '') + '><div><b>' + esc(x.title || '') + '</b> <span class="small muted">' + hopWhen(x.at) + '</span></div><div class="small">' + esc(x.body || '').replace(/\n/g, '<br>') + '</div></div>'; }).join('') + (hop.items.length > 3 ? '<button class="quiet small" data-act="hopAll">' + (hop.all ? T('Thu gọn', 'Show less') : T('Xem tất cả ', 'Show all ') + hop.items.length + T(' tin', '')) + '</button>' : '');
+  return '<div class="hop"><div class="row-top"><b>📬 ' + T('Thông báo đã gửi tới bạn', 'Messages sent to you') + '</b>' + btn + '</div><div class="small muted">' + esc(state) + '</div>' + (hop.test ? '<div class="small hop-test">' + esc(hop.test) + '</div>' : '') + list + '</div>';
+}
+const paintBellBeforeHop = paintBell;
+paintBell = function () {
+  paintBellBeforeHop();
+  try {
+    const box = document.querySelector('#bellPanel .bell-box');
+    if (!box || !me || isBoard()) return;
+    const old = box.querySelector('.hop'); if (old) old.remove();
+    // Top of the bell, under its title and the "turn notifications on" card (owner: "tôi xem ở đâu").
+    const after = box.querySelector('.tb-card') || box.querySelector('.row-top');
+    if (after) after.insertAdjacentHTML('afterend', hopHtml()); else box.insertAdjacentHTML('afterbegin', hopHtml());
+    hopLoad(false);
+  } catch (e) {}
+};
+document.addEventListener('click', async e => {
+  const b = e.target.closest && e.target.closest('[data-act="hopTest"],[data-act="hopGo"],[data-act="hopAll"]');
+  if (!b) return;
+  e.stopImmediatePropagation();
+  if (b.dataset.act === 'hopAll') { hop.all = !hop.all; paintBell(); return; }
+  if (b.dataset.act === 'hopGo') { bell.open = false; paintBell(); try { await nlGoId(b.dataset.id); } catch (err) {} return; }
+  if (!tb.sub) return;
+  hop.test = T('Đang gửi…', 'Sending…'); paintBell();
+  try {
+    try { await call('tbdk', { sub: tb.sub.toJSON(), ua: navigator.userAgent.slice(0, 120) }); keep('tbAt', Date.now()); } catch (err) {}
+    await call('tbthu', { endpoint: tb.sub.endpoint, later: true });
+    hop.test = T('Tin thử sẽ tới sau khoảng 8 giây: vuốt về màn hình chính hoặc khoá máy để xem. Không thấy gì thì vào Cài đặt → Thông báo → Quản lí lớp: bật Cho phép thông báo, Màn hình khoá, Biểu ngữ; tắt chế độ Tập trung / Không làm phiền.', 'A test arrives in about 8 seconds: leave the app or lock the phone. Nothing? Allow notifications for this app in Settings and turn Focus off.');
+  } catch (err) { hop.test = T('Gửi không được: ', 'Failed: ') + (err.message || err); }
+  paintBell();
+  setTimeout(() => { hop.at = 0; hopLoad(true); }, 9500);
+}, true);
+const phItemsBeforeHop = phItems;
+phItems = function () { return phItemsBeforeHop().filter(it => !it.none || isManager() || isMe(skCn(it.s)) || isMe(it.s.ta)); };
+try { const st = document.createElement('style'); st.textContent = '.hop{border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:4px;display:grid;gap:6px}.hop>.quiet.small{justify-self:start}.hop .row-top{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}.hop-item{padding:6px 8px;border-radius:10px;background:var(--soft)}.hop-item.go{cursor:pointer}.hop-item.go:hover{outline:1px solid var(--line)}.hop-test{color:var(--brand)}'; document.head.appendChild(st); } catch (e) {}
