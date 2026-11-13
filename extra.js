@@ -8025,3 +8025,31 @@ function tlMarkComments() {
 const renderBeforeTlMark = render;
 render = function () { renderBeforeTlMark(); try { tlMarkComments(); } catch (e) {} };
 try { const st = document.createElement('style'); st.textContent = '.tl-bar .tl-nxm{margin-right:3px;font-size:11px}'; document.head.appendChild(st); } catch (e) {}
+
+/* ---------- Owner 13/11 23:08 (screenshot of the list view ≡ on her iPhone): the same 📝 / ⏳ mark on each row of the list view;
+ * tapping the mark opens the lesson's small card with the comment (tapping the rest of the row still opens the class). ---------- */
+function stMarkComments() {
+  if (!me || isBoard() || view !== 'lich') return;
+  document.querySelectorAll('.st-row[data-act="open"]').forEach(row => {
+    if (row.querySelector('.tl-nxm')) return;
+    const day = row.dataset.day, w = weeks[Q.weekTab(tabs, day)], s = w && w.data.sessions.find(z => z.row === Number(row.dataset.row) && z.day === day), nn = s && nlOf(s);
+    if (!nn) return;
+    const cn = cmOf(s);
+    if (!(isManager() || (cn && isMe(cn)) || isMe(nn.gv))) return;
+    const r = nlx.rows[nlId(s)], over = s.day < today() || (s.day === today() && minutesNow() >= s.end);
+    const mark = r && r.en ? (r.zalo_at ? '📝✓' : '📝') : over ? '⏳' : '';
+    if (!nlx.at[s.day] && !nlx.busy[s.day]) nlLoad(s.day).catch(() => {});
+    const cell = row.children[1] || row;
+    if (mark) cell.insertAdjacentHTML('beforeend', ' <span class="tl-nxm st-nxm" role="button" data-tlrow="' + s.row + '" data-tlday="' + s.day + '" title="' + T('Xem nhận xét lớp', 'Class comment') + '">' + mark + (r && r.en ? ' ' + T('Nhận xét', 'Comment') : '') + '</span>');
+  });
+}
+const renderBeforeStMark = render;
+render = function () { renderBeforeStMark(); try { stMarkComments(); } catch (e) {} };
+window.addEventListener('click', e => {
+  const m = e.target.closest && e.target.closest('.st-nxm[data-tlrow]');
+  if (!m) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  tlInfoOpen = { row: Number(m.dataset.tlrow), day: m.dataset.tlday };
+  render();
+}, true);
+try { const st = document.createElement('style'); st.textContent = '.st-nxm{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:99px;background:var(--brand-soft);color:var(--brand);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}'; document.head.appendChild(st); } catch (e) {}
