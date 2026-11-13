@@ -17,11 +17,12 @@ function ntPace(s) {
   return { d, target, done, behind: Math.max(0, target - 1 - done) };
 }
 const ntActive = s => s.start && s.status !== 'Hoàn thành' && s.status !== 'Hết hạn';
-const ntLate = s => ntActive(s) && ntPace(s).behind > 0;
+const ntLate = s => ntActive(s) && ntPace(s).d >= 1 && ntPace(s).behind > 0;
 function ntChip(s) {
   if (s.status === 'Hoàn thành') return '<span class="tag ok">Hoàn thành</span>';
   if (s.status === 'Hết hạn') return '<span class="tag bad">Hết hạn</span>';
   if (!s.start) return '<span class="tag">Chưa bắt đầu</span>';
+  if (new Date(s.start) > Date.now()) return '<span class="tag">Bắt đầu ' + ntDate(s.start) + '</span>';
   const p = ntPace(s); return p.behind ? '<span class="tag warn">Chậm ' + p.behind + ' bài</span>' : '<span class="tag ok">Đúng tiến độ</span>';
 }
 function ntLeft(s) { if (!s.deadline) return '30 ngày (chưa mở link)'; const n = Math.ceil((new Date(s.deadline) - Date.now()) / 864e5); return n >= 0 ? 'còn ' + n + ' ngày' : 'quá ' + (-n) + ' ngày'; }
@@ -72,7 +73,7 @@ async function loadNt() {
 }`;
   document.head.appendChild(st);
 })();
-function ntPanel() { return '<div class="ntp">' + (nt.open ? '' : '<div class="ns-bar"><button class="ntback" data-act="panel" data-v="tong">← Về trang chính</button></div>') + ntPanelIn() + '</div>'; }
+function ntPanel() { return '<div class="ntp">' + ntPanelIn() + '</div>'; }
 function ntPanelIn() {
   if (!nt.key) return '<p>Nhập mã quản trị Nền tảng IELTS một lần, máy này sẽ nhớ.</p>' + (nt.err ? '<p class="bad">' + esc(nt.err) + '</p>' : '') +
     '<div class="ns-bar"><input id="nt-key" type="password" autocomplete="off" placeholder="Mã quản trị"><button data-act="ntKey">Vào</button></div>';
@@ -96,7 +97,7 @@ function ntPanelIn() {
   h += '<div class="ns-table ns-list"><table><thead><tr><th>Học sinh</th><th>Trạng thái</th><th>Tiến độ</th><th>Ngày học</th><th class="num">Từ vựng / NP / Phát âm</th><th></th></tr></thead><tbody>' +
     (list.length ? list.map(s => {
       const p = ntPace(s), pct = parseInt(s.progress) || 0, sc = v => v === null || v === '' || v == null ? '—' : v + '%';
-      return '<tr data-act="ntOpen" data-c="' + esc(s.code) + '"><td><b>' + esc(s.name) + '</b><br><span class="muted small">' + esc(s.cls || '') + (s.note ? ' · ' + esc(s.note) : '') + '</span></td><td>' + ntChip(s) + '</td><td data-l="Tiến độ">' + (parseInt(s.done) || 0) + '/14 bài · ' + pct + '%</td><td data-l="Ngày học">' + (p ? 'Ngày ' + Math.min(p.d, 30) + '/30 <span class="muted small">' + ntLeft(s) + '</span>' : '—') + '</td><td class="num" data-l="Từ vựng / NP / Phát âm">' + sc(s.vocab) + ' / ' + sc(s.grammar) + ' / ' + sc(s.speak) + '</td><td><button class="quiet" data-act="ntCopy" data-c="' + esc(s.code) + '">Copy link</button></td></tr>';
+      return '<tr data-act="ntOpen" data-c="' + esc(s.code) + '"><td><b>' + esc(s.name) + '</b><br><span class="muted small">' + esc(s.cls || '') + (s.note ? ' · ' + esc(s.note) : '') + '</span></td><td>' + ntChip(s) + '</td><td data-l="Tiến độ">' + (parseInt(s.done) || 0) + '/14 bài · ' + pct + '%</td><td data-l="Ngày học">' + (p ? (p.d < 1 ? 'Bắt đầu ' + ntDate(s.start) : 'Ngày ' + Math.min(p.d, 30) + '/30 <span class="muted small">' + ntLeft(s) + '</span>') : '—') + '</td><td class="num" data-l="Từ vựng / NP / Phát âm">' + sc(s.vocab) + ' / ' + sc(s.grammar) + ' / ' + sc(s.speak) + '</td><td><button class="quiet" data-act="ntCopy" data-c="' + esc(s.code) + '">Copy link</button></td></tr>';
     }).join('') : '<tr><td colspan="6" class="muted">Chưa có học sinh nào' + (q || nt.f ? ' phù hợp' : '') + '.</td></tr>') + '</tbody></table></div>';
   return h;
 }
@@ -108,7 +109,7 @@ function ntDetail() {
   const s = d.student, st = d.state || { units: {} }, p = ntPace(s);
   const cell = (v, pass) => v == null ? '<span class="muted">—</span>' : v === true ? '<b style="color:var(--ok)">✓</b>' : '<b style="color:' + (pass && v < 80 ? 'var(--bad)' : 'var(--ok)') + '">' + v + '%</b>';
   h += '<h3 style="margin:4px 0">' + esc(s.name) + '</h3><p class="muted small">' + esc(s.cls || '') + ' ' + ntChip(s) + '</p>' +
-    '<p>Tạo ' + ntDate(s.created) + ' · Bắt đầu ' + ntDate(s.start) + ' · Hạn chót <b>' + ntDate(s.deadline) + '</b> (' + ntLeft(s) + ')' + (p ? ' · Ngày ' + Math.min(p.d, 30) + '/30, cần xong đến Bài ' + p.target : '') + '</p>' +
+    '<p>Tạo ' + ntDate(s.created) + ' · Bắt đầu ' + ntDate(s.start) + ' · Hạn chót <b>' + ntDate(s.deadline) + '</b> (' + ntLeft(s) + ')' + (p && p.d >= 1 ? ' · Ngày ' + Math.min(p.d, 30) + '/30, cần xong đến Bài ' + p.target : '') + '</p>' +
     '<p>Tiến độ <b>' + esc(s.progress || '0%') + '</b> · ' + (parseInt(s.done) || 0) + '/14 bài · Đang học: ' + esc(s.current || '—') + ' · Kiểm tra cuối: ' + (s.final != null && s.final !== '' ? s.final + '%' : '—') + '</p>' +
     (s.weak ? '<p class="card" style="background:var(--bad-soft)"><b>Từ hay sai:</b> ' + esc(s.weak) + '</p>' : '') +
     '<div class="ns-bar"><button data-act="ntCopy" data-c="' + esc(s.code) + '">Copy link</button><button class="quiet" data-act="ntCopyMsg" data-c="' + esc(s.code) + '">Copy tin nhắn</button><button class="quiet" data-act="ntExt" data-d="3">Gia hạn +3 ngày</button><button class="quiet" data-act="ntExt" data-d="7">Gia hạn +7 ngày</button><button class="quiet" data-act="ntEdit">Sửa tên / lớp / ghi chú</button><button class="quiet" data-act="ntReset">Đặt lại từ đầu…</button><button class="quiet" data-act="ntDel" style="color:var(--bad)">Xoá học sinh</button></div>';
