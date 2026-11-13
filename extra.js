@@ -6159,7 +6159,8 @@ const qaRowsBeforeHs = qaRows;
 qaRows = function (kind) {
   if (kind !== 'hsmoi') return qaRowsBeforeHs(kind);
   const t = today(), out = [];
-  (hsData.list || []).forEach(ev => hsSteps(ev).forEach(x => {
+  // Owner 13/11: "hs mới đã tick rồi cứ hiện đây làm gì": only the steps still to do are listed; a ticked step leaves the list.
+  (hsData.list || []).forEach(ev => hsSteps(ev).filter(x => !x.done).forEach(x => {
     const mine = x.done && (isManager() || isMe(x.done.by));
     out.push({ key: 'hsmoi|' + hsName(ev, x.k), cls: ev.cls, who: (ev.eng || ev.name) + ' · ' + x.label,
       reason: x.done ? '✓ ' + titleCase(x.done.by || '?') + ' ' + String(x.done.at || '').slice(11, 16) + ' ' + String(x.done.at || '').slice(0, 5) : (x.owner ? titleCase(x.owner) : HS_WHO[x.role]) + ' · ' + (x.due < t ? T('trễ từ ', 'late since ') : T('hạn ', 'due ')) + viDate(x.due).slice(0, 5),
@@ -7376,8 +7377,10 @@ function nlNN() {
 }
 const applyBootBeforeNl = applyBoot;
 applyBoot = function (b) { applyBootBeforeNl(b); try { if (b && Array.isArray(b.gvnn)) nlGvnn = nlMap(b.gvnn); } catch (e) {} };
+// Owner 13/11: "cơ chế tính nhận xét lớp bắt đầu từ hôm nay thôi": lessons before this day are never asked for, reminded or counted.
+const NL_FROM = typeof DEMO !== 'undefined' ? '2026-11-01' : '2026-11-13';
 function nlOf(s) {
-  if (!s || s.off || !classOf(s)) return null;
+  if (!s || s.off || !classOf(s) || s.day < NL_FROM) return null;
   const m = nlNN();
   for (const n of [s.teacher, s.video]) { const k = Q.nameKey(n || ''); if (k && m.has(k)) return { gv: Q.clean(n), xung: m.get(k) }; }
   return null;
