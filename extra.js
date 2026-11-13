@@ -7357,3 +7357,378 @@ loadPanel = async function () {
   try { return await loadPanelBeforeKho(); } finally { if (!--panelDraw.depth) { render = panelDraw.real; render(); } }
 };
 const panelDraw = { depth: 0, real: null, last: 0 };
+
+/* ---------- Nhận xét lớp GV nước ngoài (owner 12–13/11) ----------
+ * "mỗi một lớp dạy xong sẽ có ô điền nhận xét chung của lớp... dịch tự động sang cho chủ nhiệm duyệt rồi gửi zalo... hạn nhận xét
+ * cho GV là trong ngày học hôm đó... quản lí và tôi có bảng tổng kết hàng ngày nhận xét original của GV... các lớp có người NN dạy".
+ * 13/11: the homeroom teacher sends to Zalo by hand (text + the close-sheet picture are ready to copy); a teacher who has not
+ * written by 21:30 is reminded; the homeroom teacher only checks and edits the translation, beside the original, never writes
+ * instead of the teacher.
+ *  - A lesson counts when its teacher (or helper) is a foreign teacher (staff record group GVNN, sent with the opening answer).
+ *  - The comment box sits under the close sheet ("Rà soát & chốt buổi"), on the class screen and on any device; it is kept at the
+ *    Cloudflare gateway (never Google), which translates it with its own AI and tells the homeroom teacher's devices.
+ *  - The homeroom teacher finds it on "Lớp chủ nhiệm" and in the bell; owners/managers get Điều hành › "Nhận xét GV NN". */
+let nlGvnn = new Map();
+const nlMap = list => new Map((list || []).map(x => [Q.nameKey(x.name), x.xung === 'thầy' ? 'thầy' : 'cô']));
+function nlNN() {
+  if (!nlGvnn.size) { const b = saved.get('boot'), list = b && b.b && b.b.gvnn; if (Array.isArray(list)) nlGvnn = nlMap(list); }
+  return nlGvnn;
+}
+const applyBootBeforeNl = applyBoot;
+applyBoot = function (b) { applyBootBeforeNl(b); try { if (b && Array.isArray(b.gvnn)) nlGvnn = nlMap(b.gvnn); } catch (e) {} };
+function nlOf(s) {
+  if (!s || s.off || !classOf(s)) return null;
+  const m = nlNN();
+  for (const n of [s.teacher, s.video]) { const k = Q.nameKey(n || ''); if (k && m.has(k)) return { gv: Q.clean(n), xung: m.get(k) }; }
+  return null;
+}
+const nlId = s => Q.sessionKey(s);
+const nlMeta = (s, nn) => ({ id: nlId(s), day: s.day, cls: Q.clean(s.cls), lesson: String(s.lesson), bd: s.start, kt: s.end, label: [Q.clean(s.book), 'Lesson ' + s.lesson].filter(Boolean).join(' · '), gv: nn.gv, cn: cmOf(s) || '', xung: nn.xung, row: s.row });
+const nlx = { rows: {}, at: {}, busy: {}, reg: {}, draft: {}, saving: '', poll: {} };
+try { Object.assign(nlx.draft, saved.get('nlDrafts') || {}); } catch (e) {}
+let nlDraftTimer = null;
+const nlSaveDrafts = () => { clearTimeout(nlDraftTimer); nlDraftTimer = setTimeout(() => { const keepOnly = {}; Object.entries(nlx.draft).forEach(([k, v]) => { if (/\|en$/.test(k) && v) keepOnly[k] = v; }); keep('nlDrafts', keepOnly); }, 600); };
+const nlTime = ms => { const d = new Date(ms); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); };
+const nlPhone = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+function nlSessionsOn(d) { const w = weeks[Q.weekTab(tabs, d)]; return w ? w.data.sessions.filter(s => s.day === d && nlOf(s)) : []; }
+function nlFindSession(id) { for (const w of Object.values(weeks)) { const s = w.data.sessions.find(x => nlId(x) === id); if (s) return s; } return null; }
+async function nlLoad(d, force) {
+  if (!me || !d || nlx.busy[d] || (!force && Date.now() - (nlx.at[d] || 0) < 20000)) return;
+  nlx.busy[d] = true;
+  try {
+    const list = nlSessionsOn(d), sig = list.map(s => nlId(s) + '|' + nlOf(s).gv + '|' + (cmOf(s) || '') + '|' + s.end).join(';');
+    if (list.length && nlx.reg[d] !== sig && d >= Q.addDays(today(), -14) && d <= Q.addDays(today(), 7)) { await call('nxdk', { rows: list.map(s => nlMeta(s, nlOf(s))) }); nlx.reg[d] = sig; }
+    const r = await call('nxxem', { day: d }), was = JSON.stringify(Object.values(nlx.rows).filter(x => x.day === d));
+    Object.keys(nlx.rows).forEach(k => { if (nlx.rows[k].day === d) delete nlx.rows[k]; });
+    (r.rows || []).forEach(x => { nlx.rows[x.id] = x; });
+    nlx.at[d] = Date.now();
+    if (JSON.stringify(Object.values(nlx.rows).filter(x => x.day === d)) !== was) render();
+  } catch (e) { /* tried again on the next round */ } finally { nlx.busy[d] = false; }
+}
+// A comment just written is translated in about ten seconds: the screens that show the translation ask for that one row.
+function nlPoll(id) {
+  if (nlx.poll[id]) return;
+  let n = 0;
+  nlx.poll[id] = setInterval(async () => {
+    n++;
+    try { const r = await call('nxxem', { ids: [id] }), row = (r.rows || [])[0]; if (row) { nlx.rows[id] = row; if (row.vi || row.vi_err) { clearInterval(nlx.poll[id]); delete nlx.poll[id]; } render(); } } catch (e) {}
+    if (n >= 24 && nlx.poll[id]) { clearInterval(nlx.poll[id]); delete nlx.poll[id]; }
+  }, 5000);
+}
+function nlState(r, s) {
+  const d = r ? r.day : s.day, t = today(), now = minutesNow(), kt = r ? r.gio_kt : s.end;
+  if (r && r.zalo_at) return ['ok', T('Đã gửi Zalo ', 'Sent to parents ') + nlTime(r.zalo_at)];
+  if (r && r.en) return r.ok_at ? ['warn', T('Đã duyệt, chưa gửi Zalo', 'Checked, not sent yet')] : ['warn', T('Chờ chủ nhiệm duyệt', 'Waiting for homeroom')];
+  if (d < t) return ['bad', T('Không nộp', 'Not written')];
+  if (d > t || (d === t && now < kt)) return ['', T('Chưa đến giờ tan', 'Lesson not over')];
+  if (r && r.nhac_at) return ['bad', T('Chưa nộp · đã nhắc ', 'Not written · reminded ') + nlTime(r.nhac_at)];
+  return ['', T('GV chưa nộp (hạn 23:59)', 'Due today 23:59')];
+}
+const nlChip = (r, s) => { const [c, t] = nlState(r, s); return '<span class="tag ' + c + '">' + esc(t) + '</span>'; };
+
+function nlPanel(s) {
+  const nn = nlOf(s);
+  if (!nn || !me) return '';
+  const id = nlId(s), r = nlx.rows[id] || null, en = (r && r.en) || '', cn = cmOf(s);
+  const canGv = isManager() || isBoard() || isMe(nn.gv), canCn = !isBoard() && (isManager() || (!!cn && isMe(cn)));
+  if (!nlx.at[s.day]) setTimeout(() => nlLoad(s.day), 0);
+  const lockGv = s.day < today() && !isManager();
+  let h = '<div class="card nx-card" id="nx-card"><div class="nx-head"><b>📝 ' + T('Nhận xét lớp · GV nước ngoài', 'Class comment') + '</b><span class="small muted">' + esc(nn.gv) + ' · ' + esc(s.cls) + ' · ' + T('Tiết ', 'Lesson ') + esc(s.lesson) + '</span>' + nlChip(r, s) + '</div>';
+  if (canGv && !lockGv && !(r && r.zalo_at && !isManager())) {
+    const v = nlx.draft[id + '|en'] != null ? nlx.draft[id + '|en'] : en;
+    h += '<label class="nx-lab" for="nx-en">' + T('Nhận xét chung cả lớp (giáo viên viết bằng tiếng Anh) · hạn 23:59 hôm nay', 'Your comment on the whole class today, in English · due 23:59 today') + '</label>' +
+      '<textarea id="nx-en" class="nx-ta" rows="5" data-nx="en" data-id="' + esc(id) + '" placeholder="' + esc(T('Giáo viên viết bằng tiếng Anh: hôm nay cả lớp học thế nào, điều làm tốt, điều còn khó…', 'How did the class do today? What went well, what was hard, anything parents should help with…')) + '">' + esc(v) + '</textarea>' +
+      '<div class="nx-btns"><button class="primary" data-act="nlSend" data-id="' + esc(id) + '"' + (nlx.saving === id ? ' disabled' : '') + '>' + (nlx.saving === id ? '⏳ ' : '') + (en ? T('Lưu sửa đổi', 'Save changes') : T('Gửi nhận xét', 'Submit')) + '</button>' +
+      (r && r.en_at ? '<span class="small muted">✓ ' + T('Đã nộp lúc ', 'Submitted at ') + nlTime(r.en_at) + (r.en_by ? ' · ' + esc(r.en_by) : '') + '</span>' : '<span class="small muted">' + T('App tự dịch sang tiếng Việt cho chủ nhiệm duyệt.', 'The homeroom teacher checks the Vietnamese translation and sends it to parents.') + '</span>') + '</div>';
+  } else if (en && !canCn) h += '<div class="nx-lab">' + T('Bản gốc của giáo viên', 'Teacher\'s original') + '</div><div class="nx-en">' + esc(en) + '</div>';
+  else if (!en) h += '<div class="small muted">' + (lockGv ? T('Giáo viên không nộp nhận xét buổi này.', 'No comment was written for this lesson.') : T('Giáo viên chưa nộp nhận xét (hạn 23:59 hôm nay; 21:30 app nhắc giáo viên).', 'Not written yet (due 23:59 today).')) + '</div>';
+  if (canCn && en) h += nlCnPart(r);
+  else if (r && r.zalo_at) h += '<div class="small muted">✓ ' + T('Chủ nhiệm đã gửi Zalo lúc ', 'Sent to parents at ') + nlTime(r.zalo_at) + (r.zalo_by ? ' · ' + esc(r.zalo_by) : '') + '</div>';
+  return h + '</div>';
+}
+function nlCnPart(r) {
+  const id = r.id, vi0 = r.vi_ok || r.vi || '', v = nlx.draft[id + '|vi'] != null ? nlx.draft[id + '|vi'] : vi0;
+  if (!vi0 && !r.vi_err) nlPoll(id);
+  let h = '<div class="nx-cn"><div class="nx-lab">' + T('Chủ nhiệm: so với bản gốc, sửa bản dịch cho đúng ý giáo viên, rồi gửi nhóm Zalo lớp', 'Homeroom: check the translation against the original, then send it to the class Zalo group') + '</div>';
+  if (r.ok_at && r.en_at > r.ok_at) h += '<div class="notice warn">' + T('Giáo viên đã sửa bản gốc sau lần duyệt trước. Bấm "Dịch lại" hoặc sửa bản dịch cho khớp.', 'The teacher changed the original after it was checked. Translate again or edit to match.') + '</div>';
+  h += '<div class="nx-pair"><div><div class="nx-tag">' + T('BẢN GỐC · TIẾNG ANH', 'ORIGINAL') + ' · ' + esc(r.gv || '') + '</div><div class="nx-en">' + esc(r.en) + '</div></div><div><div class="nx-tag vi">' + T('BẢN DỊCH · SỬA ĐƯỢC', 'TRANSLATION · EDITABLE') + '</div><div class="nx-headline">' + esc(r.head || '') + '</div>';
+  if (!vi0 && !r.vi_err && nlx.draft[id + '|vi'] == null) h += '<div class="small muted">⏳ ' + T('Đang dịch… (khoảng 10 giây)', 'Translating… (about 10 seconds)') + '</div>';
+  else h += (r.vi_err && !vi0 ? '<div class="notice bad">' + esc(r.vi_err) + T(' Bấm "Dịch lại" hoặc tự dịch vào ô dưới.', ' Translate again or type it below.') + '</div>' : '') + '<textarea id="nx-vi" class="nx-ta" rows="9" data-nx="vi" data-id="' + esc(id) + '">' + esc(v) + '</textarea>';
+  h += '</div></div><div class="nx-btns">' +
+    '<button data-act="nlCopyText" data-id="' + esc(id) + '">📋 ' + T('Copy chữ', 'Copy text') + '</button>' +
+    '<button data-act="nlCopyImg">' + (nlPhone ? '📤 ' + T('Gửi ảnh bảng chốt', 'Share summary image') : '🖼 ' + T('Copy ảnh bảng chốt', 'Copy summary image')) + '</button>' +
+    (nlPhone ? '' : '<a class="btn quiet" href="https://chat.zalo.me/" target="_blank" rel="noopener">' + T('Mở Zalo', 'Open Zalo') + '</a>') +
+    '<button class="quiet" data-act="nlOk" data-id="' + esc(id) + '">💾 ' + T('Lưu bản dịch', 'Save translation') + '</button>' +
+    '<button class="quiet" data-act="nlDich" data-id="' + esc(id) + '">🔁 ' + T('Dịch lại', 'Translate again') + '</button>' +
+    (r.zalo_at ? '<span class="tag ok">✓ ' + T('Đã gửi Zalo ', 'Sent ') + nlTime(r.zalo_at) + (r.zalo_by ? ' · ' + esc(r.zalo_by) : '') + '</span><button class="quiet" data-act="nlZalo" data-undo="1" data-id="' + esc(id) + '">' + T('Bỏ đánh dấu', 'Undo') + '</button>'
+      : '<button class="good" data-act="nlZalo" data-id="' + esc(id) + '">✓ ' + T('Đã gửi Zalo', 'Mark as sent') + '</button>') + '</div>' +
+    '<div class="small muted">' + (nlPhone ? T('Bấm "Copy chữ", rồi "Gửi ảnh bảng chốt" → chọn Zalo → nhóm lớp, dán chữ vào và gửi. Xong bấm "Đã gửi Zalo".', 'Copy the text, share the image to the class Zalo group, paste the text and send. Then mark as sent.')
+      : T('Copy chữ rồi dán vào nhóm Zalo lớp, copy ảnh rồi dán tiếp, tự bấm gửi. Xong bấm "Đã gửi Zalo".', 'Copy and paste the text and the image into the class Zalo group, send, then mark as sent.')) + '</div>';
+  return h + '</div>';
+}
+const summaryViewBeforeNl = summaryView;
+summaryView = function (ctx) { const h = summaryViewBeforeNl(ctx); try { return h + nlPanel(ctx.session); } catch (e) { return h; } };
+
+// Opening a lesson's close sheet at the comment (bell, homeroom list, daily table, notifications).
+function nlOpen(s) {
+  const r = nlx.rows[nlId(s)], cn = cmOf(s), asCn = !isBoard() && !!(r && r.en) && (isManager() || (!!cn && isMe(cn)));
+  if (asCn && typeof rpChotOpen === 'function') rpChotOpen(s);
+  else {
+    current = s; llMode = ''; llMenu = null; llWarn = null; llSummary = { key: Q.sessionKey(s), mode: true }; view = 'lenlop';
+    document.body.classList.add('lenlop'); render(); window.scrollTo(0, 0);
+    guarded(() => Promise.all([loadMarks(true), loadTracker(classOf(s), true), loadBehave(true).catch(() => {})]));
+  }
+  nlLoad(s.day, true);
+  let n = 0; const go = setInterval(() => { const el = document.getElementById('nx-card'); if (el || ++n > 20) { clearInterval(go); if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }, 400);
+}
+async function nlGoId(id) {
+  let s = nlFindSession(id);
+  const r = nlx.rows[id];
+  if (!s && (r || /^\d{4}-\d{2}-\d{2}/.test(id))) { try { await weekOf(r ? r.day : id.slice(0, 10)); } catch (e) {} s = nlFindSession(id); }
+  if (!s) return say(T('Không tìm thấy buổi học này trong lịch.', 'Lesson not found in the schedule.'), 'bad');
+  if (!r) await nlLoad(s.day, true);
+  nlOpen(s);
+}
+
+// Homeroom page and bell.
+const viewHomeroomsBeforeNl = viewHomerooms;
+viewHomerooms = function () {
+  const base = viewHomeroomsBeforeNl();
+  try {
+    const t = today(), y = Q.addDays(t, -1);
+    [t, y].forEach(d => { if (!nlx.at[d]) setTimeout(() => nlLoad(d), 0); });
+    const rows = Object.values(nlx.rows).filter(r => r.day >= y && (isManager() || isMe(r.cn)) && !(r.zalo_at && r.day < t)).sort((a, b) => (a.day + String(a.gio_bd).padStart(4, '0')).localeCompare(b.day + String(b.gio_bd).padStart(4, '0')));
+    if (!rows.length) return base;
+    const sec = '<h2>📝 ' + T('Nhận xét GV nước ngoài', 'Foreign teachers\' class comments') + '</h2><div class="card row nx-list">' + rows.map(r =>
+      '<div class="nx-li"><span><b>' + esc(r.cls) + '</b> · ' + T('Tiết ', 'Lesson ') + esc(r.lesson) + ' <span class="muted small">' + esc(viDate(r.day).slice(0, 5)) + ' · ' + esc(r.gv || '') + '</span></span>' + nlChip(r, null) +
+      '<button class="' + (r.en && !r.zalo_at ? 'primary' : 'quiet') + '" data-act="nlGo" data-id="' + esc(r.id) + '">' + (r.en && !r.zalo_at ? T('Duyệt & gửi', 'Check & send') : T('Mở', 'Open')) + '</button></div>').join('') + '</div>';
+    const at = base.indexOf('</h2>');
+    return at >= 0 ? base.slice(0, at + 5) + sec + base.slice(at + 5) : sec + base;
+  } catch (e) { return base; }
+};
+const bellItemsBeforeNl = bellItems;
+bellItems = function () {
+  const out = bellItemsBeforeNl();
+  try {
+    if (!me || isBoard()) return out;
+    const t = today(), y = Q.addDays(t, -1), now = minutesNow();
+    const wait = Object.values(nlx.rows).filter(r => r.day >= y && r.en && !r.zalo_at && (isMe(r.cn) || (isManager() && !r.cn)));
+    if (wait.length) out.push({ k: 'nx', icon: '📝', text: wait.length + T(' nhận xét GV nước ngoài chờ duyệt, gửi Zalo', ' class comments to check and send'), n: wait.length, hot: wait.some(r => r.day < t), go: wait.length === 1 ? { view: 'lopcn', nx: wait[0].id } : { view: 'lopcn' } });
+    nlSessionsOn(t).filter(s => isMe(nlOf(s).gv) && now >= s.end && !((nlx.rows[nlId(s)] || {}).en)).forEach(s =>
+      out.push({ k: 'nxgv', icon: '📝', text: T('Viết nhận xét lớp ', 'Write the class comment for ') + Q.clean(s.cls) + T(' (hạn 23:59)', ' (due 23:59)'), n: 1, hot: now >= 21 * 60 + 30, go: { view: 'lich', nx: nlId(s) } }));
+  } catch (e) {}
+  return out;
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="bellGo"],[data-act="ovGo"]');
+  if (!b) return;
+  const list = b.dataset.act === 'bellGo' ? bellItems() : bellItems().filter(y => !['in', 'inno', 'out'].includes(y.k)), x = list[Number(b.dataset.i)];
+  if (!x || !x.go || !x.go.nx) return;
+  e.stopImmediatePropagation(); bell.open = false; paintBell(); nlGoId(x.go.nx);
+}, true);
+
+// Điều hành › "Nhận xét GV NN": every foreign-teacher lesson of a day with the teacher's own words.
+let nlDay = '';
+PANELS.push(['nxnn', 'Nhận xét GV NN']);
+PANEL_EN['Nhận xét GV NN'] = 'Class comments';
+function nlDaily() {
+  const d = nlDay || today(), map = new Map();
+  Object.values(nlx.rows).filter(r => r.day === d).forEach(r => map.set(r.id, { r, s: nlFindSession(r.id) }));
+  nlSessionsOn(d).forEach(s => { const x = map.get(nlId(s)); if (x) x.s = s; else map.set(nlId(s), { r: null, s }); });
+  const list = [...map.values()].sort((a, b) => ((a.r ? a.r.gio_bd : a.s.start) - (b.r ? b.r.gio_bd : b.s.start)) || String(a.r ? a.r.cls : a.s.cls).localeCompare(String(b.r ? b.r.cls : b.s.cls)));
+  const st = list.map(x => nlState(x.r, x.s || { day: d, end: x.r.gio_kt })), count = c => st.filter(x => x[0] === c).length;
+  let h = '<div class="card row nx-daynav"><button class="quiet" data-act="nlDay" data-v="-1" aria-label="' + T('Ngày trước', 'Previous day') + '">‹</button><b>' + esc(Q.dayText(d, lang)) + '</b><button class="quiet" data-act="nlDay" data-v="1" aria-label="' + T('Ngày sau', 'Next day') + '">›</button>' +
+    (d !== today() ? '<button class="quiet" data-act="nlDay" data-v="0">' + T('Hôm nay', 'Today') + '</button>' : '') + '<span class="spacer"></span>' +
+    '<span class="tag">' + list.length + T(' buổi GV NN', ' lessons') + '</span><span class="tag ok">' + count('ok') + T(' đã gửi', ' sent') + '</span><span class="tag warn">' + count('warn') + T(' chờ chủ nhiệm', ' with homeroom') + '</span><span class="tag bad">' + count('bad') + T(' chưa/không nộp', ' missing') + '</span></div>';
+  if (!list.length) return h + '<div class="card empty">' + (nlx.busy[d] ? T('Đang đọc…', 'Loading…') : T('Không có buổi nào do giáo viên nước ngoài dạy trong ngày này.', 'No foreign-teacher lessons on this day.')) + '</div>';
+  h += '<div class="card table"><table class="nx-tbl"><thead><tr><th>' + T('Lớp · bài', 'Class') + '</th><th>' + T('Giáo viên', 'Teacher') + '</th><th>' + T('Giờ', 'Time') + '</th><th>' + T('Nhận xét gốc (tiếng Anh)', 'Original comment') + '</th><th>' + T('Trạng thái', 'Status') + '</th></tr></thead><tbody>' +
+    list.map((x, i) => {
+      const r = x.r, s = x.s, id = r ? r.id : nlId(s), cls = r ? r.cls : Q.clean(s.cls), lesson = r ? r.lesson : s.lesson, bd = r ? r.gio_bd : s.start, kt = r ? r.gio_kt : s.end;
+      const vi = r && (r.vi_ok || r.vi);
+      return '<tr><td><b>' + esc(cls) + '</b><br><span class="small muted">' + esc(r ? r.label || '' : [Q.clean(s.book), 'Lesson ' + lesson].filter(Boolean).join(' · ')) + '</span></td><td>' + esc(r ? r.gv : nlOf(s).gv) + (r && r.cn ? '<br><span class="small muted">CN ' + esc(r.cn) + '</span>' : '') + '</td><td class="num">' + Q.clock(bd) + '–' + Q.clock(kt) + '</td>' +
+        '<td class="nx-orig">' + (r && r.en ? esc(r.en) + (vi ? '<details><summary class="small">' + T('Bản tiếng Việt', 'Vietnamese') + (r.vi_ok ? T(' (đã duyệt)', ' (checked)') : T(' (bản dịch máy)', ' (machine)')) + '</summary><div class="nx-vi-small">' + esc(r.head || '') + '\n\n' + esc(vi) + '</div></details>' : '') : '<span class="muted">—</span>') + '</td>' +
+        '<td><span class="tag ' + st[i][0] + '">' + esc(st[i][1]) + '</span>' + (r && r.zalo_by ? '<br><span class="small muted">' + esc(r.zalo_by) + '</span>' : '') + '<br><button class="quiet small" data-act="nlGo" data-id="' + esc(id) + '">' + T('Mở', 'Open') + '</button></td></tr>';
+    }).join('') + '</tbody></table></div>';
+  return h;
+}
+const viewManagerBeforeNl = viewManager;
+viewManager = function (week) { return panel === 'nxnn' ? panelTabs() + nlDaily() : viewManagerBeforeNl(week); };
+const loadPanelBeforeNl = loadPanel;
+loadPanel = async function () {
+  if (panel !== 'nxnn') return loadPanelBeforeNl();
+  const d = nlDay || today();
+  await weekOf(d);
+  await nlLoad(d, true);
+  render();
+};
+
+// Typing keeps a draft (the teacher's English survives a reload); buttons do the work.
+document.addEventListener('input', e => { const t = e.target; if (t && t.dataset && t.dataset.nx && t.dataset.id) { nlx.draft[t.dataset.id + '|' + t.dataset.nx] = t.value; if (t.dataset.nx === 'en') nlSaveDrafts(); } });
+const nlText = id => { const ta = document.querySelector('textarea[data-nx="vi"][data-id="' + CSS.escape(id) + '"]'), r = nlx.rows[id] || {}; return (ta ? ta.value : nlx.draft[id + '|vi'] != null ? nlx.draft[id + '|vi'] : r.vi_ok || r.vi || '').trim(); };
+async function nlDo(id, op, args, okText) {
+  nlx.saving = id; render();
+  try { const r = await call(op, Object.assign({ id }, args)); if (r && r.row) nlx.rows[id] = r.row; if (okText) say(okText); return r; }
+  catch (e) { say(e.message || String(e), 'bad'); return null; }
+  finally { nlx.saving = ''; render(); }
+}
+function nlSheetBlob() {
+  return loadH2c().then(() => {
+    const el = document.querySelector('.sum-sheet');
+    if (!el) throw new Error('no sheet');
+    return window.html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false,
+      onclone: d => { const st = d.createElement('style'); st.textContent = '.sum-sheet{box-shadow:none!important;border-radius:0!important;margin:0!important}.sum-sheet,.sum-sheet *{font-variant-numeric:normal!important;font-feature-settings:normal!important;font-variant-ligatures:none!important}'; d.head.appendChild(st); } });
+  }).then(c => new Promise((ok, bad) => c.toBlob(b => b ? ok(b) : bad(new Error('blob')), 'image/png')));
+}
+function nlCopyImg(btn) {
+  if (!document.querySelector('.sum-sheet')) return say(T('Mở bảng chốt của buổi này để copy ảnh.', 'Open the lesson summary to copy its image.'), 'bad');
+  const save = document.querySelector('[data-act="sumSave"]');
+  // Phones: the share menu (pick Zalo), as "Lưu ảnh" does. Computers: straight to the clipboard, pasted into Zalo with Ctrl+V.
+  if (nlPhone || !(navigator.clipboard && navigator.clipboard.write && window.ClipboardItem)) { if (save) sumSave(save); return; }
+  const label = btn.innerHTML; btn.disabled = true; btn.innerHTML = '⏳ ' + T('Đang tạo ảnh…', 'Making image…');
+  navigator.clipboard.write([new ClipboardItem({ 'image/png': nlSheetBlob() })])
+    .then(() => say(T('Đã copy ảnh bảng chốt. Vào nhóm Zalo lớp, bấm Ctrl+V để dán.', 'Summary image copied. Paste it into the class Zalo group (Ctrl+V).')))
+    .catch(() => { if (save) sumSave(save); })
+    .finally(() => { btn.disabled = false; btn.innerHTML = label; });
+}
+function nlCopyText(id) {
+  const r = nlx.rows[id], text = ((r && r.head) || '') + '\n\n' + nlText(id);
+  const fallback = () => { const ta = document.querySelector('textarea[data-nx="vi"][data-id="' + CSS.escape(id) + '"]'); if (ta) { ta.focus(); ta.select(); } say(T('Máy này không cho copy tự động: chữ đã được chọn, bấm Ctrl+C (hoặc giữ → Sao chép). Nhớ thêm dòng tiêu đề.', 'Select and copy the text by hand.'), 'bad'); };
+  try { navigator.clipboard.writeText(text).then(() => say(T('Đã copy nhận xét (kèm dòng tiêu đề). Dán vào nhóm Zalo lớp.', 'Comment copied with its title line.')), fallback); } catch (e) { fallback(); }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act]');
+  if (!b) return;
+  const act = b.dataset.act, id = b.dataset.id || '';
+  if (!/^(nlSend|nlOk|nlZalo|nlDich|nlCopyText|nlCopyImg|nlGo|nlDay|tbOn|tbLater)$/.test(act)) return;
+  e.stopImmediatePropagation();
+  if (act === 'nlSend') {
+    const ta = document.querySelector('textarea[data-nx="en"][data-id="' + CSS.escape(id) + '"]'), en = (ta ? ta.value : nlx.draft[id + '|en'] || '').trim();
+    if (!en) return say(T('Nhận xét đang trống.', 'The comment is empty.'), 'bad');
+    const s = nlFindSession(id), nn = s && nlOf(s);
+    nlDo(id, 'nxgv', { en, meta: s && nn ? nlMeta(s, nn) : undefined }, T('Đã gửi nhận xét. Chủ nhiệm sẽ duyệt bản dịch và gửi phụ huynh.', 'Thank you! Your comment was submitted.'))
+      .then(r => { if (r) { delete nlx.draft[id + '|en']; delete nlx.draft[id + '|vi']; nlSaveDrafts(); render(); } });
+    return;
+  }
+  if (act === 'nlOk') { const vi = nlText(id); if (!vi) return say(T('Bản dịch đang trống.', 'The translation is empty.'), 'bad'); nlDo(id, 'nxok', { vi }, T('Đã lưu bản dịch.', 'Saved.')).then(r => { if (r) { delete nlx.draft[id + '|vi']; render(); } }); return; }
+  if (act === 'nlZalo') {
+    const undo = !!b.dataset.undo, vi = undo ? '' : nlText(id);
+    if (!undo && !vi) return say(T('Chưa có bản dịch để gửi.', 'No translation yet.'), 'bad');
+    nlDo(id, 'nxzalo', undo ? { undo: 1 } : { vi }, undo ? T('Đã bỏ đánh dấu.', 'Unmarked.') : T('Đã ghi: chủ nhiệm đã gửi Zalo.', 'Marked as sent.')).then(r => { if (r) { delete nlx.draft[id + '|vi']; render(); } });
+    return;
+  }
+  if (act === 'nlDich') {
+    say(T('Đang dịch lại…', 'Translating…'));
+    nlDo(id, 'nxdich', {}, '').then(r => { if (r && r.row) { nlx.draft[id + '|vi'] = r.row.vi || ''; say(T('Đã dịch lại. Kiểm tra rồi bấm Lưu bản dịch.', 'Translated again.')); render(); } });
+    return;
+  }
+  if (act === 'nlCopyText') return nlCopyText(id);
+  if (act === 'nlCopyImg') return nlCopyImg(b);
+  if (act === 'nlGo') return void nlGoId(id);
+  if (act === 'nlDay') { const v = Number(b.dataset.v); nlDay = v ? Q.addDays(nlDay || today(), v) : today(); render(); guarded(loadPanel); return; }
+  if (act === 'tbOn') return void tbOn();
+  if (act === 'tbLater') { keep('tbLater', Date.now() + 7 * 86400000); render(); return; }
+}, true);
+// Fresh rows while a page that shows them is open; otherwise now and then for the bell (one small read each time).
+setInterval(() => {
+  if (!me || document.hidden) return;
+  const t = today(), s = view === 'lenlop' && current && nlOf(current) ? current : null;
+  if (s) nlLoad(s.day, true);
+  else if (view === 'lopcn') { nlLoad(t, true); nlLoad(Q.addDays(t, -1)); }
+  else if (view === 'dieuhanh' && panel === 'nxnn') nlLoad(nlDay || t, true);
+}, 60000);
+setInterval(() => { if (me && !document.hidden && !isBoard() && nlSessionsOn(today()).length) nlLoad(today(), true); }, 300000);
+setTimeout(() => { if (me && !isBoard()) { nlLoad(today()); if (isManager() || isCm()) nlLoad(Q.addDays(today(), -1)); } }, 8000);
+
+/* ---------- Thông báo đẩy (owner 13/11: "thông báo ở điện thoại hoặc laptop… như 1 ứng dụng thực sự") ----------
+ * Each person taps "Bật thông báo" once per device and allows it. The gateway keeps that device's push address and sends
+ * through the browser's own push service, so a notification arrives with the app closed (Android, Windows/Mac browsers; an
+ * iPhone after "Thêm vào MH chính"). Tapping it opens the app at the right place (?mo=…). */
+const tb = { sub: null, checked: false, busy: false };
+const tbOk = () => 'serviceWorker' in navigator && 'PushManager' in window && typeof Notification !== 'undefined';
+const tbIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const tbStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const tbKey = () => { const s = String(CONFIG.vapid || '').replace(/-/g, '+').replace(/_/g, '/'); return Uint8Array.from(atob(s + '='.repeat((4 - s.length % 4) % 4)), c => c.charCodeAt(0)); };
+async function tbCheck() {
+  if (tbOk()) {
+    try { const reg = await navigator.serviceWorker.ready; tb.sub = await reg.pushManager.getSubscription(); } catch (e) {}
+    // The gateway's copy stays current (renewed addresses, a new link on this device), once a day.
+    if (tb.sub && Notification.permission === 'granted' && me && !isBoard() && Date.now() - (saved.get('tbAt') || 0) > 86400000)
+      call('tbdk', { sub: tb.sub.toJSON(), ua: navigator.userAgent.slice(0, 120) }).then(() => keep('tbAt', Date.now())).catch(() => {});
+  }
+  tb.checked = true; render();
+}
+function tbCard() {
+  if (!me || isBoard() || !tb.checked || (saved.get('tbLater') || 0) > Date.now()) return '';
+  const later = '<button class="quiet" data-act="tbLater">' + T('Để sau', 'Later') + '</button>';
+  if (!tbOk()) return tbIOS && !tbStandalone() ? '<div class="card row tb-card"><b>🔔 ' + T('Nhận thông báo trên iPhone', 'Notifications on iPhone') + '</b><span class="small">' + T('Mở app bằng Safari → bấm nút Chia sẻ ⬆️ → "Thêm vào MH chính". Mở app từ biểu tượng mới đó rồi bấm "Bật thông báo" ở đây.', 'In Safari tap Share ⬆️ → "Add to Home Screen", open the app from that icon, then turn notifications on here.') + '</span>' + later + '</div>' : '';
+  if (tb.sub && Notification.permission === 'granted') return '';
+  if (Notification.permission === 'denied') return '<div class="card row tb-card"><b>🔕 ' + T('Thông báo đang bị chặn', 'Notifications are blocked') + '</b><span class="small">' + T('Bấm biểu tượng ổ khoá cạnh địa chỉ trang → Thông báo → Cho phép, rồi tải lại trang.', 'Allow notifications in the site settings (lock icon by the address), then reload.') + '</span>' + later + '</div>';
+  return '<div class="card row tb-card"><b>🔔 ' + T('Bật thông báo trên máy này', 'Turn on notifications on this device') + '</b><span class="small muted">' + T('Báo ngay khi có việc cần bạn (nhận xét chờ duyệt, nhắc viết nhận xét…), kể cả khi đang không mở app.', 'Get told at once when something needs you, even with the app closed.') + '</span>' +
+    '<button class="primary" data-act="tbOn"' + (tb.busy ? ' disabled' : '') + '>' + (tb.busy ? '⏳ ' : '') + T('Bật thông báo', 'Turn on') + '</button>' + later + '</div>';
+}
+async function tbOn() {
+  if (tb.busy || !tbOk()) return;
+  tb.busy = true;
+  try {
+    const perm = await Notification.requestPermission();
+    render();
+    if (perm !== 'granted') { say(T('Bạn chưa cho phép thông báo trên máy này.', 'Notifications were not allowed.'), 'bad'); return; }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: tbKey() });
+    await call('tbdk', { sub: sub.toJSON(), ua: navigator.userAgent.slice(0, 120) });
+    keep('tbAt', Date.now()); tb.sub = sub;
+    const r = await call('tbthu', {});
+    say(r && r.sent ? T('Đã bật thông báo. Máy vừa nhận một thông báo thử.', 'Notifications are on. A test notification was sent.') : T('Đã bật thông báo.', 'Notifications are on.'));
+  } catch (e) { say(T('Chưa bật được thông báo: ', 'Could not turn notifications on: ') + (e.message || e), 'bad'); }
+  finally { tb.busy = false; render(); }
+}
+const todoCardBeforeTb = todoCard;
+todoCard = function () { const t = todoCardBeforeTb(); return me && !isBoard() && day === today() ? tbCard() + t : t; };
+setTimeout(() => { if (me) tbCheck(); else setTimeout(tbCheck, 6000); }, 3000);
+
+// A notification tapped: open the app at that place, in this window if one is open.
+let nlPending = null;
+function nlTryPending() {
+  if (!nlPending || !me || !tabs || !tabs.length || isBoard()) return;
+  const p = nlPending; nlPending = null;
+  if (p.id) return void nlGoId(p.id);
+  if (p.mo === 'nx') { view = 'lopcn'; render(); }
+}
+try {
+  const q = new URLSearchParams(location.search);
+  if (q.get('mo')) { nlPending = { mo: q.get('mo'), id: q.get('id') || '' }; history.replaceState(null, '', location.pathname + location.hash); }
+} catch (e) {}
+setInterval(nlTryPending, 1500);
+try { navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'mo') { try { const u = new URL(e.data.url, location.href); nlPending = { mo: u.searchParams.get('mo') || '', id: u.searchParams.get('id') || '' }; nlTryPending(); } catch (x) {} } }); } catch (e) {}
+
+(function nlStyle() {
+  try {
+    const st = document.createElement('style');
+    st.textContent = '.nx-card{margin:14px auto;width:100%;box-sizing:border-box;max-width:1000px;display:grid;gap:10px;padding:14px;text-align:left}' +
+      '.nx-head{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}.nx-lab{font-size:13px;font-weight:600;color:var(--muted)}' +
+      '.nx-ta{width:100%;box-sizing:border-box;font:inherit;font-size:15px;line-height:1.55;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);resize:vertical}' +
+      '.nx-en{white-space:pre-wrap;background:var(--soft);border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.55}' +
+      '.nx-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}@media(max-width:720px){.nx-pair{grid-template-columns:1fr}}' +
+      '.nx-tag{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted);margin-bottom:4px}.nx-tag.vi{color:var(--brand)}.nx-headline{font-weight:700;font-size:14px;margin-bottom:6px}' +
+      '.nx-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.nx-cn{display:grid;gap:10px;border-top:1px solid var(--line);padding-top:12px}' +
+      '.nx-list{display:grid;gap:0}.nx-li{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}.nx-li:last-child{border-bottom:0}' +
+      '.nx-daynav{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.nx-tbl td{vertical-align:top}.nx-orig{white-space:pre-wrap;min-width:240px;max-width:520px;font-size:13.5px;line-height:1.5}' +
+      '.nx-vi-small{white-space:pre-wrap;font-size:13px;margin-top:6px;color:var(--ink)}.tb-card{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}.tb-card .small{flex:1 1 260px}';
+    document.head.appendChild(st);
+  } catch (e) {}
+})();
+// The "Bật thông báo" card: at the top of today's schedule and inside the bell (it replaces the old "only while the app runs" ask).
+const viewScheduleBeforeTb = viewSchedule;
+viewSchedule = function (week) { const h = viewScheduleBeforeTb(week); try { return (day === today() ? tbCard() : '') + h; } catch (e) { return h; } };
+const paintBellBeforeTb = paintBell;
+paintBell = function () {
+  paintBellBeforeTb();
+  try {
+    const box = document.querySelector('#bellPanel .bell-box');
+    if (!box) return;
+    const old = box.querySelector('[data-act="bellAsk"]'); if (old) old.remove();
+    const c = tbCard();
+    if (c && !box.querySelector('.tb-card')) { const top = box.querySelector('.row-top'); if (top) top.insertAdjacentHTML('afterend', c); }
+  } catch (e) {}
+};

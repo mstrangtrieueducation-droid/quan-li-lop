@@ -68,3 +68,23 @@ self.addEventListener('fetch', e => {
     return fresh.then(x => x.r);
   })());
 });
+
+// Notifications (owner 13/11: "thông báo ở điện thoại hoặc laptop… như 1 ứng dụng thực sự"). The gateway sends an encrypted
+// message through the browser's push service; this shows it, and a tap opens the app at that place (in an open window if any).
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Quản lí lớp', {
+    body: d.body || '', tag: d.tag || undefined, renotify: !!d.tag, icon: 'logo.png', badge: 'logo.png', data: { url: d.url || './' }
+  }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const w = wins.find(c => c.url.startsWith(self.registration.scope));
+    if (w) { try { await w.focus(); } catch (err) {} w.postMessage({ type: 'mo', url }); return; }
+    await self.clients.openWindow(url);
+  })());
+});
