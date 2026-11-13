@@ -7385,7 +7385,10 @@ function nlOf(s) {
 const nlId = s => Q.sessionKey(s);
 const nlMeta = (s, nn) => ({ id: nlId(s), day: s.day, cls: Q.clean(s.cls), lesson: String(s.lesson), bd: s.start, kt: s.end, label: [Q.clean(s.book), 'Lesson ' + s.lesson].filter(Boolean).join(' · '), gv: nn.gv, cn: cmOf(s) || '', xung: nn.xung, row: s.row });
 const nlx = { rows: {}, at: {}, busy: {}, reg: {}, draft: {}, saving: '', poll: {} };
-try { Object.assign(nlx.draft, saved.get('nlDrafts') || {}); } catch (e) {}
+// The device's store opens after this file has run, so kept drafts are taken in the first time a box is drawn (13/11 test: a draft
+// written before a reload came back empty).
+let nlDraftsIn = false;
+const nlTakeDrafts = () => { if (nlDraftsIn || !saved.size) return; nlDraftsIn = true; try { Object.entries(saved.get('nlDrafts') || {}).forEach(([k, v]) => { if (nlx.draft[k] == null) nlx.draft[k] = v; }); } catch (e) {} };
 let nlDraftTimer = null;
 const nlSaveDrafts = () => { clearTimeout(nlDraftTimer); nlDraftTimer = setTimeout(() => { const keepOnly = {}; Object.entries(nlx.draft).forEach(([k, v]) => { if (/\|en$/.test(k) && v) keepOnly[k] = v; }); keep('nlDrafts', keepOnly); }, 600); };
 const nlTime = ms => { const d = new Date(ms); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); };
@@ -7435,6 +7438,7 @@ function nlPanel(s) {
   const lockGv = s.day < today() && !isManager();
   let h = '<div class="card nx-card" id="nx-card"><div class="nx-head"><b>📝 ' + T('Nhận xét lớp · GV nước ngoài', 'Class comment') + '</b><span class="small muted">' + esc(nn.gv) + ' · ' + esc(s.cls) + ' · ' + T('Tiết ', 'Lesson ') + esc(s.lesson) + '</span>' + nlChip(r, s) + '</div>';
   if (canGv && !lockGv && !(r && r.zalo_at && !isManager())) {
+    nlTakeDrafts();
     const v = nlx.draft[id + '|en'] != null ? nlx.draft[id + '|en'] : en;
     h += '<label class="nx-lab" for="nx-en">' + T('Nhận xét chung cả lớp (giáo viên viết bằng tiếng Anh) · hạn 23:59 hôm nay', 'Your comment on the whole class today, in English · due 23:59 today') + '</label>' +
       '<textarea id="nx-en" class="nx-ta" rows="5" data-nx="en" data-id="' + esc(id) + '" placeholder="' + esc(T('Giáo viên viết bằng tiếng Anh: hôm nay cả lớp học thế nào, điều làm tốt, điều còn khó…', 'How did the class do today? What went well, what was hard, anything parents should help with…')) + '">' + esc(v) + '</textarea>' +
