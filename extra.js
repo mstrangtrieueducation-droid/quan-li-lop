@@ -7732,3 +7732,40 @@ paintBell = function () {
     if (c && !box.querySelector('.tb-card')) { const top = box.querySelector('.row-top'); if (top) top.insertAdjacentHTML('afterend', c); }
   } catch (e) {}
 };
+
+/* ---------- iPhone: the app on the home screen keeps its own storage (owner 13/11: "ở iphone nó báo là vui lòng mở app từ link
+ * riêng") ----------
+ * Safari and the home-screen app do not share what the page keeps, so the link opened in Safari is unknown there. The sign-in
+ * screen takes the private link pasted in, and Safari's notification card offers "Copy link riêng" to carry it over. */
+(function linkPaste() {
+  const box = document.querySelector('#login .login-box'), msg = document.getElementById('loginMsg');
+  if (!box || !msg || document.getElementById('linkPaste')) return;
+  msg.insertAdjacentHTML('afterend', '<div class="link-paste"><label for="linkPaste" class="small" id="linkPasteLab"></label><div class="link-row"><input id="linkPaste" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://…#k=…"><button class="primary" id="linkGo"></button></div></div>');
+  const paint = () => { document.getElementById('linkPasteLab').textContent = T('Hoặc dán link riêng vào đây (cần khi mở app từ màn hình chính iPhone):', 'Or paste your private link here (needed for the iPhone home-screen app):'); document.getElementById('linkGo').textContent = T('Vào app', 'Open'); };
+  paint();
+  const paintLoginBeforeLink = paintLogin;
+  paintLogin = function () { paintLoginBeforeLink(); try { paint(); } catch (e) {} };
+  const go = () => {
+    const el = document.getElementById('linkPaste'), m = String(el.value || '').match(/k=([A-Za-z0-9_-]{24,})/);
+    if (!m) { msg.textContent = T('Chưa thấy mã trong link. Dán đúng cả link riêng (có đoạn #k=…).', 'No key found. Paste the whole private link (with #k=…).'); return; }
+    el.value = ''; msg.textContent = ''; keep('key', m[1]); accessKey = m[1]; enter();
+  };
+  document.getElementById('linkGo').addEventListener('click', go);
+  document.getElementById('linkPaste').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  try { const st = document.createElement('style'); st.textContent = '.link-paste{display:grid;gap:6px;margin:12px 0;text-align:left}.link-row{display:flex;gap:8px}.link-row input{flex:1;min-width:0;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}'; document.head.appendChild(st); } catch (e) {}
+})();
+const myLink = () => location.origin + location.pathname + '#k=' + accessKey;
+const tbCardBeforeIos = tbCard;
+tbCard = function () {
+  const h = tbCardBeforeIos();
+  if (!h || !tbIOS || tbStandalone() || !accessKey) return h;
+  return h.replace('<button class="quiet" data-act="tbLater">', '<button class="primary" data-act="tbCopyLink">📋 ' + T('Copy link riêng', 'Copy my link') + '</button><button class="quiet" data-act="tbLater">')
+    .replace(T('Mở app bằng Safari → bấm nút Chia sẻ ⬆️ → "Thêm vào MH chính". Mở app từ biểu tượng mới đó rồi bấm "Bật thông báo" ở đây.', 'In Safari tap Share ⬆️ → "Add to Home Screen", open the app from that icon, then turn notifications on here.'), T('Bấm "Copy link riêng", rồi Chia sẻ ⬆️ → "Thêm vào MH chính". Mở app từ biểu tượng mới, dán link vào ô "dán link riêng", bấm Vào app, rồi bấm "Bật thông báo".', 'Tap "Copy my link", then Share ⬆️ → "Add to Home Screen". Open the new icon, paste the link, tap Open, then turn notifications on.'));
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="tbCopyLink"]');
+  if (!b) return;
+  e.stopImmediatePropagation();
+  const done = () => say(T('Đã copy link riêng. Đừng gửi link này cho ai khác.', 'Your private link is copied. Do not share it.'));
+  try { navigator.clipboard.writeText(myLink()).then(done, () => window.prompt && window.prompt(T('Copy link này:', 'Copy this link:'), myLink())); } catch (err) {}
+}, true);
