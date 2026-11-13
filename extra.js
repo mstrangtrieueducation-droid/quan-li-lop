@@ -6450,8 +6450,12 @@ function runParentPage(url) {
     const f = document.createElement('iframe');
     f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
     f.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:700px;border:0;visibility:hidden;pointer-events:none';
-    let n = 0;
+    let n = 0, last = '', same = 0, lastList = null;
     const done = v => { clearInterval(timer); try { f.remove(); } catch (e) {} resolve(v); };
+    const tidy = list => list.map(x => ({ status: String(x.status || ''), label: Q.clean(x.label || x.title || '') }));
+    // 14/11 (IELTS 46 read as "nobody owes anything" a minute after reading 9–13 per pupil): the page fills its list in steps, the
+    // entries first and their "overdue" mark about half a second later. The list is taken only once it has stood still for
+    // 2.5 seconds; an empty list has to stand for 12 seconds. If the page never settles, its last list is used.
     const timer = setInterval(() => {
       n++;
       try {
@@ -6459,12 +6463,17 @@ function runParentPage(url) {
         let list = null;
         if (w && typeof w.fighterPendingEntriesV15_ === 'function' && w.fighterPendingStudentV15_) list = w.fighterPendingEntriesV15_(w.fighterPendingStudentV15_);
         else if (w) {
-          const k = Object.keys(w).find(x => /^ielts\d+PendingHomeworkEntriesV\d+_$/.test(x));
-          if (k) { const v = w[k](); if (Array.isArray(v) && (v.length || n > 24)) list = v; }
+          const k = Object.keys(w).find(x => /^ieltsd+PendingHomeworkEntriesVd+_$/.test(x));
+          if (k) list = w[k]();
         }
-        if (Array.isArray(list)) return done(list.map(x => ({ status: String(x.status || ''), label: Q.clean(x.label || x.title || '') })));
+        if (Array.isArray(list)) {
+          const sig = list.length + '|' + list.map(x => String(x.status || '')).join(',');
+          if (sig === last) same++; else { last = sig; same = 0; }
+          lastList = list;
+          if (same >= (list.length ? 5 : 24)) return done(tidy(list));
+        }
       } catch (e) { /* the page is still loading */ }
-      if (n > 70) done(null);
+      if (n > 80) done(lastList ? tidy(lastList) : null);
     }, 500);
     f.src = url;
     document.body.appendChild(f);
@@ -6480,7 +6489,7 @@ async function startPageRun(s, c) {
       const links = ((await call('dashlinks', { cls })) || {}).links || [], queue = links.slice();
       rows = [];
       const worker = async () => { while (queue.length) { const l = queue.shift(), r = await runParentPage(l.url); if (r) rows.push({ row: l.row, owed: r.filter(e => e.status === 'overdue').map(e => e.label), all: r.length }); } };
-      await Promise.all([worker(), worker()]);
+      await Promise.all([worker(), worker(), worker()]);
       if (rows.length) call('dashput', { cls, rows }).catch(() => {});
     }
     pageRun[c.key] = { at: Date.now(), rows, running: false };
