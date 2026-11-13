@@ -7964,3 +7964,41 @@ document.addEventListener('click', async e => {
 const phItemsBeforeHop = phItems;
 phItems = function () { return phItemsBeforeHop().filter(it => !it.none || isManager() || isMe(skCn(it.s)) || isMe(it.s.ta)); };
 try { const st = document.createElement('style'); st.textContent = '.hop{border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:4px;display:grid;gap:6px}.hop>.quiet.small{justify-self:start}.hop .row-top{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}.hop-item{padding:6px 8px;border-radius:10px;background:var(--soft)}.hop-item.go{cursor:pointer}.hop-item.go:hover{outline:1px solid var(--line)}.hop-test{color:var(--brand)}'; document.head.appendChild(st); } catch (e) {}
+
+/* ---------- Owner 13/11 22:55: "nhận xét lớp này có thể tích hợp vào lớp học xong luôn... ấn nút là hiện bảng nhỏ... sao phải tab
+ * riêng làm gì" ----------
+ * Tapping a lesson on the Lịch timeline opens its small card; for a lesson with a foreign teacher that card now shows the class
+ * comment right there: its state, the teacher's original, the translation, and for the homeroom teacher and managers a button that
+ * opens the full box to check the translation and send it to Zalo. Seen by managers, the homeroom teacher and the teacher. */
+const tlInfoDialogBeforeNl = tlInfoDialog;
+tlInfoDialog = function () {
+  const h = tlInfoDialogBeforeNl();
+  try {
+    if (!h || !tlInfoOpen || !me || isBoard()) return h;
+    const w = weeks[Q.weekTab(tabs, tlInfoOpen.day)], s = w && w.data.sessions.find(z => z.row === tlInfoOpen.row), nn = s && nlOf(s);
+    if (!nn) return h;
+    const cn = cmOf(s), asCn = isManager() || (!!cn && isMe(cn));
+    if (!asCn && !isMe(nn.gv)) return h;
+    const id = nlId(s), r = nlx.rows[id] || null;
+    if (!nlx.at[s.day] && !nlx.busy[s.day]) setTimeout(() => { nlLoad(s.day).catch(() => {}); }, 0);
+    const col = (label, text) => '<div class="tl-nx-col"><div class="small muted">' + label + '</div><div class="tl-nx-txt">' + esc(text) + '</div></div>';
+    const body = r && r.en ? '<div class="tl-nx-cols">' + col(T('Bản gốc · GV ', 'Original · ') + esc(nn.gv), r.en) + col(r.vi_ok ? T('Bản dịch · đã duyệt', 'Translation · checked') : T('Bản dịch tự động', 'Translation'), r.vi_ok || r.vi || T('Đang dịch…', 'Translating…')) + '</div>'
+      : '<div class="small muted">' + (nlx.at[s.day] ? T('GV ', 'Teacher ') + esc(nn.gv) + T(' chưa nộp nhận xét buổi này.', ' has not written it yet.') : T('Đang tải nhận xét…', 'Loading…')) + '</div>';
+    const btn = asCn && r && r.en ? '<button class="quiet" data-act="tlNx" data-id="' + esc(id) + '">' + (r.zalo_at ? T('Xem đầy đủ ›', 'Open ›') : T('Duyệt bản dịch & gửi Zalo ›', 'Check & send ›')) + '</button>' : '';
+    const box = '<div class="tl-nx"><div class="tl-nx-head"><b>📝 ' + T('Nhận xét lớp', 'Class comment') + '</b>' + nlChip(r, s) + '</div>' + body + btn + '</div>';
+    return h.replace('<div class="tl-btns">', box + '<div class="tl-btns">');
+  } catch (e) { return h; }
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="tlNx"]');
+  if (!b) return;
+  e.stopImmediatePropagation();
+  tlInfoOpen = null;
+  nlGoId(b.dataset.id).catch(() => {});
+}, true);
+try { const st = document.createElement('style'); st.textContent = '.tl-nx{border:1px solid var(--line);border-radius:12px;padding:10px;margin:10px 0;display:grid;gap:8px}.tl-nx-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.tl-nx-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}.tl-nx-txt{white-space:pre-wrap;font-size:14px;max-height:180px;overflow:auto;background:var(--soft);border-radius:8px;padding:8px}.tl-nx>.quiet{justify-self:start}'; document.head.appendChild(st); } catch (e) {}
+
+/* ---------- Owner 13/11 23:00: "ấn HS mới Jen rồi mà cứ hiện popup suốt"; earlier "dùng thông báo rồi thì thôi popup ở màn hình" ----------
+ * The "Việc cần làm" pop-up (class off to announce, new-pupil steps) is gone for everyone. The same items stay in the bell and in
+ * the quick lists on Lịch, where each one is ticked as before. */
+paintOffPop = function () { const box = document.getElementById('offPop'); if (box) box.remove(); };
