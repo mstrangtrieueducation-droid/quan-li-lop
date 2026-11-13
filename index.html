@@ -1384,6 +1384,11 @@
   .ph-btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .ph-btns button { padding: 6px 10px; font-size: 13px; }
   #phPop .pair-veil { background: rgba(127,29,29,.35); }
+  /* Owner 13/11 (FIGHTER 8 on a portrait board: no icons beside the names): the class screen's column grew to the width of its
+   * widest content, wider than a tall window, so the list was fitted to a box larger than the screen and the icon buttons were
+   * pushed past the right edge and cut off. Both columns now stay inside the window, so the fit shrinks the rows until every icon shows. */
+  body.lenlop main { grid-template-columns: minmax(0, 1fr); }
+  .rv-strip .rv-list { grid-template-columns: minmax(0, 1fr); }
   /* iPhone home-screen app (owner 13/11: "trên đầu của app cứ trắng trắng"): the page now runs under the clock strip, and that
    * strip always wears the top bar's colour, also after the bar has scrolled away. Every inset is 0 in a normal browser tab. */
   :root { --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); }
@@ -1433,11 +1438,11 @@
   </header>
   <main id="main"><div class="sk-wrap" aria-busy="true" aria-label="Đang mở"><div class="sk sk-row"></div><div class="sk sk-big"></div><div class="sk-grid"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div></main>
 </div>
-<script src="config.js?v=20261113S"></script>
-<script src="logic.js?v=20261113S"></script>
-<script src="app.js?v=20261113S"></script>
-<script src="qrcode.js?v=20261113S"></script>
-<script src="extra.js?v=20261113S"></script>
-<script src="nentang.js?v=20261113S"></script>
+<script src="config.js?v=20261113T"></script>
+<script src="logic.js?v=20261113T"></script>
+<script src="app.js?v=20261113T"></script>
+<script src="qrcode.js?v=20261113T"></script>
+<script src="extra.js?v=20261113T"></script>
+<script src="nentang.js?v=20261113T"></script>
 </body>
 </html>

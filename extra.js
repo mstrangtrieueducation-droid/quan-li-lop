@@ -2736,6 +2736,7 @@ const renderBeforeStrip = render;
 render = function () { renderBeforeStrip(); paintStrip(); };
 window.addEventListener('resize', () => { if (view === 'lenlop') paintStrip(); });
 const fitBeforeStrip = fitClassScreen;
+const stripKeep = new Map();
 fitClassScreen = function () {
   if (!document.body.classList.contains('rv-strip')) return fitBeforeStrip();
   const list = document.querySelector('.rv-list');
@@ -2758,10 +2759,21 @@ fitClassScreen = function () {
     return [...list.children].every(lineFits) && list.offsetHeight * s <= avail;
   };
   const best = c => { if (fits(1, c)) return 1; if (!fits(0.3, c)) return 0.3; let lo = 0.3, hi = 1; for (let k = 0; k < 8; k++) { const mid = (lo + hi) / 2; if (fits(mid, c)) lo = mid; else hi = mid; } return lo; };
-  // One column unless two (or three) make the names clearly bigger.
-  let s = best(1), cols = 1;
-  // A tall window keeps one column (owner 11/11: name big on top, icons under it).
-  for (let c = 2; c <= (list.classList.contains('rv-tall') ? 1 : 3) && s < 0.8; c++) { const sc = best(c); if (sc > s * 1.12) { s = sc; cols = c; } }
+  // Owner 13/11 ("lúc đang điểm danh màn hình liên tục giật về màn nhỏ màn to"): every tap redraws the list, and a row that loses
+  // its 🙋 button after roll call let the whole class grow a little each time. The size found for this window and this class is
+  // kept while it still fits; it is measured again only when the window, the number of pupils or the icon size changes.
+  const keepKey = [innerWidth, innerHeight, list.children.length, list.style.getPropertyValue('--rvq'), list.classList.contains('rv-tall')].join('|');
+  let s, cols;
+  const kept = stripKeep.get(keepKey);
+  if (kept && fits(kept.s, kept.cols)) { s = kept.s; cols = kept.cols; }
+  else {
+    // One column unless two (or three) make the names clearly bigger.
+    s = best(1); cols = 1;
+    // A tall window keeps one column (owner 11/11: name big on top, icons under it).
+    for (let c = 2; c <= (list.classList.contains('rv-tall') ? 1 : 3) && s < 0.8; c++) { const sc = best(c); if (sc > s * 1.12) { s = sc; cols = c; } }
+    if (stripKeep.size > 40) stripKeep.clear();
+    stripKeep.set(keepKey, { s, cols });
+  }
   list.style.gridTemplateColumns = cols > 1 ? 'repeat(' + cols + ', minmax(0, 1fr))' : '';
   list.style.width = s < 0.999 ? (100 / s) + '%' : '';
   // Height left over (the width was the limit): lines grow taller so the pupils fill the box (owner: pupils take ~5/6 of it).
@@ -6231,7 +6243,8 @@ paintStrip = function () {
   // A tall window (portrait board): one pupil per line, name on the left and the icons in the free space on its right (owner 11/11).
   list.classList.remove('rv-stack');
   list.classList.toggle('rv-tall', innerHeight > innerWidth * 1.2);
-  const key = [innerWidth, innerHeight, list.children.length, row.children.length].join('|'), eff = () => { const q = list.querySelector('.rv-row:not(.open) .rv-q'); return q ? q.getBoundingClientRect().width : 0; };
+  // (13/11: the number of icons in the first row no longer restarts the search; it changed with every roll-call tap.)
+  const key = [innerWidth, innerHeight, list.children.length].join('|'), eff = () => { const q = list.querySelector('.rv-row:not(.open) .rv-q'); return q ? q.getBoundingClientRect().width : 0; };
   // Try a few button sizes; keep the one that ends up biggest on screen after the class is fitted to the window.
   if (rvqBest.key !== key) {
     list.style.removeProperty('--rvq'); fitClassScreen();
