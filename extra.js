@@ -7798,3 +7798,102 @@ document.addEventListener('click', e => {
   const done = () => say(T('Đã copy link riêng. Đừng gửi link này cho ai khác.', 'Your private link is copied. Do not share it.'));
   try { navigator.clipboard.writeText(myLink()).then(done, () => window.prompt && window.prompt(T('Copy link này:', 'Copy this link:'), myLink())); } catch (err) {}
 }, true);
+
+/* ---------- Owner 13/11: "thông tin quan trọng phải báo qua app… dùng thông báo rồi thì thôi popup ở màn hình"; "15p hs chưa đến…
+ * nhắn tin bố mẹ… nếu bạn ý đến rồi GV sẽ tick điểm danh thì hiển thị ở đâu đó để tôi biết… để quản lí hay mọi người trong team
+ * không hoang mang hoặc phải chạy lên tận lớp để xem đến chưa" ----------
+ *  - The gateway sends the messages itself (no roll call at 15 minutes, pupils with no news, "đã đến lớp", a new pupil). It needs
+ *    to know today's lessons and each class's pupils: a device with the app open registers them (op skdk), and reads the sheet of
+ *    a class about to start so the list is there in time.
+ *  - Lịch (today) shows "Vắng đầu giờ hôm nay": who has no news yet, with the same buttons as the old pop-up, and who has since
+ *    arrived, with the time. A pupil counts as "arrived late" when the first present tick came 15 minutes or more into the lesson
+ *    and not within the roll call itself (3 minutes from its first tick). A toast says so on devices that have the app open.
+ *  - A device with notifications on no longer gets the red pop-up; a device without them keeps it. */
+const sk = { sig: '', busy: false, tried: new Set(), told: null, restUntil: 0 };
+const SK_ROLL = () => Q.ROLL_CALL_MINUTES, SK_SETTLE = 3;
+const skStampMin = at => { const m = String(at || '').match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*$/); return m ? Number(m[1]) * 60 + Number(m[2]) : -1; };
+function skToday() { const t = today(), w = weeks[Q.weekTab(tabs, t)]; return w ? w.data.sessions.filter(s => s.day === t && !s.off && classOf(s)) : []; }
+const skCn = s => { try { return cmOf(s) || ''; } catch (e) { return ''; } };
+const skMine = s => isManager() || isMe(skCn(s)) || isMe(s.ta) || takesRoll(s);
+const skActs = s => isManager() || isMe(skCn(s)) || isMe(s.ta);
+async function skRegister() {
+  if (!me || sk.busy || Date.now() < sk.restUntil) return;
+  const list = skToday(), now = minutesNow();
+  if (!list.length) return;
+  list.forEach(s => {
+    const c = classOf(s);
+    if (!trackers[c.key] && !sk.tried.has(c.key) && skMine(s) && now >= s.start - 20 && now <= s.end) { sk.tried.add(c.key); loadTracker(c, false, true).then(() => skRegister()).catch(() => {}); }
+  });
+  const rows = list.map(s => {
+    let names = [];
+    try { const ctx = trackers[classOf(s).key] ? classContext(s) : null; if (ctx && ctx.tracker) names = ctx.tracker.pupils.map(p => [p.name, p.eng || '']); } catch (e) {}
+    return { id: Q.sessionKey(s), day: s.day, cls: Q.clean(s.cls), lesson: String(s.lesson), gio: Q.clock(s.start), bd: s.start, kt: s.end, gv: Q.clean(s.teacher || ''), cn: skCn(s), names };
+  });
+  const sig = JSON.stringify(rows);
+  if (sig === sk.sig) return;
+  sk.busy = true;
+  try { await call('skdk', { rows }); sk.sig = sig; } catch (e) { sk.restUntil = Date.now() + 10 * 60000; /* gateway away or not updated yet: asked again in 10 minutes, nothing is lost */ } finally { sk.busy = false; }
+}
+setInterval(() => { if (!document.hidden) skRegister().catch(() => {}); }, 60000);
+setTimeout(() => skRegister().catch(() => {}), 15000);
+
+// What the roll-call rows say about each of today's lessons that I may see.
+function skLook() {
+  const t = today(), now = minutesNow(), out = [];
+  if (!me || !logs.marks) return out;
+  skToday().filter(s => skMine(s) && now >= s.start + SK_ROLL()).forEach(s => {
+    const prefix = [s.day, s.classKey, s.lesson, Q.clock(s.start)].join('|') + '|', first = new Map();
+    let rollStart = 1e9;
+    logs.marks.rows.forEach(m => {
+      if (!markKey(m).startsWith(prefix) || !Q.PRESENT.includes(m.status)) return;
+      const at = skStampMin(m.at); if (at < 0) return;
+      if (!first.has(m.name) || at < first.get(m.name).at) first.set(m.name, { at, by: m.by, eng: m.eng });
+      if (at < rollStart) rollStart = at;
+    });
+    const ctx = trackers[classOf(s).key] ? classContext(s) : null, marks = ctx ? ctx.marks : marksOf(s), roll = Q.rollCall(s, marks, t, now);
+    const item = { s, none: roll.noRollCall && now <= s.end + 120, came: [], wait: [] };
+    first.forEach((f, name) => {
+      const m = marks.get(name);
+      if (m && Q.PRESENT.includes(m.status) && f.at >= s.start + SK_ROLL() && f.at >= rollStart + SK_SETTLE) item.came.push({ name, eng: f.eng || (m && m.eng) || '', at: f.at, by: f.by, late: f.at - s.start });
+    });
+    if (ctx && ctx.tracker && !roll.noRollCall && now <= s.end + 120) ctx.tracker.pupils.forEach(p => { const m = marks.get(p.name); if (Q.pupilState(m, roll) === 'Vắng chờ xác minh') item.wait.push({ p, contact: !!(m && m.contact) }); });
+    item.came.sort((a, b) => a.at - b.at);
+    if (item.none || item.came.length || item.wait.length) out.push(item);
+  });
+  return out;
+}
+const skShort = n => { const w = Q.clean(n).split(' '); return w.length > 2 ? w.slice(-2).join(' ') : Q.clean(n); };
+function skCard() {
+  let items = [];
+  try { items = skLook(); } catch (e) { return ''; }
+  if (!items.length) return '';
+  const phone = p => { const ph = (String(p.phone || '').match(/[\d ]{9,}/) || [''])[0].trim(); return ph ? '<a href="tel:' + esc(ph.replace(/\s/g, '')) + '">📞 ' + esc(ph) + '</a>' : ''; };
+  const btn = (s, x, act, v, cls, label) => '<button class="' + cls + '" data-act="' + act + '" data-v="' + v + '" data-row="' + s.row + '" data-day="' + s.day + '" data-name="' + esc(x.p.name) + '">' + label + '</button>';
+  const body = items.map(it => '<div class="ph-cls"><b>' + esc(it.s.cls) + '</b> <span class="muted small">' + Q.clock(it.s.start) + (skCn(it.s) ? ' · ' + T('CN ', 'Homeroom ') + esc(titleCase(skCn(it.s))) : '') + '</span>' +
+    (it.none ? '<div class="ph-none">' + T('Chưa điểm danh sau 15 phút', 'No roll call 15 minutes in') + (it.s.teacher ? ' · ' + esc(titleCase(it.s.teacher)) : '') + '</div>' : '') +
+    it.wait.map(x => '<div class="ph-line"><span class="ph-who"><span class="tag ' + (x.contact ? 'warn' : 'bad') + '">⏳ ' + T('Chưa đến', 'Not here') + '</span> <b>' + esc(x.p.eng || skShort(x.p.name)) + '</b> <small>' + esc(x.p.name) + ' · ' + (x.contact ? T('đã liên hệ phụ huynh', 'parent contacted') : T('chưa liên hệ phụ huynh', 'parent not contacted')) + '</small> ' + (skActs(it.s) ? phone(x.p) : '') + '</span>' +
+      (skActs(it.s) ? '<span class="ph-btns">' + btn(it.s, x, 'absence', 'Có phép', 'mid', T('Có phép', 'Excused')) + btn(it.s, x, 'absence', 'Không phép', 'low', T('Không phép', 'Unexcused')) + (x.contact ? '' : btn(it.s, x, 'contact', '', 'good', '📞 ' + T('Đã liên hệ PH', 'Parent contacted'))) + '</span>' : '') + '</div>').join('') +
+    it.came.map(x => '<div class="ph-line"><span class="ph-who"><span class="tag ok">✅ ' + T('Đã đến ', 'Arrived ') + Q.clock(x.at) + '</span> <b>' + esc(x.eng || skShort(x.name)) + '</b> <small>' + T('muộn ', '') + x.late + T(' phút', ' min late') + (x.by ? ' · ' + esc(titleCase(x.by)) + T(' điểm danh', ' took the roll') : '') + '</small></span></div>').join('') + '</div>').join('');
+  const wait = items.reduce((n, it) => n + it.wait.length + (it.none ? 1 : 0), 0), came = items.reduce((n, it) => n + it.came.length, 0);
+  return '<div class="card sk-card"><b>🕒 ' + T('Vắng đầu giờ hôm nay', 'Missing at the start today') + '</b> <span class="small muted">' + [wait ? wait + T(' chưa có tin', ' with no news') : '', came ? came + T(' đã đến muộn', ' arrived late') : ''].filter(Boolean).join(' · ') + T(' · tự cập nhật khi giáo viên điểm danh', ' · updates as the roll is taken') + '</span>' + body + '</div>';
+}
+const viewScheduleBeforeSk = viewSchedule;
+viewSchedule = function (week) { const h = viewScheduleBeforeSk(week); try { return (day === today() ? skCard() : '') + h; } catch (e) { return h; } };
+// A late arrival is also said aloud (a toast) on devices that have the app open; the first look only takes note.
+function skWatch() {
+  let items = [];
+  try { items = skLook(); } catch (e) { return; }
+  const keys = new Map();
+  items.forEach(it => it.came.forEach(x => keys.set(Q.sessionKey(it.s) + '|' + x.name, (x.eng || skShort(x.name)) + ' (' + Q.clean(it.s.cls) + ')' + T(' đã đến lớp lúc ', ' arrived at ') + Q.clock(x.at))));
+  if (sk.told) keys.forEach((text, k) => { if (!sk.told.has(k)) say('✅ ' + text); });
+  if (logs.marks) sk.told = new Set(keys.keys());
+}
+setInterval(skWatch, 20000);
+// The red pop-up stays only on devices without notifications.
+const skPushOn = () => { try { return !!tb.sub && Notification.permission === 'granted'; } catch (e) { return false; } };
+const paintPhPopBeforeSk = paintPhPop;
+paintPhPop = function () {
+  if (skPushOn()) { const box = document.getElementById('phPop'); if (box) box.remove(); return; }
+  return paintPhPopBeforeSk();
+};
+try { const st = document.createElement('style'); st.textContent = '.sk-card{display:block}.sk-card .ph-cls:first-of-type{margin-top:8px}.sk-card .tag{white-space:nowrap}'; document.head.appendChild(st); } catch (e) {}
