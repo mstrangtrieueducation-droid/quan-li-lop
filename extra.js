@@ -7403,7 +7403,8 @@ function nlOf(s) {
   return null;
 }
 const nlId = s => Q.sessionKey(s);
-const nlMeta = (s, nn) => ({ id: nlId(s), day: s.day, cls: Q.clean(s.cls), lesson: String(s.lesson), bd: s.start, kt: s.end, label: [Q.clean(s.book), 'Lesson ' + s.lesson].filter(Boolean).join(' · '), gv: nn.gv, cn: cmOf(s) || '', xung: nn.xung, row: s.row });
+// Owner 13/11: the lesson content (book · lesson · topic from the Schedule) goes with it, so the translation can say what was learnt.
+const nlMeta = (s, nn) => ({ id: nlId(s), day: s.day, cls: Q.clean(s.cls), lesson: String(s.lesson), bd: s.start, kt: s.end, label: [Q.clean(s.book), 'Lesson ' + s.lesson].filter(Boolean).join(' · '), nd: [Q.clean(s.book), s.lesson ? 'Lesson ' + s.lesson : '', String(s.detail || '').split('\n').map(Q.clean).filter(Boolean)[0] || ''].filter(Boolean).join(' · ').slice(0, 200), gv: nn.gv, cn: cmOf(s) || '', xung: nn.xung, row: s.row });
 const nlx = { rows: {}, at: {}, busy: {}, reg: {}, draft: {}, saving: '', poll: {} };
 // The device's store opens after this file has run, so kept drafts are taken in the first time a box is drawn (13/11 test: a draft
 // written before a reload came back empty).
