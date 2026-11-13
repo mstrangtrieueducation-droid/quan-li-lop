@@ -52,6 +52,7 @@ function ntPanel() {
   if (nt.open) return ntDetail();
   const rows = nt.rows;
   let h = (nt.err ? '<p class="bad">' + esc(nt.err) + '</p>' : '');
+  h += '<div class="ns-sec"><a href="' + NT_STUDENT + '?hs=chu" target="_blank" rel="noopener" style="display:block;text-align:center;padding:12px;border-radius:12px;background:#0d1433;color:#f5c542;font-weight:800;text-decoration:none">👁 Xem toàn bộ bài (bản chủ) — mở hết 14 bài + bài thi</a></div>';
   h += '<div class="ns-sec"><b>Thêm học sinh mới</b><div class="ns-bar"><input id="nt-name" placeholder="Họ và tên"><input id="nt-cls" placeholder="Lớp"><input id="nt-note" placeholder="Ghi chú"><button data-act="ntNew"' + (nt.busy ? ' disabled' : '') + '>' + (nt.busy ? 'Đang tạo…' : 'Tạo link') + '</button></div><p class="muted small">30 ngày tính từ lúc học sinh mở link lần đầu.</p>';
   if (nt.made) h += '<div class="card row" style="background:var(--ok-soft)"><div><b>Đã tạo link cho ' + esc(nt.made.name) + ':</b><br><span class="small" style="word-break:break-all">' + esc(ntLink(nt.made.code)) + '</span></div><div class="ns-bar"><button data-act="ntCopy" data-c="' + esc(nt.made.code) + '">Copy link</button><button class="quiet" data-act="ntCopyMsg" data-c="' + esc(nt.made.code) + '">Copy tin nhắn gửi học sinh</button></div></div>';
   h += '</div>';
