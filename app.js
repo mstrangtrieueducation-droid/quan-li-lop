@@ -356,7 +356,8 @@ function liveTag(s) { if (s.off || s.day !== today()) return ''; const n = minut
 const CHOT_NAME = '— CHỐT BUỔI —';
 const chotOf = s => { try { const m = marksOf(s).get(CHOT_NAME); return m && m.status === 'Đã chốt' ? m : null; } catch (e) { return null; } };
 const isChot = s => !!chotOf(s);
-function canTeach(s) { return !isChot(s) && (isManager() || (takesRoll(s) && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && !lessonClosed(s))); }
+// Owner 14/11: before the roll call opens (30 minutes before the lesson) nobody marks anything, managers and the owner included.
+function canTeach(s) { return !isChot(s) && Q.rollCall(s, marksOf(s), today(), minutesNow()).open && (isManager() || (takesRoll(s) && !lessonClosed(s))); }
 // Everyone moves to their new place smoothly, so the class sees who overtook whom.
 function withMoves(work) {
   const before = new Map([...document.querySelectorAll('.ll-row')].map(el => [el.dataset.name, el.getBoundingClientRect().top]));
@@ -944,7 +945,7 @@ const stateText = st => lang === 'en' ? ({ 'Vắng chờ xác minh': 'Absent, aw
 function viewClass() {
   const ctx = classContext(current), s = ctx.session, tracker = ctx.tracker;
   const assigned = takesRoll(s);
-  const roll = Q.rollCall(s, ctx.marks, today(), minutesNow()), canEdit = !isChot(s) && (isManager() || (assigned && roll.open && !lessonClosed(s)));
+  const roll = Q.rollCall(s, ctx.marks, today(), minutesNow()), canEdit = !isChot(s) && roll.open && (isManager() || (assigned && !lessonClosed(s)));
   let h = '<div><button class="quiet" data-act="back">‹ ' + T('Lịch', 'Schedule') + '</button></div><div class="card class-head"><h1>' + esc(s.cls) + T(' · Tiết ', ' · Lesson ') + esc(s.lesson) + '</h1>' +
     '<div>' + esc(dayLabel(s.day)) + ' · <b>' + sessionTime(s) + '</b> · <span class="room">' + esc(s.site || T('Chưa ghi phòng', 'No room listed')) + '</span></div>' +
     '<div class="detail">' + esc(s.book) + (s.detail ? '\n' + esc(s.detail) : '') + '</div>' +
@@ -961,7 +962,7 @@ function viewClass() {
     (roll.noRollCall ? '<span class="tag bad">' + T('Chưa điểm danh', 'Attendance not taken') + '</span>' : roll.past ? (waiting ? '<span class="tag bad">' + waiting + T(' vắng chờ xác minh', ' absent, awaiting check') + '</span>' : '<span class="tag ok">' + T('Đủ', 'All here') + '</span>') : '<span class="tag">' + T('Chốt lúc ', 'Closes at ') + Q.clock(roll.closeAt) + '</span>') + '</div>';
   if (group && !tracker.grouped) h += '<div class="notice">' + T('Đây là buổi nhóm nên danh sách là cả lớp, chỉ tick các em học nhóm này.', 'This is a group session showing the whole class, so tick only the pupils in this group.') + '</div>';
   if (isChot(s)) h += '<div class="notice ok">✅ ' + T('Buổi đã chốt lúc ', 'Lesson closed at ') + esc(String(chotOf(s).at || '').slice(11, 16) || '') + (chotOf(s).by ? T(' bởi ', ' by ') + esc(chotOf(s).by) : '') + T('. Không sửa được nữa.', '. It can no longer be changed.') + (isManager() ? ' <button class="quiet" data-act="chotUndo">' + T('Mở lại để sửa', 'Reopen') + '</button>' : T(' Cần sửa thì báo quản lí.', ' Ask a manager to change anything.')) + '</div>';
-  else if (!canEdit) h += '<div class="notice">' + (assigned && lessonClosed(s) ? T('Buổi học đã kết thúc quá ' + closeAfter(s) + ' phút nên đã khoá, không sửa được nữa. Cần sửa thì báo quản lí.', 'This lesson ended more than ' + CLOSE_AFTER + ' minutes ago and is locked. Ask a manager to change anything.') : assigned ? T('Điểm danh mở trước giờ học ' + Q.OPEN_BEFORE + ' phút.', 'Attendance opens ' + Q.OPEN_BEFORE + ' minutes before class.') : T('Chỉ xem được, buổi này không phân công cho Gmail này.', 'View only: this session is not assigned to this Gmail.')) + '</div>';
+  else if (!canEdit) h += '<div class="notice">' + (assigned && lessonClosed(s) ? T('Buổi học đã kết thúc quá ' + closeAfter(s) + ' phút nên đã khoá, không sửa được nữa. Cần sửa thì báo quản lí.', 'This lesson ended more than ' + CLOSE_AFTER + ' minutes ago and is locked. Ask a manager to change anything.') : !roll.open || assigned ? T('Buổi học chưa mở. Điểm danh và chấm điểm mở trước giờ học ' + Q.OPEN_BEFORE + ' phút.', 'Not open yet. Attendance and marks open ' + Q.OPEN_BEFORE + ' minutes before class.') : T('Chỉ xem được, buổi này không phân công cho Gmail này.', 'View only: this session is not assigned to this Gmail.')) + '</div>';
   const owed = Q.owedVideos(tracker.pupils, tracker.blocks, tracker.practices, tracker.cell, Object.assign({}, s, { started: true }));
   h += '<div class="card">' + tracker.pupils.map((p, i) => {
     const m = ctx.marks.get(p.name), on = m && Q.PRESENT.includes(m.status), state = stateOf(p), value = ctx.block && ctx.block.grade >= 0 ? tracker.cell(p.row, ctx.block.grade) : '', g = Q.gradeOf(value);
