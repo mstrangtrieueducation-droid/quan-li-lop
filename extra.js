@@ -7422,12 +7422,17 @@ function nlState(r, s) {
   const d = r ? r.day : s.day, t = today(), now = minutesNow(), kt = r ? r.gio_kt : s.end;
   if (r && r.zalo_at) return ['ok', T('Đã gửi Zalo ', 'Sent to parents ') + nlTime(r.zalo_at)];
   if (r && r.en) return r.ok_at ? ['warn', T('Đã duyệt, chưa gửi Zalo', 'Checked, not sent yet')] : ['warn', T('Chờ chủ nhiệm duyệt', 'Waiting for homeroom')];
-  if (d < t) return ['bad', T('Không nộp', 'Not written')];
+  if (d < t) return nlLateOpen(d) ? ['bad', T('Chưa nộp · nhận muộn đến 12:00', 'Not written · late until 12:00')] : ['bad', T('Không nộp', 'Not written')];
   if (d > t || (d === t && now < kt)) return ['', T('Chưa đến giờ tan', 'Lesson not over')];
   if (r && r.nhac_at) return ['bad', T('Chưa nộp · đã nhắc ', 'Not written · reminded ') + nlTime(r.nhac_at)];
   return ['', T('GV chưa nộp (hạn 23:59)', 'Due today 23:59')];
 }
-const nlChip = (r, s) => { const [c, t] = nlState(r, s); return '<span class="tag ' + c + '">' + esc(t) + '</span>'; };
+// Owner 13/11: "giáo viên vẫn nộp được nhưng bị tính feedback muộn… mở đến 12h trưa hôm sau" (the gateway keeps the same rule).
+const NL_LATE_UNTIL = 12 * 60;
+const nlLateOpen = d => d === Q.addDays(today(), -1) && minutesNow() < NL_LATE_UNTIL;
+const nlGvOpen = d => d >= today() || nlLateOpen(d);
+const nlLateTag = r => r && r.muon ? '<span class="tag bad">' + T('Nộp muộn', 'Late') + '</span>' : '';
+const nlChip = (r, s) => { const [c, t] = nlState(r, s); return '<span class="tag ' + c + '">' + esc(t) + '</span>' + nlLateTag(r); };
 
 function nlPanel(s) {
   const nn = nlOf(s);
@@ -7435,17 +7440,18 @@ function nlPanel(s) {
   const id = nlId(s), r = nlx.rows[id] || null, en = (r && r.en) || '', cn = cmOf(s);
   const canGv = isManager() || isBoard() || isMe(nn.gv), canCn = !isBoard() && (isManager() || (!!cn && isMe(cn)));
   if (!nlx.at[s.day]) setTimeout(() => nlLoad(s.day), 0);
-  const lockGv = s.day < today() && !isManager();
+  const lockGv = !nlGvOpen(s.day) && !isManager(), lateNow = s.day < today();
   let h = '<div class="card nx-card" id="nx-card"><div class="nx-head"><b>📝 ' + T('Nhận xét lớp · GV nước ngoài', 'Class comment') + '</b><span class="small muted">' + esc(nn.gv) + ' · ' + esc(s.cls) + ' · ' + T('Tiết ', 'Lesson ') + esc(s.lesson) + '</span>' + nlChip(r, s) + '</div>';
   if (canGv && !lockGv && !(r && r.zalo_at && !isManager())) {
     nlTakeDrafts();
     const v = nlx.draft[id + '|en'] != null ? nlx.draft[id + '|en'] : en;
-    h += '<label class="nx-lab" for="nx-en">' + T('Nhận xét chung cả lớp (giáo viên viết bằng tiếng Anh) · hạn 23:59 hôm nay', 'Your comment on the whole class today, in English · due 23:59 today') + '</label>' +
+    h += (lateNow && !(r && r.en) ? '<div class="notice bad">' + T('Đã quá 23:59 ngày học: vẫn nộp được đến 12:00 trưa nay nhưng tính NỘP MUỘN.', 'Past 23:59 of the lesson day: you can still submit until 12:00 today, but it counts as LATE.') + '</div>' : '') +
+      '<label class="nx-lab" for="nx-en">' + T('Nhận xét chung cả lớp (giáo viên viết bằng tiếng Anh) · hạn 23:59 ngày học; sau đó nhận đến 12:00 trưa hôm sau, tính nộp muộn', 'Your comment on the whole class, in English · due 23:59 on the lesson day; until 12:00 the next day it is still taken but counts as late') + '</label>' +
       '<textarea id="nx-en" class="nx-ta" rows="5" data-nx="en" data-id="' + esc(id) + '" placeholder="' + esc(T('Giáo viên viết bằng tiếng Anh: hôm nay cả lớp học thế nào, điều làm tốt, điều còn khó…', 'How did the class do today? What went well, what was hard, anything parents should help with…')) + '">' + esc(v) + '</textarea>' +
       '<div class="nx-btns"><button class="primary" data-act="nlSend" data-id="' + esc(id) + '"' + (nlx.saving === id ? ' disabled' : '') + '>' + (nlx.saving === id ? '⏳ ' : '') + (en ? T('Lưu sửa đổi', 'Save changes') : T('Gửi nhận xét', 'Submit')) + '</button>' +
       (r && r.en_at ? '<span class="small muted">✓ ' + T('Đã nộp lúc ', 'Submitted at ') + nlTime(r.en_at) + (r.en_by ? ' · ' + esc(r.en_by) : '') + '</span>' : '<span class="small muted">' + T('App tự dịch sang tiếng Việt cho chủ nhiệm duyệt.', 'The homeroom teacher checks the Vietnamese translation and sends it to parents.') + '</span>') + '</div>';
   } else if (en && !canCn) h += '<div class="nx-lab">' + T('Bản gốc của giáo viên', 'Teacher\'s original') + '</div><div class="nx-en">' + esc(en) + '</div>';
-  else if (!en) h += '<div class="small muted">' + (lockGv ? T('Giáo viên không nộp nhận xét buổi này.', 'No comment was written for this lesson.') : T('Giáo viên chưa nộp nhận xét (hạn 23:59 hôm nay; 21:30 app nhắc giáo viên).', 'Not written yet (due 23:59 today).')) + '</div>';
+  else if (!en) h += '<div class="small muted">' + (!nlGvOpen(s.day) ? T('Giáo viên không nộp nhận xét buổi này.', 'No comment was written for this lesson.') : lateNow ? T('Giáo viên chưa nộp; vẫn nhận đến 12:00 trưa nay (tính nộp muộn).', 'Not written yet; still taken until 12:00 today (late).') : T('Giáo viên chưa nộp nhận xét (hạn 23:59 hôm nay; 21:30 app nhắc giáo viên).', 'Not written yet (due 23:59 today).')) + '</div>';
   if (canCn && en) h += nlCnPart(r);
   else if (r && r.zalo_at) h += '<div class="small muted">✓ ' + T('Chủ nhiệm đã gửi Zalo lúc ', 'Sent to parents at ') + nlTime(r.zalo_at) + (r.zalo_by ? ' · ' + esc(r.zalo_by) : '') + '</div>';
   return h + '</div>';
@@ -7520,6 +7526,9 @@ bellItems = function () {
     if (wait.length) out.push({ k: 'nx', icon: '📝', text: wait.length + T(' nhận xét GV nước ngoài chờ duyệt, gửi Zalo', ' class comments to check and send'), n: wait.length, hot: wait.some(r => r.day < t), go: wait.length === 1 ? { view: 'lopcn', nx: wait[0].id } : { view: 'lopcn' } });
     nlSessionsOn(t).filter(s => isMe(nlOf(s).gv) && now >= s.end && !((nlx.rows[nlId(s)] || {}).en)).forEach(s =>
       out.push({ k: 'nxgv', icon: '📝', text: T('Viết nhận xét lớp ', 'Write the class comment for ') + Q.clean(s.cls) + T(' (hạn 23:59)', ' (due 23:59)'), n: 1, hot: now >= 21 * 60 + 30, go: { view: 'lich', nx: nlId(s) } }));
+    // Yesterday's lessons still without a comment: taken until 12:00, late.
+    if (now < NL_LATE_UNTIL) nlSessionsOn(y).filter(s => isMe(nlOf(s).gv) && !((nlx.rows[nlId(s)] || {}).en)).forEach(s =>
+      out.push({ k: 'nxgv', icon: '📝', text: T('Nhận xét lớp ', 'Class comment for ') + Q.clean(s.cls) + T(' hôm qua chưa nộp · nộp trước 12:00 (tính muộn)', ' (yesterday) is missing · submit before 12:00 (late)'), n: 1, hot: true, go: { view: 'lich', nx: nlId(s) } }));
   } catch (e) {}
   return out;
 };
@@ -7543,7 +7552,7 @@ function nlDaily() {
   const st = list.map(x => nlState(x.r, x.s || { day: d, end: x.r.gio_kt })), count = c => st.filter(x => x[0] === c).length;
   let h = '<div class="card row nx-daynav"><button class="quiet" data-act="nlDay" data-v="-1" aria-label="' + T('Ngày trước', 'Previous day') + '">‹</button><b>' + esc(Q.dayText(d, lang)) + '</b><button class="quiet" data-act="nlDay" data-v="1" aria-label="' + T('Ngày sau', 'Next day') + '">›</button>' +
     (d !== today() ? '<button class="quiet" data-act="nlDay" data-v="0">' + T('Hôm nay', 'Today') + '</button>' : '') + '<span class="spacer"></span>' +
-    '<span class="tag">' + list.length + T(' buổi GV NN', ' lessons') + '</span><span class="tag ok">' + count('ok') + T(' đã gửi', ' sent') + '</span><span class="tag warn">' + count('warn') + T(' chờ chủ nhiệm', ' with homeroom') + '</span><span class="tag bad">' + count('bad') + T(' chưa/không nộp', ' missing') + '</span></div>';
+    '<span class="tag">' + list.length + T(' buổi GV NN', ' lessons') + '</span><span class="tag ok">' + count('ok') + T(' đã gửi', ' sent') + '</span><span class="tag warn">' + count('warn') + T(' chờ chủ nhiệm', ' with homeroom') + '</span><span class="tag bad">' + count('bad') + T(' chưa/không nộp', ' missing') + '</span><span class="tag bad">' + list.filter(x => x.r && x.r.muon).length + T(' nộp muộn', ' late') + '</span></div>';
   if (!list.length) return h + '<div class="card empty">' + (nlx.busy[d] ? T('Đang đọc…', 'Loading…') : T('Không có buổi nào do giáo viên nước ngoài dạy trong ngày này.', 'No foreign-teacher lessons on this day.')) + '</div>';
   h += '<div class="card table"><table class="nx-tbl"><thead><tr><th>' + T('Lớp · bài', 'Class') + '</th><th>' + T('Giáo viên', 'Teacher') + '</th><th>' + T('Giờ', 'Time') + '</th><th>' + T('Nhận xét gốc (tiếng Anh)', 'Original comment') + '</th><th>' + T('Trạng thái', 'Status') + '</th></tr></thead><tbody>' +
     list.map((x, i) => {
@@ -7551,7 +7560,7 @@ function nlDaily() {
       const vi = r && (r.vi_ok || r.vi);
       return '<tr><td><b>' + esc(cls) + '</b><br><span class="small muted">' + esc(r ? r.label || '' : [Q.clean(s.book), 'Lesson ' + lesson].filter(Boolean).join(' · ')) + '</span></td><td>' + esc(r ? r.gv : nlOf(s).gv) + (r && r.cn ? '<br><span class="small muted">CN ' + esc(r.cn) + '</span>' : '') + '</td><td class="num">' + Q.clock(bd) + '–' + Q.clock(kt) + '</td>' +
         '<td class="nx-orig">' + (r && r.en ? esc(r.en) + (vi ? '<details><summary class="small">' + T('Bản tiếng Việt', 'Vietnamese') + (r.vi_ok ? T(' (đã duyệt)', ' (checked)') : T(' (bản dịch máy)', ' (machine)')) + '</summary><div class="nx-vi-small">' + esc(r.head || '') + '\n\n' + esc(vi) + '</div></details>' : '') : '<span class="muted">—</span>') + '</td>' +
-        '<td><span class="tag ' + st[i][0] + '">' + esc(st[i][1]) + '</span>' + (r && r.zalo_by ? '<br><span class="small muted">' + esc(r.zalo_by) + '</span>' : '') + '<br><button class="quiet small" data-act="nlGo" data-id="' + esc(id) + '">' + T('Mở', 'Open') + '</button></td></tr>';
+        '<td><span class="tag ' + st[i][0] + '">' + esc(st[i][1]) + '</span>' + nlLateTag(r) + (r && r.zalo_by ? '<br><span class="small muted">' + esc(r.zalo_by) + '</span>' : '') + '<br><button class="quiet small" data-act="nlGo" data-id="' + esc(id) + '">' + T('Mở', 'Open') + '</button></td></tr>';
     }).join('') + '</tbody></table></div>';
   return h;
 }
