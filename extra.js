@@ -7844,7 +7844,7 @@ async function skRegister() {
   try { if (!isOwner() && !isBoard()) { const w = weeks[Q.weekTab(tabs, today())]; if (w) { const due = dueFor(w, today(), me.name); toi = { due: due === null ? 0 : due }; } } } catch (e) {}
   // Owner 13/11 23:45: everyone's due time today by the contract rules (the same as the check-in panel), for "chưa vào ca".
   let caList = [];
-  try { const w = weeks[Q.weekTab(tabs, today())]; caList = staffOfDay(w, today()).map(n => { const due = dueFor(w, today(), n); if (due === null) return null; const s = (w ? w.data.sessions : []).filter(z => z.day === today() && !z.off && kindOf(z) !== 'tutor' && Q.staffOf(z).some(p => p.role !== 'TA' && nameIs(p.name, n))).sort((a, b) => a.start - b.start)[0]; return [n, due, s ? Q.clean(s.cls) : '']; }).filter(Boolean); } catch (e) {}
+  try { const w = weeks[Q.weekTab(tabs, today())]; caList = staffOfDay(w, today()).map(n => { const due = dueFor(w, today(), n); if (due === null) return null; const s = (w ? w.data.sessions : []).filter(z => z.day === today() && !z.off && Q.staffOf(z).some(p => p.role !== 'TA' && nameIs(p.name, n))).sort((a, b) => a.start - b.start)[0]; return [n, due, s ? Q.clean(s.cls) : '']; }).filter(Boolean); } catch (e) {}
   const sig = JSON.stringify([rows, toi, caList]);
   if (sig === sk.sig) return;
   sk.busy = true;
@@ -8079,11 +8079,9 @@ function rotaDueFor(week, d, name) {
   const note = Q.key(mine ? mine.note : ''), pm = wd === 6 ? ROTA_DUE.sat : ROTA_DUE.sun;
   if (/SANG|CA NGAY/.test(note)) return ROTA_DUE.am;
   if (/CHIEU/.test(note)) return pm;
-  // 14/11 audit: no word in the rota. Morning only if the person teaches or films a class before noon; otherwise the afternoon
-  // time, so nobody on the afternoon shift is called "not in" at 8:45.
-  // (Tutor sessions and the homeroom column do not count: on 07/11 a morning tutor session made Thùy Trang "316 minutes late".)
-  const morning = (week ? week.data.sessions : []).some(s => s.day === d && !s.off && s.start < 12 * 60 && kindOf(s) !== 'tutor' && Q.staffOf(s).some(p => p.role !== 'TA' && nameIs(p.name, name)));
-  return morning ? ROTA_DUE.am : pm;
+  // Owner 14/11 ("mai Thùy Trang, My Linh, Sơn phải có mặt sáng 8:45"): on the weekend rota with no word beside the name, the
+  // morning time. Someone who only works the afternoon has "chiều" written beside the name.
+  return ROTA_DUE.am;
 }
 function dueFor(week, d, name) {
   if (!name) return null;
@@ -8097,7 +8095,9 @@ function dueFor(week, d, name) {
   if (mode === 'full') return weekday ? FULL_DUE : (x && x.work.some(p => nameIs(p.name, name)) ? rotaDueFor(week, d, name) : null);
   let due = null;
   if (mode === 'part') { const w = x && x.work.find(p => nameIs(p.name, name)), sh = w && Q.shiftOf(w.note); due = sh ? sh.start : w ? (weekday ? PART_DUE : rotaDueFor(week, d, name)) : null; }
-  (week ? week.data.sessions : []).filter(s => s.day === d && !s.off && kindOf(s) !== 'tutor').forEach(s => Q.staffOf(s).forEach(p => {
+  // Owner 14/11: "tính theo ca tutor nếu tutor sớm hơn": a tutor session counts like a class for teachers and part-time staff
+  // (full-time staff keep 15:30 whatever they tutor, as decided on 10/11).
+  (week ? week.data.sessions : []).filter(s => s.day === d && !s.off).forEach(s => Q.staffOf(s).forEach(p => {
     if (p.role !== 'TA' && nameIs(p.name, name) && (due === null || p.due < due)) due = p.due;
   }));
   return due;
@@ -8110,3 +8110,22 @@ function staffOfDay(week, d) {
   (week ? week.data.sessions : []).filter(s => s.day === d && !s.off).forEach(s => Q.staffOf(s).forEach(p => put(p.name)));
   return [...out.values()];
 }
+
+/* ---------- Owner 14/11: "màn hình nhận xét bị đơ còn không kéo được" (IELTS Speaking, nhận xét từng em) ----------
+ * The class screen redraws itself whenever anything on it changes: a mark from another device, a save going through, and after
+ * every automatic save of a comment. Each redraw rebuilt the comment window, so it jumped back to its top and the cursor left the
+ * box being typed in; the list could not be scrolled past the first pupils. A redraw now puts an open window (comments, test
+ * scores, reasons) back as it was: same scroll position, same box, same text and cursor. */
+// (A text box in focus already stops every redraw, so typing was safe; the jump came while scrolling or reading. The class board
+// rebuilds its whole page on every redraw, so there it happened every few seconds.)
+let sheetMovedAt = 0, sheetLater = null;
+['touchmove', 'wheel', 'scroll'].forEach(ev => document.addEventListener(ev, e => { const t = e.target; if (t && t.closest ? t.closest('.ll-sheet') : (t && t.classList && t.classList.contains('ll-sheet'))) sheetMovedAt = Date.now(); }, { capture: true, passive: true }));
+const renderBeforeSheetKeep = render;
+render = function () {
+  const main = $('main'), sh = main && main.querySelector('.ll-sheet'), top = sh ? sh.scrollTop : 0;
+  // While a finger is dragging the list, the redraw waits a moment (a rebuilt list would stop the drag).
+  if (sh && Date.now() - sheetMovedAt < 900) { clearTimeout(sheetLater); sheetLater = setTimeout(() => { try { render(); } catch (e) {} }, 1000); return; }
+  renderBeforeSheetKeep();
+  try { if (top) { const now = $('main').querySelector('.ll-sheet'); if (now && now !== sh) now.scrollTop = top; } } catch (e) {}
+};
+try { const st = document.createElement('style'); st.textContent = '.ll-sheet.nx-sheet{overscroll-behavior:contain;-webkit-overflow-scrolling:touch;max-height:min(88vh,calc(100dvh - 24px))}'; document.head.appendChild(st); } catch (e) {}
