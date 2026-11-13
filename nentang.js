@@ -53,7 +53,8 @@ async function loadNt() {
   st.textContent = `
 .ntp{max-width:100%;min-width:0}
 .dash-body:has(> .ntp){flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
-@media (max-width:640px){.dash-modal:has(.ntp){height:100dvh;max-height:100dvh}}
+@media (max-width:640px){.dash-modal:has(.ntp){height:100dvh;max-height:100dvh;padding-top:env(safe-area-inset-top)}}
+.ntp .ntback{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:700;font-size:15px;cursor:pointer}
 .ntp *{box-sizing:border-box}
 .ntp .ns-bar input:not([type=search]){flex:1 1 160px;min-width:0;padding:9px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:15px}
 .ntp .ns-bar input[type=search]{max-width:none}
@@ -71,7 +72,7 @@ async function loadNt() {
 }`;
   document.head.appendChild(st);
 })();
-function ntPanel() { return '<div class="ntp">' + ntPanelIn() + '</div>'; }
+function ntPanel() { return '<div class="ntp">' + (nt.open ? '' : '<div class="ns-bar"><button class="ntback" data-act="panel" data-v="tong">← Về trang chính</button></div>') + ntPanelIn() + '</div>'; }
 function ntPanelIn() {
   if (!nt.key) return '<p>Nhập mã quản trị Nền tảng IELTS một lần, máy này sẽ nhớ.</p>' + (nt.err ? '<p class="bad">' + esc(nt.err) + '</p>' : '') +
     '<div class="ns-bar"><input id="nt-key" type="password" autocomplete="off" placeholder="Mã quản trị"><button data-act="ntKey">Vào</button></div>';
