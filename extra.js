@@ -7884,8 +7884,9 @@ function skWatch() {
   let items = [];
   try { items = skLook(); } catch (e) { return; }
   const keys = new Map();
-  items.forEach(it => it.came.forEach(x => keys.set(Q.sessionKey(it.s) + '|' + x.name, (x.eng || skShort(x.name)) + ' (' + Q.clean(it.s.cls) + ')' + T(' đã đến lớp lúc ', ' arrived at ') + Q.clock(x.at))));
-  if (sk.told) keys.forEach((text, k) => { if (!sk.told.has(k)) say('✅ ' + text); });
+  // Never on a class screen, and never to the teacher of the lesson (owner 13/11: "giáo viên đang dạy tuyệt đối không làm phiền").
+  items.filter(it => skActs(it.s) && !takesRoll(it.s)).forEach(it => it.came.forEach(x => keys.set(Q.sessionKey(it.s) + '|' + x.name, (x.eng || skShort(x.name)) + ' (' + Q.clean(it.s.cls) + ')' + T(' đã đến lớp lúc ', ' arrived at ') + Q.clock(x.at))));
+  if (sk.told && view !== 'lenlop' && !isBoard()) keys.forEach((text, k) => { if (!sk.told.has(k)) say('✅ ' + text); });
   if (logs.marks) sk.told = new Set(keys.keys());
 }
 setInterval(skWatch, 20000);
