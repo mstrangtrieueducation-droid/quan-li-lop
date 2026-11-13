@@ -8079,9 +8079,10 @@ function rotaDueFor(week, d, name) {
   const note = Q.key(mine ? mine.note : ''), pm = wd === 6 ? ROTA_DUE.sat : ROTA_DUE.sun;
   if (/SANG|CA NGAY/.test(note)) return ROTA_DUE.am;
   if (/CHIEU/.test(note)) return pm;
-  // 14/11 audit: no word in the rota. Morning only if a class before noon names the person (any column); otherwise the afternoon
+  // 14/11 audit: no word in the rota. Morning only if the person teaches or films a class before noon; otherwise the afternoon
   // time, so nobody on the afternoon shift is called "not in" at 8:45.
-  const morning = (week ? week.data.sessions : []).some(s => s.day === d && !s.off && s.start < 12 * 60 && Q.staffOf(s).some(p => nameIs(p.name, name)));
+  // (Tutor sessions and the homeroom column do not count: on 07/11 a morning tutor session made Thùy Trang "316 minutes late".)
+  const morning = (week ? week.data.sessions : []).some(s => s.day === d && !s.off && s.start < 12 * 60 && kindOf(s) !== 'tutor' && Q.staffOf(s).some(p => p.role !== 'TA' && nameIs(p.name, name)));
   return morning ? ROTA_DUE.am : pm;
 }
 function dueFor(week, d, name) {
