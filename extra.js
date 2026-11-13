@@ -7422,15 +7422,15 @@ function nlState(r, s) {
   const d = r ? r.day : s.day, t = today(), now = minutesNow(), kt = r ? r.gio_kt : s.end;
   if (r && r.zalo_at) return ['ok', T('Đã gửi Zalo ', 'Sent to parents ') + nlTime(r.zalo_at)];
   if (r && r.en) return r.ok_at ? ['warn', T('Đã duyệt, chưa gửi Zalo', 'Checked, not sent yet')] : ['warn', T('Chờ chủ nhiệm duyệt', 'Waiting for homeroom')];
-  if (d < t) return nlLateOpen(d) ? ['bad', T('Chưa nộp · nhận muộn đến 12:00', 'Not written · late until 12:00')] : ['bad', T('Không nộp', 'Not written')];
+  if (d < t) return nlOnTime(d) ? ['warn', T('Chưa nộp · hạn 12:00 hôm nay', 'Not written · due 12:00 today')] : ['bad', T('Chưa nộp · đã muộn', 'Not written · late')];
   if (d > t || (d === t && now < kt)) return ['', T('Chưa đến giờ tan', 'Lesson not over')];
   if (r && r.nhac_at) return ['bad', T('Chưa nộp · đã nhắc ', 'Not written · reminded ') + nlTime(r.nhac_at)];
-  return ['', T('GV chưa nộp (hạn 23:59)', 'Due today 23:59')];
+  return ['', T('GV chưa nộp (hạn 12:00 trưa mai)', 'Due by 12:00 tomorrow')];
 }
-// Owner 13/11: "giáo viên vẫn nộp được nhưng bị tính feedback muộn… mở đến 12h trưa hôm sau" (the gateway keeps the same rule).
-const NL_LATE_UNTIL = 12 * 60;
-const nlLateOpen = d => d === Q.addDays(today(), -1) && minutesNow() < NL_LATE_UNTIL;
-const nlGvOpen = d => d >= today() || nlLateOpen(d);
+// Owner 13/11: "sau 12h trưa (hôm sau) mới là muộn... và kể cả muộn thì vẫn cho họ nhận xét" — due 12:00 the day after the lesson,
+// later is marked late but never locked (the gateway keeps the same rule; the first submission decides).
+const NL_DUE_AT = 12 * 60;
+const nlOnTime = d => d >= today() || (d === Q.addDays(today(), -1) && minutesNow() < NL_DUE_AT);
 const nlLateTag = r => r && r.muon ? '<span class="tag bad">' + T('Nộp muộn', 'Late') + '</span>' : '';
 const nlChip = (r, s) => { const [c, t] = nlState(r, s); return '<span class="tag ' + c + '">' + esc(t) + '</span>' + nlLateTag(r); };
 
@@ -7440,18 +7440,18 @@ function nlPanel(s) {
   const id = nlId(s), r = nlx.rows[id] || null, en = (r && r.en) || '', cn = cmOf(s);
   const canGv = isManager() || isBoard() || isMe(nn.gv), canCn = !isBoard() && (isManager() || (!!cn && isMe(cn)));
   if (!nlx.at[s.day]) setTimeout(() => nlLoad(s.day), 0);
-  const lockGv = !nlGvOpen(s.day) && !isManager(), lateNow = s.day < today();
+  const lateNow = !nlOnTime(s.day);
   let h = '<div class="card nx-card" id="nx-card"><div class="nx-head"><b>📝 ' + T('Nhận xét lớp · GV nước ngoài', 'Class comment') + '</b><span class="small muted">' + esc(nn.gv) + ' · ' + esc(s.cls) + ' · ' + T('Tiết ', 'Lesson ') + esc(s.lesson) + '</span>' + nlChip(r, s) + '</div>';
-  if (canGv && !lockGv && !(r && r.zalo_at && !isManager())) {
+  if (canGv && !(r && r.zalo_at && !isManager())) {
     nlTakeDrafts();
     const v = nlx.draft[id + '|en'] != null ? nlx.draft[id + '|en'] : en;
-    h += (lateNow && !(r && r.en) ? '<div class="notice bad">' + T('Đã quá 23:59 ngày học: vẫn nộp được đến 12:00 trưa nay nhưng tính NỘP MUỘN.', 'Past 23:59 of the lesson day: you can still submit until 12:00 today, but it counts as LATE.') + '</div>' : '') +
-      '<label class="nx-lab" for="nx-en">' + T('Nhận xét chung cả lớp (giáo viên viết bằng tiếng Anh) · hạn 23:59 ngày học; sau đó nhận đến 12:00 trưa hôm sau, tính nộp muộn', 'Your comment on the whole class, in English · due 23:59 on the lesson day; until 12:00 the next day it is still taken but counts as late') + '</label>' +
+    h += (lateNow && !(r && r.en) ? '<div class="notice bad">' + T('Đã quá hạn 12:00 trưa hôm sau ngày học: vẫn nộp được, nhưng tính NỘP MUỘN.', 'Past the deadline (12:00 the day after the lesson): you can still submit, but it counts as LATE.') + '</div>' : '') +
+      '<label class="nx-lab" for="nx-en">' + T('Nhận xét chung cả lớp (giáo viên viết bằng tiếng Anh) · hạn 12:00 trưa hôm sau ngày học', 'Your comment on the whole class, in English · due by 12:00 noon the day after the lesson') + '</label>' +
       '<textarea id="nx-en" class="nx-ta" rows="5" data-nx="en" data-id="' + esc(id) + '" placeholder="' + esc(T('Giáo viên viết bằng tiếng Anh: hôm nay cả lớp học thế nào, điều làm tốt, điều còn khó…', 'How did the class do today? What went well, what was hard, anything parents should help with…')) + '">' + esc(v) + '</textarea>' +
       '<div class="nx-btns"><button class="primary" data-act="nlSend" data-id="' + esc(id) + '"' + (nlx.saving === id ? ' disabled' : '') + '>' + (nlx.saving === id ? '⏳ ' : '') + (en ? T('Lưu sửa đổi', 'Save changes') : T('Gửi nhận xét', 'Submit')) + '</button>' +
       (r && r.en_at ? '<span class="small muted">✓ ' + T('Đã nộp lúc ', 'Submitted at ') + nlTime(r.en_at) + (r.en_by ? ' · ' + esc(r.en_by) : '') + '</span>' : '<span class="small muted">' + T('App tự dịch sang tiếng Việt cho chủ nhiệm duyệt.', 'The homeroom teacher checks the Vietnamese translation and sends it to parents.') + '</span>') + '</div>';
   } else if (en && !canCn) h += '<div class="nx-lab">' + T('Bản gốc của giáo viên', 'Teacher\'s original') + '</div><div class="nx-en">' + esc(en) + '</div>';
-  else if (!en) h += '<div class="small muted">' + (!nlGvOpen(s.day) ? T('Giáo viên không nộp nhận xét buổi này.', 'No comment was written for this lesson.') : lateNow ? T('Giáo viên chưa nộp; vẫn nhận đến 12:00 trưa nay (tính nộp muộn).', 'Not written yet; still taken until 12:00 today (late).') : T('Giáo viên chưa nộp nhận xét (hạn 23:59 hôm nay; 21:30 app nhắc giáo viên).', 'Not written yet (due 23:59 today).')) + '</div>';
+  else if (!en) h += '<div class="small muted">' + (lateNow ? T('Giáo viên chưa nộp, đã quá hạn 12:00 trưa hôm sau (khi nộp sẽ tính muộn).', 'Not written yet; past the deadline (will count as late).') : T('Giáo viên chưa nộp nhận xét (hạn 12:00 trưa hôm sau ngày học; 21:30 tối ngày học app nhắc giáo viên).', 'Not written yet (due by 12:00 the day after the lesson).')) + '</div>';
   if (canCn && en) h += nlCnPart(r);
   else if (r && r.zalo_at) h += '<div class="small muted">✓ ' + T('Chủ nhiệm đã gửi Zalo lúc ', 'Sent to parents at ') + nlTime(r.zalo_at) + (r.zalo_by ? ' · ' + esc(r.zalo_by) : '') + '</div>';
   return h + '</div>';
@@ -7525,10 +7525,10 @@ bellItems = function () {
     const wait = Object.values(nlx.rows).filter(r => r.day >= y && r.en && !r.zalo_at && (isMe(r.cn) || (isManager() && !r.cn)));
     if (wait.length) out.push({ k: 'nx', icon: '📝', text: wait.length + T(' nhận xét GV nước ngoài chờ duyệt, gửi Zalo', ' class comments to check and send'), n: wait.length, hot: wait.some(r => r.day < t), go: wait.length === 1 ? { view: 'lopcn', nx: wait[0].id } : { view: 'lopcn' } });
     nlSessionsOn(t).filter(s => isMe(nlOf(s).gv) && now >= s.end && !((nlx.rows[nlId(s)] || {}).en)).forEach(s =>
-      out.push({ k: 'nxgv', icon: '📝', text: T('Viết nhận xét lớp ', 'Write the class comment for ') + Q.clean(s.cls) + T(' (hạn 23:59)', ' (due 23:59)'), n: 1, hot: now >= 21 * 60 + 30, go: { view: 'lich', nx: nlId(s) } }));
-    // Yesterday's lessons still without a comment: taken until 12:00, late.
-    if (now < NL_LATE_UNTIL) nlSessionsOn(y).filter(s => isMe(nlOf(s).gv) && !((nlx.rows[nlId(s)] || {}).en)).forEach(s =>
-      out.push({ k: 'nxgv', icon: '📝', text: T('Nhận xét lớp ', 'Class comment for ') + Q.clean(s.cls) + T(' hôm qua chưa nộp · nộp trước 12:00 (tính muộn)', ' (yesterday) is missing · submit before 12:00 (late)'), n: 1, hot: true, go: { view: 'lich', nx: nlId(s) } }));
+      out.push({ k: 'nxgv', icon: '📝', text: T('Viết nhận xét lớp ', 'Write the class comment for ') + Q.clean(s.cls) + T(' (hạn 12:00 trưa mai)', ' (due by 12:00 tomorrow)'), n: 1, hot: now >= 21 * 60 + 30, go: { view: 'lich', nx: nlId(s) } }));
+    // Yesterday's lessons still without a comment: due 12:00 today; after that still possible, late.
+    nlSessionsOn(y).filter(s => isMe(nlOf(s).gv) && !((nlx.rows[nlId(s)] || {}).en)).forEach(s =>
+      out.push({ k: 'nxgv', icon: '📝', text: T('Nhận xét lớp ', 'Class comment for ') + Q.clean(s.cls) + (now < NL_DUE_AT ? T(' hôm qua chưa nộp · hạn 12:00 hôm nay', ' (yesterday) is missing · due 12:00 today') : T(' hôm qua chưa nộp · đã muộn, vẫn nộp được', ' (yesterday) is missing · late, you can still submit')), n: 1, hot: true, go: { view: 'lich', nx: nlId(s) } }));
   } catch (e) {}
   return out;
 };
