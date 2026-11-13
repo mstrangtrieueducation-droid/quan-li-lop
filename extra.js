@@ -7728,6 +7728,10 @@ function nlTryPending() {
   const p = nlPending; nlPending = null;
   if (p.id) return void nlGoId(p.id);
   if (p.mo === 'nx') { view = 'lopcn'; render(); }
+  // Owner 13/11 (test of every message): a tap opens the place where the thing is handled.
+  if (p.mo === 'ca' && isManager()) { view = 'dieuhanh'; panel = 'ca'; render(); guarded(loadPanel); }
+  if (p.mo === 'vang') { if (isManager()) { view = 'dieuhanh'; panel = 'vang'; filters.person = ''; render(); guarded(loadPanel); } else { view = 'lopcn'; render(); } }
+  if (p.mo === 'hs') { view = 'lich'; day = today(); render(); bell.open = true; paintBell(); }
 }
 try {
   const q = new URLSearchParams(location.search);
