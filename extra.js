@@ -7886,7 +7886,8 @@ function skCard() {
   return '<div class="card sk-card"><b>🕒 ' + T('Vắng đầu giờ hôm nay', 'Missing at the start today') + '</b> <span class="small muted">' + [wait ? wait + T(' chưa có tin', ' with no news') : '', came ? came + T(' đã đến muộn', ' arrived late') : ''].filter(Boolean).join(' · ') + T(' · tự cập nhật khi giáo viên điểm danh', ' · updates as the roll is taken') + '</span>' + body + '</div>';
 }
 const viewScheduleBeforeSk = viewSchedule;
-viewSchedule = function (week) { const h = viewScheduleBeforeSk(week); try { return (day === today() ? skCard() : '') + h; } catch (e) { return h; } };
+// Owner 13/11: "Vắng học hs đầu giờ không cần hiển thị 1 đống như này, mình có thông báo rồi": the card is no longer shown on Lịch.
+viewSchedule = function (week) { return viewScheduleBeforeSk(week); };
 // A late arrival is also said aloud (a toast) on devices that have the app open; the first look only takes note.
 function skWatch() {
   let items = [];
@@ -7894,7 +7895,7 @@ function skWatch() {
   const keys = new Map();
   // Never on a class screen, and never to the teacher of the lesson (owner 13/11: "giáo viên đang dạy tuyệt đối không làm phiền").
   items.filter(it => skActs(it.s) && !takesRoll(it.s)).forEach(it => it.came.forEach(x => keys.set(Q.sessionKey(it.s) + '|' + x.name, (x.eng || skShort(x.name)) + ' (' + Q.clean(it.s.cls) + ')' + T(' đã đến lớp lúc ', ' arrived at ') + Q.clock(x.at))));
-  if (sk.told && view !== 'lenlop' && !isBoard()) keys.forEach((text, k) => { if (!sk.told.has(k)) say('✅ ' + text); });
+  if (sk.told && view !== 'lenlop' && !isBoard() && !skPushOn()) keys.forEach((text, k) => { if (!sk.told.has(k)) say('✅ ' + text); });
   if (logs.marks) sk.told = new Set(keys.keys());
 }
 setInterval(skWatch, 20000);

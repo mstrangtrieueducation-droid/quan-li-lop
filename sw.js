@@ -84,7 +84,9 @@ self.addEventListener('notificationclick', e => {
   e.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const w = wins.find(c => c.url.startsWith(self.registration.scope));
-    if (w) { try { await w.focus(); } catch (err) {} w.postMessage({ type: 'mo', url }); return; }
-    await self.clients.openWindow(url);
+    // Owner 13/11 (iPhone: "bấm vào nhận xét của GV chả ra gì"): an open window is told where to go and brought forward; where
+    // that is not possible (iPhone home-screen app), the app is opened at the address itself, which it reads when it starts.
+    if (w) { w.postMessage({ type: 'mo', url }); try { await w.focus(); return; } catch (err) {} }
+    try { await self.clients.openWindow(url); } catch (err) { if (w && w.navigate) { try { await w.navigate(url); } catch (x) {} } }
   })());
 });
