@@ -1694,8 +1694,8 @@ const GRADE_EN = { 'Chưa làm bài': 'Not done', 'Làm thiếu': 'Incomplete', 
 const biText = t => { const en = BEHAVIOUR_EN[t] || GRADE_EN[t] || ''; return esc(t) + (en && en !== t ? '<small class="rv-en">' + esc(en) + '</small>' : ''); };
 const owedMemo = { key: '', list: [] };
 function owedOf(ctx) {
-  const t = ctx.tracker, key = Q.sessionKey(ctx.session) + '|' + t.at + '|' + (ctx.session.day === today() && minutesNow() >= ctx.session.start);
-  if (owedMemo.key !== key) { owedMemo.key = key; try { owedMemo.list = Q.owedVideos(t.pupils, t.blocks, t.practices, t.cell, Object.assign({}, ctx.session, { started: ctx.session.day < today() || (ctx.session.day === today() && minutesNow() >= ctx.session.start) })); } catch (e) { owedMemo.list = []; } }
+  const t = ctx.tracker, key = Q.sessionKey(ctx.session) + '|' + t.at + '|' + (ctx.session.day === today() && minutesNow() >= ctx.session.start - Q.OPEN_BEFORE);
+  if (owedMemo.key !== key) { owedMemo.key = key; try { owedMemo.list = Q.owedVideos(t.pupils, t.blocks, t.practices, t.cell, Object.assign({}, ctx.session, { started: ctx.session.day < today() || (ctx.session.day === today() && minutesNow() >= ctx.session.start - Q.OPEN_BEFORE) })); } catch (e) { owedMemo.list = []; } }
   return owedMemo.list;
 }
 function pupilFlags(ctx, r) {
@@ -1908,7 +1908,7 @@ function secOwedOf(ctx, p) {
   const hit = secOwedFor(ctx.session);
   if (!hit) return null;
   const x = hit.data.pupils.find(q => q.row === p.row) || hit.data.pupils.find(q => Q.key(q.name) === Q.key(p.name));
-  const s = ctx.session, started = s.day < today() || (s.day === today() && minutesNow() >= s.start);
+  const s = ctx.session, started = s.day < today() || (s.day === today() && minutesNow() >= s.start - Q.OPEN_BEFORE);
   return x ? x.owed.filter(o => o.due && (o.due < s.day || (o.due === s.day && started))) : [];
 }
 const shortTask = o => Q.clean(o.label).replace(/\s+/g, ' ').slice(0, 28) + (Q.clean(o.label).length > 28 ? '…' : '');
@@ -2303,7 +2303,7 @@ function owedLine(s) {
   if (isSecondary(s)) {
     const hit = secOwedFor(s);
     if (!hit) return '';
-    const started = minutesNow() >= s.start;
+    const started = minutesNow() >= s.start - Q.OPEN_BEFORE; // 14/11: from the moment the roll call opens
     names = hit.data.pupils.map(p => ({ n: p.eng || p.name, c: p.owed.filter(o => o.due && (o.due < s.day || (o.due === s.day && started))).length })).filter(x => x.c);
   } else {
     const t = trackers[classOf(s).key];
@@ -6263,7 +6263,8 @@ paintStrip = function () {
 /* ---------- Owner 11/11 ("dùng bộ đếm chung với dash… dash chính xác"): KIDS owed work comes from the parent pages ----------
  * The server reads each pupil's parent-page data and returns what that page counts as overdue (op 'dashno', kept 10 minutes).
  * The class screen, the lesson card line and the summary use it; a pupil without a parent link (or before the answer arrives)
- * keeps the sheet-based count. Work due on the lesson day counts once the lesson has started (owner: "đếm tới lúc mở lớp"). */
+ * keeps the sheet-based count. Work due on the lesson day counts once the class opens for roll call, 30 minutes before the lesson
+ * (owner: "đếm tới lúc mở lớp"; 14/11 "đếm bài thiếu đến lúc mở lớp điểm danh còn sai": it used to wait for the lesson's start time). */
 /* ---------- Owner 12/11 ("đọc bài tập về nhà bị sao thì sao... làm sao tối ưu nhất"): KIDS parent pages read by the staff device ----------
  * The parent pages live on the same site as this app, so a teacher's or manager's device reads them directly: the class gives
  * its parent links (op dashlinks, read from the sheet), the class page names its dashboard server, and each pupil's data file is
@@ -6381,7 +6382,7 @@ const owedOfBeforeDash = owedOf;
 owedOf = function (ctx) {
   const base = owedOfBeforeDash(ctx), dash = dashOwedFor(ctx);
   if (!dash) return base;
-  const s = ctx.session, started = s.day < today() || (s.day === today() && minutesNow() >= s.start);
+  const s = ctx.session, started = s.day < today() || (s.day === today() && minutesNow() >= s.start - Q.OPEN_BEFORE);
   return ctx.tracker.pupils.map((p, i) => dash[i] ? dash[i].filter(x => !x.resubmit && (x.due < s.day || (started && x.due === s.day))).map(dashToOwed) : (base[i] || []));
 };
 const totalOwedBeforeDash = totalOwed;
