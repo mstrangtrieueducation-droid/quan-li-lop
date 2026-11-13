@@ -303,7 +303,9 @@
     (practices || []).filter(x => past(x.due) && x.due >= from).forEach(x => {
       if (!assigned([x.col])) return;
       pupils.forEach((p, i) => {
-        if (p.since && x.due < p.since) return;
+        // Owner 14/11 (Linda moved to KIDS 34 on 25/10, her page starts at video 33 but this list said she owed 31 and 32): a weekly
+        // video given out before the pupil joined is not hers. It counts only when its week began after the joining day.
+        if (p.since && x.due <= addDays(p.since, 7)) return;
         const st = videoState(cell(p.row, x.col));
         if (st === 'missing' || st === 'wrong') found[i].push({ col: x.col, day: x.due, lesson: '', label: x.label, wrong: st === 'wrong', practice: true });
       });
