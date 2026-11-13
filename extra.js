@@ -7840,7 +7840,8 @@ async function skRegister() {
     return { id: Q.sessionKey(s), day: s.day, cls: Q.clean(s.cls), lesson: String(s.lesson), gio: Q.clock(s.start), bd: s.start, kt: s.end, gv: Q.clean(s.teacher || ''), cn: skCn(s), names };
   });
   let toi = null;
-  try { if (!isOwner()) { const due = myDue(weeks[Q.weekTab(tabs, today())], today()); if (due !== null && due !== undefined && due > 0) toi = { due }; } } catch (e) {}
+  // 14/11 audit: one's own time by the same contract rules (it knows the staff record's choice); 0 = not due today.
+  try { if (!isOwner() && !isBoard()) { const w = weeks[Q.weekTab(tabs, today())]; if (w) { const due = dueFor(w, today(), me.name); toi = { due: due === null ? 0 : due }; } } } catch (e) {}
   // Owner 13/11 23:45: everyone's due time today by the contract rules (the same as the check-in panel), for "chưa vào ca".
   let caList = [];
   try { const w = weeks[Q.weekTab(tabs, today())]; caList = staffOfDay(w, today()).map(n => { const due = dueFor(w, today(), n); if (due === null) return null; const s = (w ? w.data.sessions : []).filter(z => z.day === today() && !z.off && kindOf(z) !== 'tutor' && Q.staffOf(z).some(p => p.role !== 'TA' && nameIs(p.name, n))).sort((a, b) => a.start - b.start)[0]; return [n, due, s ? Q.clean(s.cls) : '']; }).filter(Boolean); } catch (e) {}
@@ -8076,8 +8077,12 @@ function rotaDueFor(week, d, name) {
   const wd = new Date(d + 'T12:00:00').getDay();
   if (wd >= 1 && wd <= 5) return ROTA_DUE.week;
   const note = Q.key(mine ? mine.note : ''), pm = wd === 6 ? ROTA_DUE.sat : ROTA_DUE.sun;
+  if (/SANG|CA NGAY/.test(note)) return ROTA_DUE.am;
   if (/CHIEU/.test(note)) return pm;
-  return ROTA_DUE.am;
+  // 14/11 audit: no word in the rota. Morning only if a class before noon names the person (any column); otherwise the afternoon
+  // time, so nobody on the afternoon shift is called "not in" at 8:45.
+  const morning = (week ? week.data.sessions : []).some(s => s.day === d && !s.off && s.start < 12 * 60 && Q.staffOf(s).some(p => nameIs(p.name, name)));
+  return morning ? ROTA_DUE.am : pm;
 }
 function dueFor(week, d, name) {
   if (!name) return null;
