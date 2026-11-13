@@ -6463,7 +6463,7 @@ function runParentPage(url) {
         let list = null;
         if (w && typeof w.fighterPendingEntriesV15_ === 'function' && w.fighterPendingStudentV15_) list = w.fighterPendingEntriesV15_(w.fighterPendingStudentV15_);
         else if (w) {
-          const k = Object.keys(w).find(x => /^ieltsd+PendingHomeworkEntriesVd+_$/.test(x));
+          const k = Object.keys(w).find(x => /^ielts\d+PendingHomeworkEntriesV\d+_$/.test(x));
           if (k) list = w[k]();
         }
         if (Array.isArray(list)) {
