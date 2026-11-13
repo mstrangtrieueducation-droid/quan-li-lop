@@ -8002,3 +8002,26 @@ try { const st = document.createElement('style'); st.textContent = '.tl-nx{borde
  * The "Việc cần làm" pop-up (class off to announce, new-pupil steps) is gone for everyone. The same items stay in the bell and in
  * the quick lists on Lịch, where each one is ticked as before. */
 paintOffPop = function () { const box = document.getElementById('offPop'); if (box) box.remove(); };
+
+/* ---------- Owner 13/11 23:05 ("có đâu nhỉ"): which lessons hold a class comment is visible on the timeline itself ----------
+ * A lesson with a foreign teacher gets a small mark on its bar: 📝 written (✓ once sent to Zalo), ⏳ not written yet after the
+ * lesson. Tapping the bar opens the card with the comment. Shown to managers, the homeroom teacher and the teacher. */
+function tlMarkComments() {
+  if (!me || isBoard() || view !== 'lich') return;
+  const days = new Set();
+  document.querySelectorAll('.tl-bar[data-act="tlInfo"]').forEach(b => {
+    if (b.querySelector('.tl-nxm')) return;
+    const w = weeks[Q.weekTab(tabs, b.dataset.day)], s = w && w.data.sessions.find(z => z.row === Number(b.dataset.row) && z.day === b.dataset.day), nn = s && nlOf(s);
+    if (!nn) return;
+    const cn = cmOf(s);
+    if (!(isManager() || (cn && isMe(cn)) || isMe(nn.gv))) return;
+    days.add(s.day);
+    const r = nlx.rows[nlId(s)], over = s.day < today() || (s.day === today() && minutesNow() >= s.end);
+    const mark = r && r.en ? (r.zalo_at ? '📝✓' : '📝') : over ? '⏳' : '';
+    if (mark) b.insertAdjacentHTML('afterbegin', '<span class="tl-nxm" title="' + (r && r.en ? T('Có nhận xét lớp', 'Class comment written') : T('GV chưa nộp nhận xét', 'Comment not written')) + '">' + mark + '</span>');
+  });
+  days.forEach(d => { if (!nlx.at[d] && !nlx.busy[d]) nlLoad(d).catch(() => {}); });
+}
+const renderBeforeTlMark = render;
+render = function () { renderBeforeTlMark(); try { tlMarkComments(); } catch (e) {} };
+try { const st = document.createElement('style'); st.textContent = '.tl-bar .tl-nxm{margin-right:3px;font-size:11px}'; document.head.appendChild(st); } catch (e) {}
