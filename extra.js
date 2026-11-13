@@ -4527,6 +4527,28 @@ pupilFlags = function (ctx, r) {
 const attendTextBeforeOut = attendText;
 attendText = function (m) { return m && m.status === OUT_MAKEUP ? '<span class="sum-sent">Ra ngoài bù bài · không vào học</span>' : attendTextBeforeOut(m); };
 
+/* Owner 13/11: KIDS 19 Lucy was set "Bù bài (mức 3)" at 18:32; at 18:37 a tap on her roll-call name wrote "Bỏ tick" (bù bài counts as
+ * present, so a tap meant "untick"), she became "no news", and the absence panel then got "Có phép" → the close sheet said excused.
+ * A ✓ tap no longer clears those states: KIDS "Bù bài (mức 3)" → "Có mặt" (= the 📝 "bù xong, vào lớp" button, which the class screen
+ * lacks); IELTS/FIGHTER "Bù bài ngoài lớp" and "Cho về" stay and the teacher is told to use the buttons under the name on the class page. */
+const KEEP_ON_TAP = [MAKEUP, OUT_MAKEUP, SEND_HOME];
+const tickPupilBeforeKeep = tickPupil;
+tickPupil = function (ctx, pupil) {
+  const m = ctx && ctx.marks && ctx.marks.get(pupil.name), st = m && m.status, who = pupil.eng || pupil.name;
+  if (st === MAKEUP) {
+    appendMark(ctx.session, pupil, 'Có mặt', m.contact, m.note);
+    say(T(who + ': bù bài xong, vào lớp (Có mặt).', who + ': done making up work, back in class.'));
+    render();
+    return;
+  }
+  if (KEEP_ON_TAP.includes(st)) {
+    say(T(who + (st === SEND_HOME ? ' đang ghi "Cho về".' : ' đang ra ngoài bù bài.') + ' Muốn đổi thì mở trang lớp, dùng các nút dưới tên con.',
+      who + (st === SEND_HOME ? ' is marked sent home.' : ' is making up work outside.') + ' To change it, use the buttons under the name on the class page.'), 'bad');
+    return;
+  }
+  return tickPupilBeforeKeep(ctx, pupil);
+};
+
 /* ---------- Print documents from CLASS RESOURCES (owner 09/11: "tài liệu gì in sẽ là link drive... thêm ở class resources... từ sheet
  * nối nút vào web") ----------
  * Sheet "TÀI LIỆU IN · nối vào app Quản lí lớp" (tab TAI_LIEU_IN) in the CLASS RESOURCES folder: SÁCH (as in the Schedule's BOOK),
