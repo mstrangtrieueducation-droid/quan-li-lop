@@ -151,11 +151,11 @@ function caDecide(b) {
 function caPanel(week) {
   let h = dayBar();
   if (!ca.all) return h + '<div class="card empty">' + T('Đang đọc…', 'Reading…') + '</div>';
+  // Owner 13/11 23:45: due times by the contract rules (dueFor); a person with no due time that day (off, homeroom only, tutoring
+  // only) is listed only if they did check in.
   const people = new Map();
-  (week ? week.data.sessions : []).filter(s => s.day === day && !s.off).forEach(s => Q.staffOf(s).forEach(p => { const n = canonStaff(p.name), k = Q.key(n); if (!people.has(k) || people.get(k).due > p.due) people.set(k, { name: n, due: p.due }); }));
-  const duty = dutyOf(week, day);
-  if (duty) duty.work.forEach(p => { const n = canonStaff(p.name), k = Q.key(n); if (!people.has(k)) people.set(k, { name: n, due: null }); });
-  ca.all.filter(r => r.day === day).forEach(r => { const k = Q.key(r.person); if (!people.has(k)) people.set(k, { name: r.person, due: null }); });
+  staffOfDay(week, day).forEach(n => { const due = dueFor(week, day, n); if (due !== null) people.set(Q.key(n), { name: n, due }); });
+  ca.all.filter(r => r.day === day).forEach(r => { const k = Q.key(r.person); if (!people.has(k)) people.set(k, { name: r.person, due: dueFor(week, day, r.person) }); });
   ownerKeys().forEach(k => people.delete(k));
   const list = [...people.values()].map(p => ({ p, vin: caPair(ca.all, day, p.name, 'Vào ca'), vout: caPair(ca.all, day, p.name, 'Ra ca') }))
     .sort((a, b) => (a.vin ? (a.vin.status === 'Chờ duyệt' ? 0 : 2) : 1) - (b.vin ? (b.vin.status === 'Chờ duyệt' ? 0 : 2) : 1) || a.p.name.localeCompare(b.p.name, 'vi'));
@@ -7837,15 +7837,17 @@ async function skRegister() {
     let names = [];
     try { const ctx = trackers[classOf(s).key] ? classContext(s) : null; if (ctx && ctx.tracker) names = ctx.tracker.pupils.map(p => [p.name, p.eng || '']); } catch (e) {}
     // Owner 13/11 "đến giờ chưa đến cũng báo": teacher and video staff are due 10 minutes before the lesson (TAs register their own time).
-    const staff = Q.staffOf(s).filter(p => p.role !== 'TA').map(p => [Q.clean(p.name), p.role, p.due]);
-    return { id: Q.sessionKey(s), day: s.day, cls: Q.clean(s.cls), lesson: String(s.lesson), gio: Q.clock(s.start), bd: s.start, kt: s.end, gv: Q.clean(s.teacher || ''), cn: skCn(s), names, staff };
+    return { id: Q.sessionKey(s), day: s.day, cls: Q.clean(s.cls), lesson: String(s.lesson), gio: Q.clock(s.start), bd: s.start, kt: s.end, gv: Q.clean(s.teacher || ''), cn: skCn(s), names };
   });
   let toi = null;
   try { if (!isOwner()) { const due = myDue(weeks[Q.weekTab(tabs, today())], today()); if (due !== null && due !== undefined && due > 0) toi = { due }; } } catch (e) {}
-  const sig = JSON.stringify([rows, toi]);
+  // Owner 13/11 23:45: everyone's due time today by the contract rules (the same as the check-in panel), for "chưa vào ca".
+  let caList = [];
+  try { const w = weeks[Q.weekTab(tabs, today())]; caList = staffOfDay(w, today()).map(n => { const due = dueFor(w, today(), n); if (due === null) return null; const s = (w ? w.data.sessions : []).filter(z => z.day === today() && !z.off && kindOf(z) !== 'tutor' && Q.staffOf(z).some(p => p.role !== 'TA' && nameIs(p.name, n))).sort((a, b) => a.start - b.start)[0]; return [n, due, s ? Q.clean(s.cls) : '']; }).filter(Boolean); } catch (e) {}
+  const sig = JSON.stringify([rows, toi, caList]);
   if (sig === sk.sig) return;
   sk.busy = true;
-  try { await call('skdk', { rows, toi }); sk.sig = sig; } catch (e) { sk.restUntil = Date.now() + 10 * 60000; /* gateway away or not updated yet: asked again in 10 minutes, nothing is lost */ } finally { sk.busy = false; }
+  try { await call('skdk', { rows, toi, ca: caList }); sk.sig = sig; } catch (e) { sk.restUntil = Date.now() + 10 * 60000; /* gateway away or not updated yet: asked again in 10 minutes, nothing is lost */ } finally { sk.busy = false; }
 }
 setInterval(() => { if (!document.hidden) skRegister().catch(() => {}); }, 60000);
 setTimeout(() => skRegister().catch(() => {}), 15000);
@@ -8058,3 +8060,47 @@ window.addEventListener('click', e => {
   render();
 }, true);
 try { const st = document.createElement('style'); st.textContent = '.st-nxm{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:99px;background:var(--brand-soft);color:var(--brand);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}'; document.head.appendChild(st); } catch (e) {}
+
+/* ---------- Owner 13/11 23:45 ("Thu Hiền không đi làm mà vẫn hiện có mặt 17:05… Sơn… Phương… kiểm tra kĩ") ----------
+ * Anyone's due time by the contract rules of 10/11, the same as one's own "Có mặt trước":
+ *  - a name under "Nghỉ" on the day's rota: no due time;
+ *  - full-time (Thùy Trang, Văn Sơn, My Linh, or "Toàn thời gian" on the record): 15:30 Mon–Fri, weekends by the rota rule;
+ *  - part-time TAs: the rota shift, else 17:00 on a rota weekday (weekend rota rule); not on the rota: only a class they teach or
+ *    film sets a time; the homeroom column never does;
+ *  - everyone else: 10 minutes before their first class as teacher or video, tutor sessions excluded (no check-in for tutoring).
+ * The staff record's choice is only known for the person signed in; others follow the same lists the app already uses. */
+const nameIs = (a, full) => { const k = Q.key(a), m = Q.key(full); return !!k && !!m && (k === m || (!k.includes(' ') && m.split(' ').pop() === k)); };
+function rotaDueFor(week, d, name) {
+  const x = dutyOf(week, d), mine = x && x.work.find(p => nameIs(p.name, name)), sh = mine && Q.shiftOf(mine.note);
+  if (sh) return sh.start;
+  const wd = new Date(d + 'T12:00:00').getDay();
+  if (wd >= 1 && wd <= 5) return ROTA_DUE.week;
+  const note = Q.key(mine ? mine.note : ''), pm = wd === 6 ? ROTA_DUE.sat : ROTA_DUE.sun;
+  if (/CHIEU/.test(note)) return pm;
+  return ROTA_DUE.am;
+}
+function dueFor(week, d, name) {
+  if (!name) return null;
+  try { if ([...ownerKeys()].includes(Q.key(canonStaff(name)))) return null; } catch (e) {}
+  const x = dutyOf(week, d);
+  if (x && x.off.some(p => nameIs(p.name, name))) return null;
+  const wd = new Date(d + 'T12:00:00').getDay(), weekday = wd >= 1 && wd <= 5;
+  const mine = me && sameName(me.name, name) && me.ca ? me.ca : '';
+  const mode = mine === 'none' ? 'none' : mine === 'lop' ? 'lop' : mine === 'full' || (!mine && isFullTimeStaff(name)) ? 'full' : mine === 'part' || (!mine && isPartTime(name)) ? 'part' : 'lop';
+  if (mode === 'none') return null;
+  if (mode === 'full') return weekday ? FULL_DUE : (x && x.work.some(p => nameIs(p.name, name)) ? rotaDueFor(week, d, name) : null);
+  let due = null;
+  if (mode === 'part') { const w = x && x.work.find(p => nameIs(p.name, name)), sh = w && Q.shiftOf(w.note); due = sh ? sh.start : w ? (weekday ? PART_DUE : rotaDueFor(week, d, name)) : null; }
+  (week ? week.data.sessions : []).filter(s => s.day === d && !s.off && kindOf(s) !== 'tutor').forEach(s => Q.staffOf(s).forEach(p => {
+    if (p.role !== 'TA' && nameIs(p.name, name) && (due === null || p.due < due)) due = p.due;
+  }));
+  return due;
+}
+// Everyone who may be due on a day: the rota, the classes (teacher, video, homeroom) and whoever checked in.
+function staffOfDay(week, d) {
+  const out = new Map(), put = n => { const c = canonStaff(n), k = Q.key(c); if (k && !out.has(k)) out.set(k, c); };
+  const x = dutyOf(week, d);
+  if (x) x.work.forEach(p => put(p.name));
+  (week ? week.data.sessions : []).filter(s => s.day === d && !s.off).forEach(s => Q.staffOf(s).forEach(p => put(p.name)));
+  return [...out.values()];
+}
