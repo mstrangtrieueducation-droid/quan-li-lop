@@ -8689,3 +8689,33 @@ render = function () {
   } catch (e) {}
 };
 try { const st = document.createElement('style'); st.textContent = '.geo-warn{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}'; document.head.appendChild(st); } catch (e) {}
+
+/* ---------- Owner 14/11 ("Jen K8 new tận thứ 6, sao thứ 2 lại báo nó nghỉ?") ----------
+ * A pupil only belongs to the lessons from the day they joined. Jen (KIDS 8) first came on Friday 13/11, yet the Monday 9/11
+ * lesson listed her as "vắng chờ xác minh" in the bell and HS vắng, because every list of a lesson took the whole sheet as it is
+ * today. Now every lesson's list (class page, class screen, absences, bell, roll-call messages sent to phones) leaves out a
+ * pupil for lessons before their first day. First day: "New dd/mm" written in the sheet; else, for a pupil in the new-pupil list,
+ * the earlier of that list's day and the pupil's first roll-call mark in the class. A pupil already marked for that lesson stays. */
+function joinDayOf(cls, p) {
+  if (p.since) return p.since;
+  if (!hsData.list) { try { hsLoad(); } catch (e) {} return ''; }
+  const ev = hsData.list.find(e => Q.key(e.cls) === Q.key(cls) && Q.key(e.name) === Q.key(p.name));
+  if (!ev || !ev.day) return '';
+  let first = ev.day;
+  try {
+    (logs.marks ? logs.marks.rows : []).forEach(r => { if (r.day && r.day < first && Q.key(r.name) === Q.key(p.name) && Q.key(String(r.cls || '').replace(/\.\d+$/, '')) === Q.key(cls) && r.status && r.status !== HS_DONE) first = r.day; });
+  } catch (e) {}
+  return first;
+}
+const classContextBeforeJoin = classContext;
+classContext = function (session) {
+  const ctx = classContextBeforeJoin(session);
+  try {
+    if (ctx.tracker && session && session.day) {
+      const base = Q.clean(session.cls).replace(/\.\d+$/, '');
+      const keep = ctx.tracker.pupils.filter(p => { const j = joinDayOf(base, p); return !j || j <= session.day || (ctx.marks && ctx.marks.get(p.name)); });
+      if (keep.length !== ctx.tracker.pupils.length) ctx.tracker = Object.assign({}, ctx.tracker, { pupils: keep, joinFiltered: true });
+    }
+  } catch (e) {}
+  return ctx;
+};

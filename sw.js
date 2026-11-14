@@ -41,6 +41,9 @@ self.addEventListener('fetch', e => {
   const scope = new URL(self.registration.scope).pathname;
   if (u.origin !== self.location.origin || !u.pathname.startsWith(scope)) return;
   if (/\/dev\//.test(u.pathname)) return;
+  // 14/11: the page's "is there a newer version" read (index.html?check=…) goes to the network only. Answered from the copy kept
+  // here, it could show an older version than the one running, and the page reloaded once for nothing after each publish.
+  if (u.searchParams.has('check')) return;
   const page = req.mode === 'navigate' || u.pathname === scope || /\/index\.html$/.test(u.pathname);
   const key = new Request(u.origin + u.pathname + (page ? '' : u.search));
   e.respondWith((async () => {
