@@ -2959,7 +2959,7 @@ window.addEventListener('pagehide', () => {
     if (!accessKey) return;
     const byFile = {};
     // Owner 12/11: sent to the gateway with each item's own id, so the copy sent again at the next opening is not saved twice.
-    outbox.filter(x => x.kind === 'cell' && x.blind).forEach(x => { if (!x.cid) x.cid = newCid(); (byFile[x.file] = byFile[x.file] || []).push({ cid: x.cid, range: x.range, row: x.row, col: x.col, value: x.value, blind: true, colSig: x.colSig || '', name: x.name || '' }); });
+    outbox.filter(x => x.kind === 'cell' && x.blind && x.at && Date.now() - x.at < STAR_STALE_MS).forEach(x => { if (!x.cid) x.cid = newCid(); (byFile[x.file] = byFile[x.file] || []).push({ cid: x.cid, range: x.range, row: x.row, col: x.col, value: x.value, blind: true, colSig: x.colSig || '', name: x.name || '' }); });
     keep('outbox', outbox);
     Object.entries(byFile).forEach(([file, items]) => fetch(CONFIG.server, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ k: accessKey, op: 'ghi', file, items: items.slice(0, 150) }) }).catch(() => {}));
   } catch (e) {}
@@ -8842,4 +8842,17 @@ mergeOutbox = function () {
       rows.push(m);
     });
   } catch (e) {}
+};
+
+/* Owner 14/11 (GV Hannah, KIDS 25: "Elsa's stars always back to zero"): a star tap is sent without the "someone else wrote here"
+ * check. A star left on a device for hours (that device's outbox was stuck, see 12/11) was sent again at every opening and every
+ * time the page was hidden, and could land on a lesson's star cell long after, putting it back. Stars older than 3 hours, or kept
+ * from before taps were dated, are dropped instead of written; the teacher's newer taps are never touched. */
+const STAR_STALE_MS = 3 * 3600 * 1000;
+const writeCellsBeforeStale = writeCells;
+writeCells = async function (file, items) {
+  const now = Date.now(), fresh = items.filter(x => !(x.blind && (!x.at || now - x.at > STAR_STALE_MS)));
+  if (fresh.length < items.length) console.warn('stale stars dropped', items.length - fresh.length);
+  if (!fresh.length) return;
+  return writeCellsBeforeStale(file, fresh);
 };
