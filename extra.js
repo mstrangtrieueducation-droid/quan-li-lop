@@ -8713,8 +8713,9 @@ classContext = function (session) {
   try {
     if (ctx.tracker && session && session.day) {
       const base = Q.clean(session.cls).replace(/\.\d+$/, '');
-      // A real mark of that lesson keeps the pupil; "Chưa rõ" (only "parent contacted", e.g. Jen 9/11 from the wrong list) does not.
-      const real = p => { const m = ctx.marks && ctx.marks.get(p.name); return !!(m && m.status && m.status !== 'Chưa rõ'); };
+      // Before the first day only a "present" mark keeps the pupil (a trial lesson). Absence marks there come from the wrong list
+      // (Jen 9/11 got "Chưa rõ", then "Có phép") and mean nothing: she was not in the class yet.
+      const real = p => { const m = ctx.marks && ctx.marks.get(p.name); return !!(m && Q.PRESENT.includes(m.status)); };
       const keep = ctx.tracker.pupils.filter(p => { const j = joinDayOf(base, p); return !j || j <= session.day || real(p); });
       if (keep.length !== ctx.tracker.pupils.length) ctx.tracker = Object.assign({}, ctx.tracker, { pupils: keep, joinFiltered: true });
     }
