@@ -8744,3 +8744,64 @@ classContext = function (session) {
   } catch (e) {}
   return ctx;
 };
+
+/* ---------- Owner 14/11 ("phải đọc được chứ, sao lại không đọc được") ----------
+ * Reading the pupils' pages must not leave a class without an answer. What could go wrong before: this device's network dropped
+ * during the read, one pupil's page did not answer in time, or nobody had read the class yet so the first open waited 1–2 minutes.
+ * Now:
+ *  1. The last answer of any staff device is kept on the server (6 hours) and shown at once while this device reads again.
+ *  2. A page that did not answer is read a second time; if it still does not, that pupil keeps the last known list.
+ *  3. If the whole read fails (no network, server busy), it tries again by itself after 30 s, 2 min, then every 5 min.
+ * "Chưa đọc được" is only said when there is no answer at all, not even an earlier one, and the next try is already planned. */
+const pageRetry = {};
+function pageRunReadAll(links) {
+  return new Promise(async resolve => {
+    const got = new Map(), queue = links.slice();
+    const worker = async () => { while (queue.length) { const l = queue.shift(); let r = null; try { r = await runParentPage(l.url); } catch (e) {} if (r) got.set(l.row, { row: l.row, owed: r.filter(e => e.status === 'overdue').map(e => e.label), all: r.length }); } };
+    await Promise.all([worker(), worker(), worker()]);
+    resolve(got);
+  });
+}
+startPageRun = async function (s, c) {
+  const cls = Q.clean(s.cls).replace(/\.\d+$/, '');
+  const before = pageRun[c.key] || {};
+  pageRun[c.key] = Object.assign({}, before, { running: true });
+  let rows = null, failed = false;
+  try {
+    // The shared answer first (also the only source for the class screen).
+    if (isBoard() || !(before.rows && before.rows.length)) {
+      try {
+        const d = await call('dashget', { cls });
+        if (d && Array.isArray(d.rows) && d.rows.length) { pageRun[c.key] = Object.assign({}, pageRun[c.key], { rows: d.rows, shared: d.at || true }); render(); }
+      } catch (e) { if (isBoard()) failed = true; }
+    }
+    if (isBoard()) rows = (pageRun[c.key] || {}).rows || null;
+    else {
+      const links = ((await call('dashlinks', { cls })) || {}).links || [];
+      let got = await pageRunReadAll(links);
+      const missing = links.filter(l => !got.has(l.row));
+      if (missing.length) { const again = await pageRunReadAll(missing); again.forEach((v, k) => got.set(k, v)); }
+      const old = new Map(((pageRun[c.key] || {}).rows || before.rows || []).map(r => [r.row, r]));
+      rows = links.map(l => got.get(l.row) || old.get(l.row)).filter(Boolean);
+      if (got.size) call('dashput', { cls, rows }).catch(() => {});
+      if (links.length && !got.size) failed = true;
+    }
+  } catch (e) { failed = true; }
+  const keep = rows && rows.length ? rows : ((pageRun[c.key] || {}).rows || before.rows || null);
+  pageRun[c.key] = { at: Date.now(), rows: keep, running: false, stale: failed && !!(keep && keep.length) };
+  if (failed || !keep || !keep.length) {
+    const n = pageRetry[c.key] = (pageRetry[c.key] || 0) + 1, wait = n === 1 ? 30000 : n === 2 ? 120000 : 300000;
+    pageRun[c.key].retryAt = Date.now() + wait;
+    setTimeout(() => { try { if (!(pageRun[c.key] || {}).running) startPageRun(s, c); } catch (e) {} }, wait);
+  } else pageRetry[c.key] = 0;
+  render();
+};
+// "Chưa đọc được" only when there is no answer at all; it says when the next try is.
+dashStateOf = (function (orig) {
+  return function (s) {
+    const st = orig(s);
+    if (st !== 'fail' || !s || !isSecondary(s)) return st;
+    const c = classOf(s), r = c && pageRun[c.key];
+    return r && r.retryAt && r.retryAt > Date.now() ? 'wait' : st;
+  };
+})(dashStateOf);
