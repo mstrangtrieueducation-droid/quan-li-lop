@@ -1841,8 +1841,13 @@ async function liveMarks() {
   if (!logs.marks || !marksCount) return loadMarks(true);
   const [rows, [count = []]] = await batchGet(CONFIG.diemDanhId, ['DIEM_DANH!A' + Math.max(2, marksCount - 4) + ':L', 'DIEM_DANH!N1']);
   const n = Number(count[0]) || marksCount, fresh = (rows || []).filter(r => r && r.length && Q.clean(r[0]));
-  // A few rows overlap the last read so the range always stays inside the sheet; a repeated row changes nothing (newest per pupil wins).
-  if (fresh.length) logs.marks.rows.push(...fresh.map(markOf));
+  // A few rows overlap the last read so the range always stays inside the sheet. Owner 14/11 (KIDS 25 video: ticking one pupil made
+  // others flip on and off): a repeated row was pushed again at the end, where it counted as that pupil's newest mark and undid a
+  // later tap. A row already in the list is now skipped.
+  if (fresh.length) {
+    const id = m => [m.at, m.name, m.status, markKey(m)].join('|'), have = new Set(logs.marks.rows.map(id));
+    fresh.map(markOf).forEach(m => { const k = id(m); if (!have.has(k)) { have.add(k); logs.marks.rows.push(m); } });
+  }
   marksCount = Math.max(marksCount, n);
   logs.marks.at = Date.now();
 }
