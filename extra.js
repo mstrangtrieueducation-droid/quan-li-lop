@@ -7739,16 +7739,15 @@ function nlTryPending() {
   if (p.id) return void nlGoId(p.id);
   if (p.mo === 'nx') { view = 'lopcn'; render(); }
   // Owner 13/11 (test of every message): a tap opens the place where the thing is handled.
-  if (p.mo === 'ca' && isManager()) { view = 'dieuhanh'; panel = 'ca'; render(); guarded(loadPanel); }
-  if (p.mo === 'vang') { if (isManager()) { view = 'dieuhanh'; panel = 'vang'; filters.person = ''; render(); guarded(loadPanel); } else { view = 'lopcn'; render(); } }
-  if (p.mo === 'hs') { view = 'lich'; day = today(); render(); bell.open = true; paintBell(); }
+  // Owner 14/11: a tap opens the item itself (moGo, below), not just the page it is on.
+  if (/^(ca|vang|hs|lop|tk|vaoca|loi)$/.test(p.mo)) moGo(p);
 }
 try {
   const q = new URLSearchParams(location.search);
-  if (q.get('mo')) { nlPending = { mo: q.get('mo'), id: q.get('id') || '' }; history.replaceState(null, '', location.pathname + location.hash); }
+  if (q.get('mo')) { nlPending = moFrom(location.href); history.replaceState(null, '', location.pathname + location.hash); }
 } catch (e) {}
 setInterval(nlTryPending, 1500);
-try { navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'mo') { try { const u = new URL(e.data.url, location.href); nlPending = { mo: u.searchParams.get('mo') || '', id: u.searchParams.get('id') || '' }; nlTryPending(); } catch (x) {} } }); } catch (e) {}
+try { navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'mo') { try { nlPending = moFrom(e.data.url); nlTryPending(); } catch (x) {} } }); } catch (e) {}
 
 (function nlStyle() {
   try {
@@ -7947,7 +7946,7 @@ function hopHtml() {
     : T('Máy này chưa bật thông báo.', 'Notifications are off on this device.');
   const btn = on ? '<button class="quiet" data-act="hopTest">🔔 ' + T('Gửi thử tới máy này', 'Test this device') + '</button>' : (tbOk() && Notification.permission !== 'denied' ? '<button class="primary" data-act="tbOn">' + T('Bật thông báo', 'Turn on') + '</button>' : '');
   const list = hop.items == null ? '<div class="small muted">' + T('Đang tải…', 'Loading…') + '</div>' : !hop.items.length ? '<div class="small muted">' + T('Chưa có thông báo nào gửi tới bạn.', 'Nothing sent to you yet.') + '</div>'
-    : hop.items.slice(0, hop.all ? 30 : 3).map(x => { const id = (String(x.url || '').match(/[?&]id=([^&]+)/) || [])[1]; return '<div class="hop-item' + (id ? ' go' : '') + '"' + (id ? ' data-act="hopGo" data-id="' + esc(decodeURIComponent(id)) + '"' : '') + '><div><b>' + esc(x.title || '') + '</b> <span class="small muted">' + hopWhen(x.at) + '</span></div><div class="small">' + esc(x.body || '').replace(/\n/g, '<br>') + '</div></div>'; }).join('') + (hop.items.length > 3 ? '<button class="quiet small" data-act="hopAll">' + (hop.all ? T('Thu gọn', 'Show less') : T('Xem tất cả ', 'Show all ') + hop.items.length + T(' tin', '')) + '</button>' : '');
+    : hop.items.slice(0, hop.all ? 30 : 3).map((x, i) => { const go = /[?&](mo|id)=/.test(String(x.url || '')) || !!moGuess(x); return '<div class="hop-item' + (go ? ' go' : '') + '"' + (go ? ' data-act="hopGo" data-n="' + i + '"' : '') + '><div><b>' + esc(x.title || '') + '</b> <span class="small muted">' + hopWhen(x.at) + '</span></div><div class="small">' + esc(x.body || '').replace(/\n/g, '<br>') + '</div></div>'; }).join('') + (hop.items.length > 3 ? '<button class="quiet small" data-act="hopAll">' + (hop.all ? T('Thu gọn', 'Show less') : T('Xem tất cả ', 'Show all ') + hop.items.length + T(' tin', '')) + '</button>' : '');
   return '<div class="hop"><div class="row-top"><b>📬 ' + T('Thông báo đã gửi tới bạn', 'Messages sent to you') + '</b>' + btn + '</div><div class="small muted">' + esc(state) + '</div>' + (hop.test ? '<div class="small hop-test">' + esc(hop.test) + '</div>' : '') + list + '</div>';
 }
 const paintBellBeforeHop = paintBell;
@@ -7968,7 +7967,18 @@ document.addEventListener('click', async e => {
   if (!b) return;
   e.stopImmediatePropagation();
   if (b.dataset.act === 'hopAll') { hop.all = !hop.all; paintBell(); return; }
-  if (b.dataset.act === 'hopGo') { bell.open = false; paintBell(); try { await nlGoId(b.dataset.id); } catch (err) {} return; }
+  if (b.dataset.act === 'hopGo') {
+    const x = (hop.items || [])[Number(b.dataset.n)];
+    if (!x) return;
+    bell.open = false; paintBell();
+    // Every message in the list opens its item, as the phone notification does; older ones without the details are read from their text.
+    const p = /[?&](mo|id)=/.test(String(x.url || '')) ? moFrom(x.url) : { mo: '', id: '' };
+    const g = moGuess(x);
+    if (g) ['mo', 'd', 'p', 'c'].forEach(k => { if (!p[k] && g[k]) p[k] = g[k]; });
+    if (!p.d && x.at) p.d = Q.iso(new Date(x.at));
+    try { if (p.id) await nlGoId(p.id); else moGo(p); } catch (err) {}
+    return;
+  }
   if (!tb.sub) return;
   hop.test = T('Đang gửi…', 'Sending…'); paintBell();
   try {
@@ -8397,10 +8407,163 @@ async function moCheck() {
     if (!mo) return;
     if (moSeen && moSeen.k === mo + '|' + id && Date.now() - moSeen.at < 20000) return; // already opened by the message or the address
     moSeen = { k: mo + '|' + id, at: Date.now() };
-    nlPending = { mo, id }; nlTryPending();
+    nlPending = moFrom(d.url); nlTryPending();
   } catch (e) {}
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) moCheck(); });
 window.addEventListener('pageshow', () => { moCheck(); });
 window.addEventListener('focus', () => { moCheck(); });
 setTimeout(moCheck, 1500);
+
+/* ---------- Owner 14/11 07:58 ("lúc nãy tôi ấn Kelly duyệt vào ca, ấn vào nó không ra thẳng chỗ cần làm... xem logic chung cần
+ * thế nào hợp lí") ----------
+ * One rule for every message: a tap opens the item itself, ready to act on, not the page it lives on.
+ *  - The gateway now writes into each message what it is about: ?mo=<kind>&d=<day>&p=<person or pupil>&c=<class>&g=<start time>.
+ *  - Phone notification, the app opened by it, and a line in the bell's "Thông báo đã gửi tới bạn" all go through moGo.
+ *  - A check-in to approve opens a small sheet over the day's check-ins: the person's time, due time, distance, the reason it was
+ *    not approved by itself, and Duyệt / Không duyệt. After a decision it closes by itself. "Xem cả ngày" leaves the whole list.
+ *  - "chưa điểm danh" opens that lesson's roll call; "em chưa đến" / "đã đến lớp" open the absences with that class (and pupil)
+ *    lit up; a new pupil opens the bell's list with the pupil lit up; the day summary opens the overview of that day.
+ *  - Messages sent before this change carry no details: their title says who or which class, and the day is the day they came. */
+function moFrom(url) {
+  try { const u = new URL(url, location.href), g = k => u.searchParams.get(k) || ''; return { mo: g('mo'), id: g('id'), d: g('d'), p: g('p'), c: g('c'), g: g('g') }; }
+  catch (e) { return { mo: '', id: '' }; }
+}
+function moGuess(x) {
+  const t = Q.clean((x && x.title) || '');
+  let m;
+  if (/^Bạn chưa vào ca$/i.test(t)) return { mo: 'vaoca' };
+  if ((m = t.match(/^(.+?) (đã vào ca|vào ca muộn \d+ phút|vào ca, cần duyệt|chưa vào ca)$/))) return { mo: 'ca', p: m[1] };
+  if ((m = t.match(/^(.+?) đã đến lớp (.+)$/))) return { mo: 'vang', p: m[1], c: m[2] };
+  if ((m = t.match(/^(.+?): \d+ em chưa đến$/))) return { mo: 'vang', c: m[1] };
+  if ((m = t.match(/^(.+?) chưa điểm danh$/))) return { mo: 'lop', c: m[1] };
+  if ((m = t.match(/^Học sinh mới: (.+?) \((.+)\)$/))) return { mo: 'hs', p: m[1], c: m[2] };
+  if (/^Tổng kết ngày/.test(t)) return { mo: 'tk' };
+  return null;
+}
+// Lights up the line about a person or a class once it is on the screen (the lists arrive a moment after the page).
+// The page redraws itself often (new marks, a save going through), so the light is put back after each redraw for 5 seconds.
+let moLit = null;
+function moFind() {
+  if (!moLit || Date.now() > moLit.until) { moLit = null; return null; }
+  // The Điều hành lists open in a window over the page: look there first. A card wins over a table row (the month table also
+  // has the person's name).
+  const root = moLit.root ? document.querySelector(moLit.root) : (document.querySelector('.dash-modal') || document.querySelector('.drawer') || document.querySelector('#main'));
+  if (!root) return null;
+  for (const k of moLit.want) {
+    const has = sel => [...root.querySelectorAll(sel)].filter(el => el.offsetParent !== null && Q.key(el.innerText || '').includes(k));
+    let hits = has('.card, .hop-item, .qa-row');
+    if (!hits.length) hits = has('tr, li, .row');
+    if (hits.length) return hits.sort((a, b) => (a.innerText || '').length - (b.innerText || '').length)[0];
+  }
+  return null;
+}
+function moRelight() { try { const el = moFind(); if (el && !el.classList.contains('mo-flash')) el.classList.add('mo-flash'); } catch (e) {} }
+function moFlash(texts, rootSel) {
+  const want = (texts || []).map(t => Q.key(t)).filter(Boolean);
+  if (!want.length) return;
+  moLit = { want, root: rootSel || '', until: Date.now() + 9000 };
+  let n = 0;
+  const look = () => {
+    const el = moFind();
+    if (el) {
+      moLit.until = Date.now() + 5000;
+      el.classList.add('mo-flash'); try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+      setTimeout(() => { if (moLit && Date.now() >= moLit.until - 50) { document.querySelectorAll('.mo-flash').forEach(x => x.classList.remove('mo-flash')); moLit = null; } }, 5000);
+      return;
+    }
+    if (moLit && ++n < 14) setTimeout(look, 600);
+  };
+  setTimeout(look, 300);
+}
+async function moGo(p) {
+  if (!p || !me || isBoard()) return;
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(p.d || '') ? p.d : today();
+  try { if (bell.open && p.mo !== 'hs' && p.mo !== 'loi') { bell.open = false; paintBell(); } } catch (e) {}
+  if (p.mo === 'ca') return caFocusOpen(d, p.p);
+  if (p.mo === 'vaoca') { view = 'lich'; day = today(); render(); window.scrollTo(0, 0); return; }
+  if (p.mo === 'lop') {
+    try { await weekOf(d); } catch (e) {}
+    const s = Object.values(weeks).flatMap(w => w.data.sessions).find(x => x.day === d && !x.off && Q.key(Q.clean(x.cls)) === Q.key(p.c) && (!p.g || Q.clock(x.start) === p.g))
+      || Object.values(weeks).flatMap(w => w.data.sessions).find(x => x.day === d && !x.off && Q.key(Q.clean(x.cls)) === Q.key(p.c));
+    if (s) return openClass(s);
+    p = Object.assign({}, p, { mo: 'vang' });
+  }
+  if (p.mo === 'vang') {
+    if (isManager()) { view = 'dieuhanh'; panel = 'vang'; day = d; filters.person = ''; render(); guarded(loadPanel); }
+    else { view = 'lopcn'; render(); }
+    return moFlash([p.p, p.c]);
+  }
+  if (p.mo === 'hs') { view = 'lich'; day = today(); render(); bell.open = true; paintBell(); return moFlash([p.p], '#bellPanel'); }
+  if (p.mo === 'tk' && isManager()) { view = 'dieuhanh'; panel = 'tong'; day = d; render(); guarded(loadPanel); return; }
+  if (p.mo === 'loi') { bell.open = true; paintBell(); }
+}
+
+// The check-in sheet.
+const caf = { open: false, d: '', p: '', loading: false };
+async function caFocusOpen(d, person) {
+  if (!isManager()) { view = 'lich'; day = today(); render(); return; }
+  view = 'dieuhanh'; panel = 'ca'; day = d;
+  caf.open = true; caf.d = d; caf.p = person || ''; caf.loading = true;
+  render();
+  await guarded(loadPanel);
+  caf.loading = false;
+  if (!caf.p) {
+    // No name (an older message): the one check-in waiting that day, if there is just one; else the day's list itself.
+    const names = [...new Set((ca.all || []).filter(r => r.day === d).map(r => r.person))]
+      .filter(n => ['Vào ca', 'Ra ca'].some(k => { const x = caPair(ca.all, d, n, k); return x && x.status === 'Chờ duyệt'; }));
+    if (names.length === 1) caf.p = names[0]; else caf.open = false;
+  }
+  cafPaint();
+}
+function cafHtml() {
+  const d = caf.d, name = caf.p, kinds = ['Vào ca', 'Ra ca'];
+  const pairs = ca.all ? kinds.map(k => ({ k, v: caPair(ca.all, d, name, k) })).filter(x => x.v) : [];
+  const shown = pairs.length ? pairs[0].v.first.person : name;
+  let body;
+  if (!ca.all) body = '<p class="muted">' + T('Đang đọc…', 'Reading…') + '</p>';
+  else if (!pairs.length) body = '<p>' + T('Chưa vào ca.', 'Not checked in yet.') + '</p>';
+  else body = pairs.map(({ k, v }) => {
+    const f = v.first, mine = sameName(f.person, me.name), can = !mine && (isOwner() || v.status === 'Chờ duyệt');
+    const attr = '" data-day="' + esc(f.day) + '" data-p="' + esc(f.person) + '" data-kind="' + esc(k) + '"';
+    const facts = [f.due ? T('Phải có mặt ', 'Due ') + f.due : '', f.dist >= 0 ? T('cách trung tâm ', '') + f.dist + ' m' : '', f.note || ''].filter(Boolean);
+    return '<div class="caf-row"><div class="caf-line"><b>' + esc(k) + T(' lúc ', ' at ') + esc(f.time) + '</b> ' + caTag(v.status) + (v.by ? ' <span class="small muted">' + esc(v.by) + '</span>' : '') + '</div>' +
+      (facts.length ? '<div class="small">' + facts.map(esc).join(' · ') + '</div>' : '') +
+      (can ? '<div class="tb-btns"><button class="primary" data-act="caDecide" data-v="Đã duyệt' + attr + '>✓ ' + T('Duyệt', 'Approve') + '</button><button class="quiet" data-act="caDecide" data-v="Không duyệt' + attr + '>' + T('Không duyệt', 'Reject') + '</button></div>' : '') + '</div>';
+  }).join('');
+  return '<div class="tb-veil" data-act="cafClose"></div><div class="tb-sheet mo-sheet" role="dialog" aria-label="' + T('Vào ca', 'Check-in') + '">' +
+    '<div class="tb-top"><b>📍 ' + esc(shown) + '</b><button class="quiet" data-act="cafClose">' + T('Đóng', 'Close') + '</button></div>' +
+    '<div class="small muted">' + esc(viDate(d)) + '</div>' + body +
+    '<button class="quiet small caf-all" data-act="cafClose">' + T('Xem cả ngày ›', 'Whole day ›') + '</button></div>';
+}
+function cafPaint() {
+  let box = document.getElementById('cafBox');
+  if (!caf.open) { if (box) { box.innerHTML = ''; box._html = ''; } return; }
+  if (!box) { box = document.createElement('div'); box.id = 'cafBox'; document.body.appendChild(box); }
+  const h = cafHtml();
+  if (box._html !== h) { box.innerHTML = h; box._html = h; }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="cafClose"]');
+  if (b) { e.stopImmediatePropagation(); caf.open = false; cafPaint(); if (caf.p) moFlash([caf.p]); return; }
+  const dec = e.target.closest && e.target.closest('.mo-sheet [data-act="caDecide"]');
+  if (dec) {
+    const who = dec.dataset.p, v = dec.dataset.v;
+    // The usual handler records the decision; the sheet shows it, then closes.
+    setTimeout(() => { if (!caf.open) return; caf.open = false; cafPaint(); say((v === 'Đã duyệt' ? T('Đã duyệt ', 'Approved: ') : T('Không duyệt ', 'Rejected: ')) + who); }, 1100);
+  }
+});
+const renderBeforeCaf = render;
+render = function () {
+  renderBeforeCaf();
+  try { if (caf.open && view !== 'dieuhanh') caf.open = false; cafPaint(); } catch (e) {}
+  if (moLit) moRelight();
+};
+const paintBellBeforeMo = paintBell;
+paintBell = function () { paintBellBeforeMo(); if (moLit) moRelight(); };
+try {
+  const st = document.createElement('style');
+  st.textContent = '.mo-sheet .caf-row{display:grid;gap:6px;padding:10px 0;border-top:1px solid var(--line)}.mo-sheet .caf-line{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.mo-sheet .caf-all{justify-self:start}' +
+    '.mo-flash{outline:3px solid var(--brand);outline-offset:2px;border-radius:10px;animation:moPulse 1s ease-in-out 3}@keyframes moPulse{50%{outline-color:transparent}}';
+  document.head.appendChild(st);
+} catch (e) {}
