@@ -116,9 +116,19 @@ function ntDetail() {
   let g = '';
   for (let i = 1; i <= 14; i++) {
     const u = (st.units || {})[i] || {};
-    g += '<tr><td>' + i + '. ' + esc(NT_TITLES[i - 1]) + '</td><td>' + cell(u.learn ? true : null) + '</td><td>' + (u.speak ? (u.speak.score == null ? '<span class="muted small">không chấm</span>' : cell(u.speak.score)) : cell(null)) + '</td><td>' + cell(u.quiz ? u.quiz.best : null, true) + (u.quiz ? ' <span class="muted small">(' + u.quiz.tries + ' lần)</span>' : '') + '</td><td>' + cell(u.gread ? true : null) + '</td><td>' + cell(u.gex ? u.gex.best : null, true) + (u.gex ? ' <span class="muted small">(' + u.gex.tries + ' lần)</span>' : '') + '</td></tr>';
+    g += '<tr><td>' + i + '. ' + esc(NT_TITLES[i - 1]) + '</td><td>' + cell(u.learn ? true : null) + '</td><td>' + (u.speak ? (u.speak.score == null ? '<span class="muted small">' + (u.speak.video ? 'đã nộp video' : 'không chấm') + '</span>' : cell(u.speak.score)) : cell(null)) + '</td><td>' + cell(u.quiz ? u.quiz.best : null, true) + (u.quiz ? ' <span class="muted small">(' + u.quiz.tries + ' lần)</span>' : '') + '</td><td>' + cell(u.gread ? true : null) + '</td><td>' + cell(u.gex ? u.gex.best : null, true) + (u.gex ? ' <span class="muted small">(' + u.gex.tries + ' lần)</span>' : '') + '</td></tr>';
   }
   h += '<div class="ns-table ns-grid"><table><thead><tr><th>Bài</th><th>Học từ</th><th>Phát âm</th><th>Luyện từ</th><th>Ngữ pháp</th><th>BT ngữ pháp</th></tr></thead><tbody>' + g + '</tbody></table></div>';
+  const vids = (d.videos || []).slice().reverse();
+  h += '<h4>Video phát âm (máy chấm)</h4>' + (vids.length ? vids.map(v => {
+    const f = v.fb || {}, bad = (f.words || []).map(w => esc(w.w) + (w.issue ? ' <span class="muted">(' + esc(w.issue) + ')</span>' : '')).join('; '),
+      sb = (f.sentences || []).filter(x => !x.ok).map(x => 'Câu ' + esc(x.i) + (x.issue ? ' <span class="muted">(' + esc(x.issue) + ')</span>' : '')).join('; ');
+    return '<div class="small" style="padding:6px 0;border-bottom:1px dashed var(--line)"><b>Bài ' + esc(v.unit) + '</b> · nộp ' + ntTime(v.at) + ' · ' +
+      (v.score != null && v.status === 'Đã chấm' ? '<b style="color:' + (v.score >= 80 ? 'var(--ok)' : 'var(--bad)') + '">' + v.score + ' điểm</b>' : esc(v.status || '')) +
+      (v.file ? ' · <a href="https://drive.google.com/file/d/' + encodeURIComponent(v.file) + '/view" target="_blank" rel="noopener">Xem video</a>' : '') +
+      (f.summary ? '<br>' + esc(f.summary) : '') + (bad ? '<br><b>Từ sai:</b> ' + bad : '') + (sb ? '<br><b>Câu:</b> ' + sb : '') +
+      ((f.missing || []).length ? '<br><b>Chưa đọc:</b> ' + esc(f.missing.join(', ')) : '') + '</div>';
+  }).join('') : '<p class="muted small">Chưa nộp video nào.</p>');
   h += '<h4>Nhật ký học</h4><div style="max-height:320px;overflow:auto">' + (d.log.length ? d.log.map(l => '<div class="small" style="padding:5px 0;border-bottom:1px dashed var(--line)"><b>' + ntTime(l.at) + '</b> · ' + esc([l.unit, l.part].filter(Boolean).join(' · ')) + (l.score !== '' && l.score != null ? ' · <b>' + esc(l.score) + '</b>' : '') + (l.detail ? '<br><span class="muted">' + esc(l.detail) + '</span>' : '') + '</div>').join('') : '<p class="muted">Chưa có hoạt động.</p>') + '</div>';
   return h;
 }
