@@ -3906,9 +3906,16 @@ function gateOf(ctx, p) {
   const s = ctx.session;
   if (!s || !isSecondary(s)) return null;
   if (/^IELTS/i.test(Q.clean(s.cls))) {
-    if (!ieltsGate.rows) { loadIeltsGate(); return null; }
-    const hit = ieltsGate.rows.find(r => Q.clean(r[1]) === dmyOf(s.day) && Q.key(r[2]) === Q.key(s.cls) && Q.key(r[3]) === Q.key(p.name));
-    return hit ? { why: T('chưa làm bài ', 'missing ') + Q.clean(r4(hit[4])) + (Q.clean(hit[7]) && hit[7] !== '0' ? ' (' + Q.clean(hit[7]) + ')' : '') } : null;
+    // Owner 14/11 ("mục theo luật không được vào lớp dùng luôn dash để đếm... thấy sai như i52"): the Schedule's scan named 6 pupils
+    // of IELTS 52 for Writing W06 while the pupils' own pages showed 2. Now the pupil's page decides: the work of the previous lesson
+    // of the same skill (Schedule order) is still "overdue" there. No page read yet: nobody is flagged, the top line says so.
+    const run = pageRunFor(s);
+    if (!run) return null;
+    const r = run.rows.find(x => x.row === p.row);
+    const prev = ieltsPrevLesson(s), skill = ieltsSkillOf(s.book);
+    if (!r || !prev || !skill) return null;
+    const hit = r.owed.filter(l => skill.re.test(l) && Number((String(l).match(/Buổi\s*0*(\d+)/i) || [])[1]) === prev);
+    return hit.length ? { why: T('chưa làm bài ', 'missing ') + skill.vi + T(' buổi ', ' lesson ') + prev } : null;
   }
   const book = Q.key(s.book);
   if (!book) return null;
@@ -3916,9 +3923,24 @@ function gateOf(ctx, p) {
   return owed.length ? { why: T('chưa làm ', 'missing ') + owed.slice(0, 2).map(shortTask).join(', ') + (owed.length > 2 ? ' +' + (owed.length - 2) : '') } : null;
 }
 const r4 = v => ({ SPEAKING: 'Nói', WRITING: 'Viết', READING: 'Đọc', LISTENING: 'Nghe' })[Q.key(v)] || Q.clean(v);
+// The skill of an IELTS lesson (Schedule "book") as the pupils' pages name it, and the previous lesson of that skill.
+function ieltsSkillOf(book) {
+  const b = Q.key(book);
+  if (/VIET|WRITING/.test(b)) return { re: /^\s*Writing\b/i, vi: T('Viết', 'Writing') };
+  if (/NOI|SPEAKING/.test(b)) return { re: /^\s*Speaking\b/i, vi: T('Nói', 'Speaking') };
+  if (/DOC|READING/.test(b)) return { re: /^\s*Reading\b/i, vi: T('Đọc', 'Reading') };
+  if (/NGHE|LISTENING/.test(b)) return { re: /^\s*Listening\b/i, vi: T('Nghe', 'Listening') };
+  return null;
+}
+function ieltsPrevLesson(s) {
+  const base = Q.key(Q.clean(s.cls).replace(/\.\d+$/, '')), book = Q.key(s.book);
+  const earlier = Object.values(weeks).flatMap(w => w.data.sessions).filter(x => !x.off && x !== s && Q.key(Q.clean(x.cls).replace(/\.\d+$/, '')) === base && Q.key(x.book) === book && (x.day < s.day || (x.day === s.day && x.start < s.start)) && Number(x.lesson) < Number(s.lesson));
+  const n = earlier.length ? Math.max(...earlier.map(x => Number(x.lesson) || 0)) : Number(s.lesson) - 1;
+  return n > 0 ? n : 0;
+}
 function gateChecked(s) {
   if (!/^IELTS/i.test(Q.clean(s.cls))) return true;
-  return !!(ieltsGate.rows && ieltsGate.rows.some(r => Q.clean(r[1]) === dmyOf(s.day) && Q.key(r[2]) === Q.key(s.cls)));
+  return dashStateOf(s) === 'ok';
 }
 // The line under each pupil on the class page.
 const kidsMakeupBeforeGate = kidsMakeup;
@@ -3936,7 +3958,7 @@ viewClass = function () {
   if (!ctx.tracker) return out;
   const list = ctx.tracker.pupils.map(p => ({ p, g: gateOf(ctx, p) })).filter(z => z.g);
   const note = list.length ? '<div class="notice bad gate-top">⛔ ' + list.length + T(' em chưa làm bài buổi trước, theo luật không được vào lớp: ', ' pupils have not done the last homework and may not come in: ') + esc(list.map(z => z.p.eng || z.p.name).join(', ')) + T('. Cô/thầy chọn Có mặt, "Cho về · thiếu bài" hay "Ra ngoài bù bài".', '. Choose present, "Sent home" or "Make up outside".') + '</div>'
-    : !gateChecked(current) ? '<div class="notice gate-top">' + T('Danh sách không vào lớp của buổi này chưa quét (Schedule quét khoảng 1 tiếng trước giờ học).', 'The not-allowed-in list for this lesson is not ready yet (about an hour before class).') + '</div>' : '';
+    : !gateChecked(current) ? '<div class="notice gate-top">' + (dashStateOf(current) === 'fail' ? T('Chưa đọc được bài từ trang học sinh nên chưa biết em nào không được vào lớp. Bấm "↻ Đọc lại sheet" để thử lại.', 'Could not read the pupils\' pages yet, so the not-allowed-in list is not ready. Press ↻ to try again.') : T('⏳ Đang đọc bài từ trang học sinh để biết em nào chưa làm bài buổi trước…', 'Reading the pupils\' pages for last lesson\'s homework…')) + '</div>' : '';
   const at = out.indexOf('<div class="card"><div class="pupil');
   return note && at >= 0 ? out.slice(0, at) + note + out.slice(at) : out + note;
 };
