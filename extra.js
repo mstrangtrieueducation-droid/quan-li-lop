@@ -8393,23 +8393,42 @@ try {
 // A tapped notification: where it leads is also read from the app's cache when the page comes back to the front (sw.js keeps it
 // there), because on an iPhone the message to an open app is often lost.
 const MO_CACHE = 'app-' + new URL('./', location.href).pathname.replace(/\W+/g, '-'), MO_KEY = new URL('__mo', new URL('./', location.href)).href;
-let moSeen = nlPending ? { k: nlPending.mo + '|' + nlPending.id, at: Date.now() } : null;
-try { navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'mo') { try { const u = new URL(e.data.url, location.href); moSeen = { k: (u.searchParams.get('mo') || '') + '|' + (u.searchParams.get('id') || ''), at: Date.now() }; } catch (x) {} } }); } catch (e) {}
+// One tap = one message: what, which day, whose / which class (14/11: two check-in messages of different people tapped within
+// 20 s were taken for the same one).
+const moKey = p => [p.mo, p.id, p.d, p.p, p.c, p.g].map(x => x || '').join('|');
+let moSeen = nlPending ? { k: moKey(nlPending), at: Date.now() } : null;
+try { navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'mo') { try { moSeen = { k: e.data.at ? 'at:' + e.data.at : moKey(moFrom(e.data.url)), at: Date.now() }; } catch (x) {} } }); } catch (e) {}
 async function moCheck() {
   try {
     if (!('caches' in window)) return;
     const c = await caches.open(MO_CACHE), hit = await c.match(MO_KEY);
     if (!hit) return;
     const d = await hit.json();
-    await c.delete(MO_KEY);
-    if (!d || !d.url || Date.now() - (d.at || 0) > 10 * 60000) return;
+    if (!d || !d.url || Date.now() - (d.at || 0) > 10 * 60000) { await c.delete(MO_KEY); return; }
     const u = new URL(d.url, location.href), mo = u.searchParams.get('mo') || '', id = u.searchParams.get('id') || '';
-    if (!mo) return;
-    if (moSeen && moSeen.k === mo + '|' + id && Date.now() - moSeen.at < 20000) return; // already opened by the message or the address
-    moSeen = { k: mo + '|' + id, at: Date.now() };
+    if (!mo) { await c.delete(MO_KEY); return; }
+    moTapAt = Math.max(moTapAt, d.at || 0);
+    // Owner 14/11 ("thoát ra, ấn vào thông báo, nó vẫn ra cái màn hình ban đầu"): the place is kept until the app has stayed on it
+    // for a few seconds. If the page reloads in between (a new version), it is read again after the reload instead of being lost.
+    moForget(d.at);
+    const k = 'at:' + d.at;
+    if (moSeen && moSeen.k === k && Date.now() - moSeen.at < 20000) return; // already opened by the message or the address
+    moSeen = { k, at: Date.now() };
     nlPending = moFrom(d.url); nlTryPending();
   } catch (e) {}
 }
+// The kept place is removed 6 s after it was opened, only if it is still the same tap.
+var moTapAt = 0;
+function moForget(at) {
+  setTimeout(async () => {
+    try { const c = await caches.open(MO_CACHE), hit = await c.match(MO_KEY); if (!hit) return; const d = await hit.json(); if (!d || d.at === at) await c.delete(MO_KEY); } catch (e) {}
+  }, 6000);
+}
+try { navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'mo') moTapAt = Date.now(); }); } catch (e) {}
+// A new version found when the app comes back to the front (often the very moment a notification is tapped) waits until the
+// person has been on the opened place for 20 s; the reload then brings them back to that place, not to the screen they had left.
+const appSwapBeforeMo = appSwap;
+appSwap = function () { if (Date.now() - moTapAt < 20000) return; return appSwapBeforeMo(); };
 document.addEventListener('visibilitychange', () => { if (!document.hidden) moCheck(); });
 window.addEventListener('pageshow', () => { moCheck(); });
 window.addEventListener('focus', () => { moCheck(); });

@@ -87,12 +87,14 @@ self.addEventListener('notificationclick', e => {
   e.notification.close();
   const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
   e.waitUntil((async () => {
-    try { const c = await caches.open(CACHE); await c.put(MO_KEY, new Response(JSON.stringify({ url, at: Date.now() }), { headers: { 'Content-Type': 'application/json' } })); } catch (err) {}
+    // The tap's own time marks it, so the page opens it once even when both the message and the kept copy reach it.
+    const at = Date.now();
+    try { const c = await caches.open(CACHE); await c.put(MO_KEY, new Response(JSON.stringify({ url, at }), { headers: { 'Content-Type': 'application/json' } })); } catch (err) {}
     const wins = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true })).filter(c => c.url.startsWith(self.registration.scope));
     const w = wins[0];
     // Owner 13/11 (iPhone: "bấm vào nhận xét của GV chả ra gì"): every open window is told where to go and one is brought forward;
     // where that is not possible (iPhone home-screen app), the app is opened at the address itself, which it reads when it starts.
-    wins.forEach(c => { try { c.postMessage({ type: 'mo', url }); } catch (err) {} });
+    wins.forEach(c => { try { c.postMessage({ type: 'mo', url, at }); } catch (err) {} });
     if (w) { try { await w.focus(); return; } catch (err) {} }
     try { await self.clients.openWindow(url); } catch (err) { if (w && w.navigate) { try { await w.navigate(url); } catch (x) {} } }
   })());
