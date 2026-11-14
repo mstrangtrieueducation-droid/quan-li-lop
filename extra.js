@@ -8567,3 +8567,106 @@ try {
     '.mo-flash{outline:3px solid var(--brand);outline-offset:2px;border-radius:10px;animation:moPulse 1s ease-in-out 3}@keyframes moPulse{50%{outline-color:transparent}}';
   document.head.appendChild(st);
 } catch (e) {}
+
+/* ---------- Owner 14/11 ("sao cứ bị chặn quyền định vị thế nhỉ? làm sao để không chặn?") ----------
+ * 11–14/11: Angelo, Bảo Khánh, My Linh and the owner checked in with "bị chặn quyền định vị": the phone or the browser refuses
+ * the app its position, so the check-in waits for a manager. The browser never asks again once someone tapped "Không cho phép"
+ * (or location is off for the browser in the phone's settings); only the person can open it, in the settings of that device.
+ * Now: the check-in card warns before the press when this device blocks location (where the browser can tell), and a failed
+ * press opens a small sheet with the steps for this very device (iPhone, Android, computer) and two buttons: "Thử lại" and
+ * "Vẫn ghi giờ, chờ duyệt". No more yes/no box. A timeout (weak GPS indoors) gets its own short advice. */
+const geo = { state: '', sheet: null };
+function geoWatchPermission() {
+  try {
+    if (!navigator.permissions || !navigator.permissions.query) return;
+    navigator.permissions.query({ name: 'geolocation' }).then(st => {
+      geo.state = st.state; render();
+      st.onchange = () => { geo.state = st.state; render(); };
+    }).catch(() => {});
+  } catch (e) {}
+}
+setTimeout(geoWatchPermission, 2500);
+function geoSteps(blocked) {
+  const ua = navigator.userAgent || '', ios = tbIOS, android = /Android/i.test(ua), samsung = /SamsungBrowser/i.test(ua), inApp = tbInApp;
+  if (!blocked) return [
+    T('Bật Wi-Fi của điện thoại (không cần kết nối mạng nào), Wi-Fi giúp định vị nhanh trong nhà.', 'Turn Wi-Fi on (no need to connect); it helps the phone find itself indoors.'),
+    ios ? T('Kiểm tra Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị đang bật.', 'Check Settings → Privacy & Security → Location Services is on.') : T('Kéo thanh trên cùng xuống, bật "Vị trí".', 'Pull down the top bar and turn "Location" on.'),
+    T('Đứng gần cửa sổ hoặc cửa ra vào rồi bấm "Thử lại".', 'Stand near a window or the door, then press "Try again".')];
+  if (inApp) return [T('Bạn đang mở app bên trong Zalo / Facebook nên không lấy được vị trí. Mở app bằng biểu tượng "Quản lí lớp" trên màn hình chính, hoặc bằng Chrome / Safari.', 'The app is open inside Zalo / Facebook. Open it from its home-screen icon, or in Chrome / Safari.')];
+  if (ios) return [
+    T('Mở Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị: bật lên.', 'Settings → Privacy & Security → Location Services: on.'),
+    T('Cũng trong mục đó, kéo xuống "Trang web Safari" → chọn "Khi dùng ứng dụng" và bật "Vị trí chính xác".', 'In the same list, "Safari Websites" → "While Using the App", and turn "Precise Location" on.'),
+    T('Mở Cài đặt → Safari → Vị trí → chọn "Hỏi" (hoặc "Cho phép").', 'Settings → Safari → Location → "Ask" (or "Allow").'),
+    T('Mở lại app, bấm "Thử lại", khi máy hỏi thì chọn "Cho phép".', 'Open the app again, press "Try again" and choose "Allow".')];
+  if (android) return [
+    T('Kéo thanh trên cùng xuống, bật "Vị trí".', 'Pull down the top bar and turn "Location" on.'),
+    samsung ? T('Trong Samsung Internet: ☰ → Cài đặt → Quyền riêng tư → Quyền trang web → Vị trí → cho phép trang này. (Nên mở app bằng Chrome.)', 'Samsung Internet: ☰ → Settings → Privacy → Site permissions → Location → allow this site. (Chrome is better.)')
+      : T('Trong Chrome: bấm ⋮ → Cài đặt → Cài đặt trang web → Vị trí → bật, rồi ở mục "Bị chặn" chọn trang mstrangtrieueducation-droid.github.io → Cho phép.', 'Chrome: ⋮ → Settings → Site settings → Location → on; under "Blocked" pick mstrangtrieueducation-droid.github.io → Allow.'),
+    T('Nếu vẫn chặn: Cài đặt điện thoại → Ứng dụng → Chrome → Quyền → Vị trí → "Chỉ cho phép khi dùng ứng dụng".', 'Still blocked: phone Settings → Apps → Chrome → Permissions → Location → "Allow only while using".'),
+    T('Quay lại app, bấm "Thử lại", khi máy hỏi thì chọn "Cho phép".', 'Back in the app, press "Try again" and choose "Allow".')];
+  return [
+    T('Bấm biểu tượng ổ khoá (hoặc ⓘ) ở đầu thanh địa chỉ → Vị trí → Cho phép.', 'Click the lock (or ⓘ) at the start of the address bar → Location → Allow.'),
+    T('Máy Windows: Cài đặt → Quyền riêng tư & bảo mật → Vị trí: bật "Dịch vụ định vị" và "Cho phép ứng dụng máy tính truy cập vị trí".', 'Windows: Settings → Privacy & security → Location: turn location services on.'),
+    T('Tải lại trang rồi bấm "Thử lại".', 'Reload the page, then press "Try again".')];
+}
+function geoSheetHtml() {
+  const s = geo.sheet; if (!s) return '';
+  const blocked = s.code === 1;
+  return '<div class="tb-veil" data-act="geoClose"></div><div class="tb-sheet geo-sheet" role="dialog" aria-label="' + T('Định vị', 'Location') + '">' +
+    '<div class="tb-top"><b>📍 ' + (blocked ? T('Máy này đang chặn định vị', 'Location is blocked on this device') : T('Chưa lấy được vị trí', 'Location not found yet')) + '</b><button class="quiet" data-act="geoClose">' + T('Đóng', 'Close') + '</button></div>' +
+    '<p>' + (blocked ? T('App cần vị trí để tự duyệt khi bạn có mặt ở trung tâm. Mở khoá một lần theo các bước dưới đây, những lần sau sẽ không bị hỏi lại:', 'The app needs your position to approve the check-in by itself. Unlock it once:') : T('Điện thoại chưa bắt được GPS (thường do ở trong nhà). Thử thế này:', 'The phone could not get a GPS fix (usually indoors). Try this:')) + '</p>' +
+    '<ol>' + geoSteps(blocked).map(x => '<li>' + esc(x) + '</li>').join('') + '</ol>' +
+    '<div class="tb-btns"><button class="primary" data-act="geoRetry">↻ ' + T('Thử lại', 'Try again') + '</button><button class="quiet" data-act="geoAnyway">' + T('Vẫn ghi giờ, chờ duyệt', 'Record anyway') + '</button></div>' +
+    '<div class="small muted">' + T('"Vẫn ghi giờ" thì giờ vào ca vẫn được lưu, quản lí sẽ duyệt tay.', '"Record anyway" keeps the time; a manager approves it.') + '</div></div>';
+}
+function geoPaint() {
+  let box = document.getElementById('geoBox');
+  if (!geo.sheet) { if (box) { box.innerHTML = ''; box._html = ''; } return; }
+  if (!box) { box = document.createElement('div'); box.id = 'geoBox'; document.body.appendChild(box); }
+  const h = geoSheetHtml(); if (box._html !== h) { box.innerHTML = h; box._html = h; }
+}
+async function caRecord(kind, pos, posWhy) {
+  try {
+    const week = weeks[Q.weekTab(tabs, today())], due = myDue(week, today());
+    const r = await call('vaoca', { kind, lat: pos ? pos.coords.latitude : '', lng: pos ? pos.coords.longitude : '', acc: pos ? Math.round(pos.coords.accuracy) : '', due: due !== null ? Q.clock(due) : '', note: posWhy }, 1);
+    say((kind === 'ra' ? T('Đã ra ca lúc ', 'Out at ') : T('Đã vào ca lúc ', 'In at ')) + r.time + ' · ' + r.status + (r.note ? ' (' + r.note + ')' : ''), r.status === 'Tự duyệt' ? '' : 'bad');
+    await loadCa(true);
+  } catch (e) { say(T('Chưa chấm được: ', 'Not recorded: ') + e.message, 'bad'); }
+}
+caPress = async function (kind) {
+  if (ca.busy) return;
+  ca.busy = true; geo.sheet = null; geoPaint(); render();
+  let pos = null;
+  try { pos = await position(); }
+  catch (e) {
+    // The reason code: 1 blocked, 2 no signal, 3 timeout (geoError keeps the text; the code is read back from it).
+    const code = /chặn|blocked/i.test(e.message || '') ? 1 : /tín hiệu|signal/i.test(e.message || '') ? 2 : 3;
+    if (code === 1) geo.state = 'denied';
+    geo.sheet = { kind, code, why: e.why || '' };
+    ca.busy = false; render(); geoPaint();
+    return;
+  }
+  try { await caRecord(kind, pos, ''); } finally { ca.busy = false; render(); }
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-act="geoClose"],[data-act="geoRetry"],[data-act="geoAnyway"],[data-act="geoHelp"]');
+  if (!b) return;
+  e.stopImmediatePropagation();
+  const act = b.dataset.act, s = geo.sheet;
+  if (act === 'geoHelp') { geo.sheet = { kind: 'vao', code: 1, why: 'GPS: bị chặn quyền định vị' }; geoPaint(); return; }
+  geo.sheet = null; geoPaint();
+  if (act === 'geoRetry' && s) caPress(s.kind);
+  if (act === 'geoAnyway' && s) { ca.busy = true; render(); caRecord(s.kind, null, s.why).finally(() => { ca.busy = false; render(); }); }
+}, true);
+// Before the press: say so on the card when this device already blocks location (browsers that can tell: Chrome, new Safari).
+const renderBeforeGeo = render;
+render = function () {
+  renderBeforeGeo();
+  try {
+    const btn = document.querySelector('#main .checkin [data-act="caIn"], #main .checkin [data-act="caOut"]');
+    const card = btn && btn.closest('.checkin');
+    if (card && geo.state === 'denied' && !card.querySelector('.geo-warn')) btn.insertAdjacentHTML('beforebegin', '<div class="notice warn geo-warn">📍 ' + T('Máy này đang chặn định vị nên vào ca sẽ phải chờ duyệt. ', 'This device blocks location, so check-ins wait for approval. ') + '<button class="quiet small" data-act="geoHelp">' + T('Cách mở khoá ›', 'How to unlock ›') + '</button></div>');
+    geoPaint();
+  } catch (e) {}
+};
+try { const st = document.createElement('style'); st.textContent = '.geo-warn{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}'; document.head.appendChild(st); } catch (e) {}
