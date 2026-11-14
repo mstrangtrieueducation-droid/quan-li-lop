@@ -7453,7 +7453,9 @@ async function nlLoad(d, force) {
   nlx.busy[d] = true;
   try {
     const list = nlSessionsOn(d), sig = list.map(s => nlId(s) + '|' + nlOf(s).gv + '|' + (cmOf(s) || '') + '|' + s.end).join(';');
-    if (list.length && nlx.reg[d] !== sig && d >= Q.addDays(today(), -14) && d <= Q.addDays(today(), 7)) { await call('nxdk', { rows: list.map(s => nlMeta(s, nlOf(s))) }); nlx.reg[d] = sig; }
+    // Owner 14/11 (GV Angelo: "already did all of these, why does it say I haven't"): a failed registration no longer stops the read, so
+    // comments already on the gateway are always shown as done.
+    if (list.length && nlx.reg[d] !== sig && d >= Q.addDays(today(), -14) && d <= Q.addDays(today(), 7)) { try { await call('nxdk', { rows: list.map(s => nlMeta(s, nlOf(s))) }); nlx.reg[d] = sig; } catch (e) {} }
     const r = await call('nxxem', { day: d }), was = JSON.stringify(Object.values(nlx.rows).filter(x => x.day === d));
     Object.keys(nlx.rows).forEach(k => { if (nlx.rows[k].day === d) delete nlx.rows[k]; });
     (r.rows || []).forEach(x => { nlx.rows[x.id] = x; });
@@ -7577,10 +7579,12 @@ bellItems = function () {
     const t = today(), y = Q.addDays(t, -1), now = minutesNow();
     const wait = Object.values(nlx.rows).filter(r => r.day >= y && r.en && !r.zalo_at && (isMe(r.cn) || (isManager() && !r.cn)));
     if (wait.length) out.push({ k: 'nx', icon: '📝', text: wait.length + T(' nhận xét GV nước ngoài chờ duyệt, gửi Zalo', ' class comments to check and send'), n: wait.length, hot: wait.some(r => r.day < t), go: wait.length === 1 ? { view: 'lopcn', nx: wait[0].id } : { view: 'lopcn' } });
-    nlSessionsOn(t).filter(s => isMe(nlOf(s).gv) && now >= s.end && !((nlx.rows[nlId(s)] || {}).en)).forEach(s =>
+    // Only once the day's comments were read from the gateway: before that, nothing is known to be missing.
+    [t, y].forEach(d => { if (!nlx.at[d] && nlSessionsOn(d).some(s => isMe(nlOf(s).gv))) setTimeout(() => nlLoad(d), 0); });
+    if (nlx.at[t]) nlSessionsOn(t).filter(s => isMe(nlOf(s).gv) && now >= s.end && !((nlx.rows[nlId(s)] || {}).en)).forEach(s =>
       out.push({ k: 'nxgv', icon: '📝', text: T('Viết nhận xét lớp ', 'Write the class comment for ') + Q.clean(s.cls) + T(' (hạn 12:00 trưa mai)', ' (due by 12:00 tomorrow)'), n: 1, hot: now >= 21 * 60 + 30, go: { view: 'lich', nx: nlId(s) } }));
     // Yesterday's lessons still without a comment: due 12:00 today; after that still possible, late.
-    nlSessionsOn(y).filter(s => isMe(nlOf(s).gv) && !((nlx.rows[nlId(s)] || {}).en)).forEach(s =>
+    if (nlx.at[y]) nlSessionsOn(y).filter(s => isMe(nlOf(s).gv) && !((nlx.rows[nlId(s)] || {}).en)).forEach(s =>
       out.push({ k: 'nxgv', icon: '📝', text: T('Nhận xét lớp ', 'Class comment for ') + Q.clean(s.cls) + (now < NL_DUE_AT ? T(' hôm qua chưa nộp · hạn 12:00 hôm nay', ' (yesterday) is missing · due 12:00 today') : T(' hôm qua chưa nộp · đã muộn, vẫn nộp được', ' (yesterday) is missing · late, you can still submit')), n: 1, hot: true, go: { view: 'lich', nx: nlId(s) } }));
   } catch (e) {}
   return out;
@@ -8805,3 +8809,32 @@ dashStateOf = (function (orig) {
     return r && r.retryAt && r.retryAt > Date.now() ? 'wait' : st;
   };
 })(dashStateOf);
+
+/* Owner 14/11 (video from KIDS 25, 18:40: attendance ticks appear, vanish, come back while "Saving…"): a tick leaves the outbox as
+ * soon as it is sent, and a full reload of the attendance log that lands before the copy behind the gateway shows the new row drew
+ * the class without it for a moment. Rows this device sent in the last 5 minutes are put back after such a reload, unless the
+ * log already has them or holds a newer mark for that pupil and lesson (another device changed it since). */
+const sentMarks = [];
+const markAtKey = s => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/); return m ? m[3] + m[2].padStart(2, '0') + m[1].padStart(2, '0') + m[4].padStart(2, '0') + m[5] + (m[6] || '00') : ''; };
+const callBeforeSentMarks = call;
+call = async function (op, args, attempts) {
+  const out = await callBeforeSentMarks(op, args, attempts);
+  try { if (op === 'add' && args && args.tab === 'DIEM_DANH' && Array.isArray(args.rows)) { const t = Date.now(); args.rows.forEach(row => sentMarks.push({ t, row })); } } catch (e) {}
+  return out;
+};
+const mergeOutboxBeforeSent = mergeOutbox;
+mergeOutbox = function () {
+  mergeOutboxBeforeSent();
+  try {
+    const now = Date.now();
+    while (sentMarks.length && now - sentMarks[0].t > 300000) sentMarks.shift();
+    if (!logs.marks || !sentMarks.length) return;
+    const rows = logs.marks.rows;
+    sentMarks.forEach(({ row }) => {
+      const m = markOf(row), k = markKey(m), at = markAtKey(m.at);
+      if (rows.some(x => x.at === m.at && x.name === m.name && x.status === m.status && markKey(x) === k)) return;
+      if (rows.some(x => markKey(x) === k && markAtKey(x.at) > at)) return;
+      rows.push(m);
+    });
+  } catch (e) {}
+};
